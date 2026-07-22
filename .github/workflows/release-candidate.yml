@@ -1,7 +1,9 @@
 name: Release candidate
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -16,8 +18,24 @@ jobs:
       artifact-metadata: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Require a verified signed annotated tag matching Info.plist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          test "$TAG_NAME" = "v${version}"
+          object_type="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" --jq '.object.type')"
+          test "$object_type" = "tag"
+          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" --jq '.object.sha')"
+          verified="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq '.verification.verified')"
+          test "$verified" = "true"
       - name: Build and verify from a clean checkout
-        run: ./tests/build_regression.sh
+        run: ./tests/security_acceptance.sh
       - name: Create archive and SHA-256 manifest
         id: archive
         shell: bash
@@ -35,7 +53,7 @@ jobs:
       - name: Upload immutable workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: UsageBar-release-candidate
+          name: UsageBar-${{ github.ref_name }}-release-candidate
           path: |
             ${{ steps.archive.outputs.archive }}
             ${{ steps.archive.outputs.archive }}.sha256
