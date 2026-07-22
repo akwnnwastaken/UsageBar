@@ -1,10 +1,14 @@
 # UsageBar
 
+[Türkçe](#türkçe) · [English](#english)
+
+## Türkçe
+
 Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren küçük ve yerel bir uygulama.
 
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
-## Özellikler
+### Özellikler
 
 - Codex ve Claude Code kullanımını tek uygulamada izler.
 - Menü çubuğunda seçili sağlayıcının en düşük kalan oranını gösterir.
@@ -16,13 +20,13 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
 - Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
 
-## Yüzde nasıl hesaplanıyor?
+### Yüzde nasıl hesaplanıyor?
 
 Üst çubuktaki değer **kullanılan değil, kalan yüzdedir**.
 
 Örneğin seçili sağlayıcının 5 saatlik penceresinde `%35`, haftalık penceresinde `%20` kullanım hakkı kaldıysa üst çubukta daha kritik olan `%20` gösterilir. Menüye tıkladığınızda iki pencerenin ayrıntısını da görebilirsiniz.
 
-## Gereksinimler
+### Gereksinimler
 
 - macOS 13 veya daha yeni bir sürüm
 - Codex için ChatGPT uygulaması veya giriş yapılmış Codex CLI
@@ -31,7 +35,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 
 Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 
-## İndir ve kur
+### İndir ve kur
 
 1. [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından en güncel `macOS-arm64.zip` dosyasını indirin.
 2. ZIP dosyasını açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
@@ -40,7 +44,7 @@ Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 > [!WARNING]
 > İlk Beta sürümü Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
 
-### İlk açılışta macOS uyarısını onaylama
+#### İlk açılışta macOS uyarısını onaylama
 
 1. İndirdiğiniz ZIP'i açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
 2. UsageBar'ı bir kez açmayı deneyin.
@@ -63,7 +67,7 @@ shasum -a 256 ~/Downloads/UsageBar-1.4.2-macOS-arm64.zip
 
 Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yapamadığı bir uygulamayı açma](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
 
-## Kullanım
+### Kullanım
 
 1. UsageBar'ı açın.
 2. Menü çubuğundaki `%—` simgesine tıklayın.
@@ -72,7 +76,7 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
 
-## Gizlilik ve macOS izinleri
+### Gizlilik ve macOS izinleri
 
 UsageBar ilk açılışta hiçbir sağlayıcıya erişmez. Bir sağlayıcıyı ancak ilgili bağlantı düğmesine bastığınızda sorgular.
 
@@ -89,14 +93,14 @@ Claude Code bağlantısında macOS, mevcut `Claude Code-credentials` Anahtar Zin
 
 Sağlayıcı komutları uygulamaya özel geçici bir klasörde çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez.
 
-## Veri kaynakları
+### Veri kaynakları
 
 - **Codex:** Kurulu Codex aracının `account/rateLimits/read` yerel arayüzü.
 - **Claude Code:** Claude Code'un resmi `rate_limits.five_hour` ve `rate_limits.seven_day` alanları; gerektiğinde `/usage` çıktısı yedek olarak kullanılır.
 
 UsageBar sağlayıcıların web sitelerine kendi hesabıyla giriş yapmaz; bilgisayarınızdaki mevcut Codex ve Claude Code oturumlarını kullanır.
 
-## Kaynak koddan derleme
+### Kaynak koddan derleme
 
 ```sh
 git clone https://github.com/akwnnwastaken/UsageBar.git
@@ -108,7 +112,7 @@ open build/UsageBar.app
 
 Derleme betiği uygulamayı oluşturur, yerleşik parser ve yerelleştirme testlerini çalıştırır ve yerel kullanım için ad hoc imzalar.
 
-## Proje yapısı
+### Proje yapısı
 
 ```text
 UsageBar/
@@ -119,10 +123,141 @@ UsageBar/
 └── README.md
 ```
 
-## Geliştirme
+### Geliştirme
 
-Değişiklikler ayrı commitler ve taslak pull request üzerinden ilerletilir. Böylece GitHub'daki commit geçmişinden önceki çalışan sürümlere dönülebilir ve her değişiklik ayrı ayrı incelenebilir.
+Değişiklikler ayrı commitler ve pull requestler üzerinden ilerletilir. Böylece GitHub'daki commit geçmişinden önceki çalışan sürümlere dönülebilir ve her değişiklik ayrı ayrı incelenebilir.
 
-## Lisans
+### Lisans
 
 UsageBar, [MIT Lisansı](LICENSE) ile sunulur.
+
+---
+
+## English
+
+UsageBar is a small, local macOS menu bar app that displays Codex and Claude Code usage limits.
+
+It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
+
+### Features
+
+- Tracks Codex and Claude Code usage in one app.
+- Shows the lowest remaining percentage for the selected provider in the menu bar.
+- Lists five-hour and weekly windows separately and only displays windows available on the account.
+- Shows the reset countdown below the remaining percentage (`1h 15m`).
+- Highlights the remaining percentage in green, orange, or red based on its level.
+- Switches the provider shown in the menu bar with the `Codex | Claude` selector.
+- Includes Turkish and English interfaces and remembers the selected language.
+- Refreshes usage every five minutes and when the menu is reopened.
+- Runs only in the menu bar without a Dock icon or main window.
+
+### How is the percentage calculated?
+
+The menu bar value is the **remaining percentage, not the used percentage**.
+
+For example, if the selected provider has `%35` remaining in its five-hour window and `%20` remaining in its weekly window, the menu bar displays the more critical `%20`. Open the menu to see both windows in detail.
+
+### Requirements
+
+- macOS 13 or later
+- The ChatGPT app or a signed-in Codex CLI installation for Codex tracking
+- A signed-in Claude Code CLI installation for Claude tracking
+- Xcode Command Line Tools only when building from source
+
+You only need to install the provider you want to track.
+
+### Download and install
+
+1. Download the latest `macOS-arm64.zip` file from [Releases](https://github.com/akwnnwastaken/UsageBar/releases).
+2. Extract the ZIP and move `UsageBar.app` to the **Applications** folder.
+3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
+
+> [!WARNING]
+> The first Beta release supports Apple Silicon (`arm64`) Macs and has not yet been notarized by Apple. macOS may therefore report that Apple could not verify UsageBar is free of malware. Follow the steps below only if you downloaded the official Release file from this repository.
+
+#### Approving the macOS warning on first launch
+
+1. Extract the downloaded ZIP and move `UsageBar.app` to the **Applications** folder.
+2. Try to open UsageBar once.
+3. When the verification warning appears, click **Done** instead of **Move to Bin**.
+4. Open Apple menu  → **System Settings** → **Privacy & Security**.
+5. Scroll to the **Security** section and find the message stating that UsageBar was blocked.
+6. Click **Open Anyway**.
+7. Authenticate with Touch ID or your Mac login password, then click **Open** in the confirmation dialog.
+
+This approval is required only on the first launch of the same app. If **Open Anyway** is missing, try to open UsageBar again and return to Privacy & Security. Apple makes this option available for about one hour after the launch attempt.
+
+> [!CAUTION]
+> Do not disable Gatekeeper globally or run arbitrary `sudo`, `spctl`, or `xattr` commands from the internet. If macOS reports that the app contains known malware, do not continue; delete the file and download it again from the official Release.
+
+To compare the downloaded file's SHA-256 value with the value published on the Release page:
+
+```sh
+shasum -a 256 ~/Downloads/UsageBar-1.4.2-macOS-arm64.zip
+```
+
+Apple's official instructions: [Open an app Apple cannot check for malicious software](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
+
+### Usage
+
+1. Open UsageBar.
+2. Click the `%—` icon in the menu bar.
+3. Choose **Connect Codex** or **Connect Claude Code**.
+4. If both providers are connected, use the `Codex | Claude` selector to choose which one appears in the menu bar.
+
+Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
+
+### Privacy and macOS permissions
+
+UsageBar does not access either provider on first launch. It queries a provider only after you explicitly click its connection button.
+
+The app does not require:
+
+- Full Disk Access
+- Documents or Desktop access
+- Network volume access
+- Screen Recording
+- Accessibility
+- Automation
+
+When connecting Claude Code, macOS may request access to the existing `Claude Code-credentials` Keychain item. Choose **Always Allow** once if you do not want the prompt to reappear. Other unrelated permission requests can be denied.
+
+Provider commands run in an app-specific temporary directory. Project settings, plugins, MCP servers, Chrome integration, and shell startup files are not loaded.
+
+### Data sources
+
+- **Codex:** The installed Codex tool's local `account/rateLimits/read` interface.
+- **Claude Code:** Claude Code's official `rate_limits.five_hour` and `rate_limits.seven_day` fields, with `/usage` output used as a fallback when needed.
+
+UsageBar does not sign in to provider websites itself. It uses the existing local Codex and Claude Code sessions on the Mac.
+
+### Build from source
+
+```sh
+git clone https://github.com/akwnnwastaken/UsageBar.git
+cd UsageBar
+chmod +x build.sh
+./build.sh
+open build/UsageBar.app
+```
+
+The build script compiles the app, runs the built-in parser and localization tests, and applies an ad hoc signature for local use.
+
+### Project structure
+
+```text
+UsageBar/
+├── Sources/UsageBar/main.swift   # Application, UI, and usage readers
+├── Info.plist                    # macOS application settings
+├── build.sh                      # Build, test, and local signing
+├── LICENSE                       # MIT License
+└── README.md
+```
+
+### Development
+
+Changes are developed through separate commits and pull requests. This keeps each change reviewable and makes it possible to return to earlier working versions through Git history.
+
+### License
+
+UsageBar is available under the [MIT License](LICENSE).
