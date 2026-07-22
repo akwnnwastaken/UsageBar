@@ -54,12 +54,14 @@ enum ProviderIssue {
     case codexUsageUnavailable
     case codexLimitMissing
     case codexNotFound
+    case codexUntrustedExecutable
     case codexTimedOut
     case codexEmptyResponse
     case codexIncompatible
     case codexCommandFailed
     case codexLaunchFailed(String)
     case claudeNotFound
+    case claudeUntrustedExecutable
     case claudeNotLoggedIn
     case claudeAuthFailed
     case claudeAuthInvalidResponse
@@ -335,9 +337,23 @@ struct Localizer {
             "Install ChatGPT or the Codex CLI and sign in first."
         )
     }
+    var codexUntrustedTitle: String { pick("Codex güvenli değil", "Codex is not trusted") }
+    var codexUntrustedMessage: String {
+        pick(
+            "Codex çalıştırılabilir dosyasının sahibi, izinleri veya gerçek yolu güvenli bulunmadı. Codex'i resmi kaynaktan yeniden kurun.",
+            "The Codex executable has an unsafe owner, permissions, or resolved path. Reinstall Codex from an official source."
+        )
+    }
     var claudeNotFoundTitle: String { pick("Claude Code bulunamadı", "Claude Code not found") }
     var claudeNotFoundMessage: String {
         pick("Önce Claude Code'u kurup hesabınıza giriş yapın.", "Install Claude Code and sign in first.")
+    }
+    var claudeUntrustedTitle: String { pick("Claude Code güvenli değil", "Claude Code is not trusted") }
+    var claudeUntrustedMessage: String {
+        pick(
+            "Claude Code çalıştırılabilir dosyasının sahibi, izinleri veya gerçek yolu güvenli bulunmadı. Claude Code'u resmi kaynaktan yeniden kurun.",
+            "The Claude Code executable has an unsafe owner, permissions, or resolved path. Reinstall Claude Code from an official source."
+        )
     }
     var connectClaudeTitle: String { pick("Claude Code'a bağlanılsın mı?", "Connect Claude Code?") }
     var connectClaudeMessage: String {
@@ -412,6 +428,8 @@ struct Localizer {
             return pick("Codex kullanım sınırı bulunamadı", "Codex usage limit not found")
         case .codexNotFound:
             return codexNotFoundTitle
+        case .codexUntrustedExecutable:
+            return codexUntrustedTitle
         case .codexTimedOut:
             return pick("Codex yanıtı zaman aşımına uğradı", "Codex response timed out")
         case .codexEmptyResponse:
@@ -424,6 +442,8 @@ struct Localizer {
             return pick("Codex başlatılamadı: \(reason)", "Could not start Codex: \(reason)")
         case .claudeNotFound:
             return claudeNotFoundTitle
+        case .claudeUntrustedExecutable:
+            return claudeUntrustedTitle
         case .claudeNotLoggedIn:
             return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
         case .claudeAuthFailed:
@@ -745,28 +765,108 @@ enum UsageParser {
     }
 }
 
+enum ExecutableLookup {
+    case found(String)
+    case untrusted
+    case missing
+
+    var path: String? {
+        guard case .found(let path) = self else { return nil }
+        return path
+    }
+}
+
 enum ExecutableLocator {
-    static func codex() -> String? {
-        firstExecutable([
-            "/Applications/ChatGPT.app/Contents/Resources/codex",
-            "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
-            NSString(string: "~/.local/bin/codex").expandingTildeInPath
+    private struct Candidate {
+        let path: String
+        let allowedRoot: String
+    }
+
+    static func codex() -> ExecutableLookup {
+        firstTrusted([
+            Candidate(
+                path: "/Applications/ChatGPT.app/Contents/Resources/codex",
+                allowedRoot: "/Applications/ChatGPT.app"
+            ),
+            Candidate(path: "/opt/homebrew/bin/codex", allowedRoot: "/opt/homebrew"),
+            Candidate(path: "/usr/local/bin/codex", allowedRoot: "/usr/local"),
+            Candidate(
+                path: NSString(string: "~/.local/bin/codex").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.local").expandingTildeInPath
+            )
         ])
     }
 
-    static func claude() -> String? {
-        firstExecutable([
-            "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
-            NSString(string: "~/.claude/bin/claude").expandingTildeInPath,
-            NSString(string: "~/.claude/local/claude").expandingTildeInPath,
-            NSString(string: "~/.local/bin/claude").expandingTildeInPath
+    static func claude() -> ExecutableLookup {
+        firstTrusted([
+            Candidate(path: "/opt/homebrew/bin/claude", allowedRoot: "/opt/homebrew"),
+            Candidate(path: "/usr/local/bin/claude", allowedRoot: "/usr/local"),
+            Candidate(
+                path: NSString(string: "~/.claude/bin/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.claude").expandingTildeInPath
+            ),
+            Candidate(
+                path: NSString(string: "~/.claude/local/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.claude").expandingTildeInPath
+            ),
+            Candidate(
+                path: NSString(string: "~/.local/bin/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.local").expandingTildeInPath
+            )
         ])
     }
 
-    private static func firstExecutable(_ candidates: [String]) -> String? {
-        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    private static func firstTrusted(_ candidates: [Candidate]) -> ExecutableLookup {
+        var rejectedCandidate = false
+        for candidate in candidates where FileManager.default.fileExists(atPath: candidate.path) {
+            if let trustedPath = trustedExecutable(
+                at: candidate.path,
+                allowedRoot: candidate.allowedRoot
+            ) {
+                return .found(trustedPath)
+            }
+            rejectedCandidate = true
+        }
+        return rejectedCandidate ? .untrusted : .missing
+    }
+
+    static func trustedExecutable(at path: String, allowedRoot: String) -> String? {
+        let fileManager = FileManager.default
+        let resolvedPath = URL(fileURLWithPath: path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let resolvedRoot = URL(fileURLWithPath: allowedRoot)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        guard resolvedPath == resolvedRoot || resolvedPath.hasPrefix(resolvedRoot + "/") else {
+            return nil
+        }
+        guard fileManager.isExecutableFile(atPath: resolvedPath) else { return nil }
+        guard
+            let attributes = try? fileManager.attributesOfItem(atPath: resolvedPath),
+            attributes[.type] as? FileAttributeType == .typeRegular,
+            let owner = attributes[.ownerAccountID] as? NSNumber,
+            owner.int32Value == 0 || owner.int32Value == getuid(),
+            let permissions = attributes[.posixPermissions] as? NSNumber,
+            permissions.intValue & 0o022 == 0
+        else { return nil }
+
+        var directory = URL(fileURLWithPath: resolvedPath).deletingLastPathComponent()
+        let rootURL = URL(fileURLWithPath: resolvedRoot)
+        while directory.path.hasPrefix(resolvedRoot) {
+            guard
+                let directoryAttributes = try? fileManager.attributesOfItem(atPath: directory.path),
+                let directoryPermissions = directoryAttributes[.posixPermissions] as? NSNumber,
+                directoryPermissions.intValue & 0o002 == 0
+            else { return nil }
+            if directory.path == rootURL.path { break }
+            let parent = directory.deletingLastPathComponent()
+            guard parent.path != directory.path else { return nil }
+            directory = parent
+        }
+        return resolvedPath
     }
 }
 
@@ -918,7 +1018,14 @@ final class CodexUsageFetcher {
 
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            guard let executable = ExecutableLocator.codex() else {
+            let executable: String
+            switch ExecutableLocator.codex() {
+            case .found(let path):
+                executable = path
+            case .untrusted:
+                completion(.unavailable("Codex", .codexUntrustedExecutable))
+                return
+            case .missing:
                 completion(.unavailable("Codex", .codexNotFound))
                 return
             }
@@ -1038,7 +1145,14 @@ final class ClaudeUsageFetcher {
 
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            guard let executable = ExecutableLocator.claude() else {
+            let executable: String
+            switch ExecutableLocator.claude() {
+            case .found(let path):
+                executable = path
+            case .untrusted:
+                completion(.unavailable("Claude Code", .claudeUntrustedExecutable))
+                return
+            case .missing:
                 completion(.unavailable("Claude Code", .claudeNotFound))
                 return
             }
@@ -1986,7 +2100,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func connectCodex() {
-        guard ExecutableLocator.codex() != nil else {
+        switch ExecutableLocator.codex() {
+        case .found:
+            break
+        case .untrusted:
+            showConnectionError(
+                title: text.codexUntrustedTitle,
+                message: text.codexUntrustedMessage
+            )
+            return
+        case .missing:
             showConnectionError(
                 title: text.codexNotFoundTitle,
                 message: text.codexNotFoundMessage
@@ -2003,7 +2126,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func connectClaude() {
-        guard ExecutableLocator.claude() != nil else {
+        switch ExecutableLocator.claude() {
+        case .found:
+            break
+        case .untrusted:
+            showConnectionError(
+                title: text.claudeUntrustedTitle,
+                message: text.claudeUntrustedMessage
+            )
+            return
+        case .missing:
             showConnectionError(
                 title: text.claudeNotFoundTitle,
                 message: text.claudeNotFoundMessage
@@ -2374,9 +2506,11 @@ private func runSelfTest() -> Int32 {
         boundedCapture.append(Data([1, 2, 3])),
         !boundedCapture.append(Data([4, 5])),
         boundedCapture.snapshot().data == Data([1, 2, 3, 4]),
-        boundedCapture.snapshot().exceeded
+        boundedCapture.snapshot().exceeded,
+        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/bin") != nil,
+        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil
     else {
-        fputs("Çıktı sınırı testi başarısız\n", stderr)
+        fputs("Süreç güvenliği testi başarısız\n", stderr)
         return 1
     }
 
