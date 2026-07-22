@@ -1,0 +1,13 @@
+# Build products and compiler caches
+build/
+.build/
+DerivedData/
+.swiftpm/
+
+# macOS and editor metadata
+.DS_Store
+*.xcuserstate
+
+# Packaged artifacts
+*.app
+*.zip
