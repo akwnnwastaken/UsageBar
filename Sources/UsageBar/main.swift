@@ -22,6 +22,8 @@ enum ProviderIssue {
     case codexLaunchFailed(String)
     case claudeNotFound
     case claudeNotLoggedIn
+    case claudeAuthFailed
+    case claudeAuthInvalidResponse
     case claudeUsageUnreadable
     case claudeLaunchFailed(String)
     case processTimedOut(String)
@@ -325,6 +327,10 @@ struct Localizer {
             return claudeNotFoundTitle
         case .claudeNotLoggedIn:
             return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
+        case .claudeAuthFailed:
+            return pick("Claude Code giriş durumu kontrol edilemedi", "Could not check Claude Code sign-in status")
+        case .claudeAuthInvalidResponse:
+            return pick("Claude Code geçersiz giriş durumu döndürdü", "Claude Code returned an invalid sign-in status")
         case .claudeUsageUnreadable:
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
         case .claudeLaunchFailed(let reason):
@@ -776,6 +782,27 @@ private final class BoundedDataCapture {
     }
 }
 
+private enum PipeDrainer {
+    static func start(
+        _ pipe: Pipe,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            while true {
+                let chunk = pipe.fileHandleForReading.readData(ofLength: 16 * 1_024)
+                guard !chunk.isEmpty else { return }
+                capture.append(chunk)
+                dataAvailable?.signal()
+            }
+        }
+        return group
+    }
+}
+
 final class CodexUsageFetcher {
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
@@ -889,6 +916,8 @@ final class CodexUsageFetcher {
 }
 
 final class ClaudeUsageFetcher {
+    private static let usageTimeout: TimeInterval = 10
+    private static let usageFallbackDelay: TimeInterval = 1
     private static let statusLineSettings: String = {
         guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
         let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -926,6 +955,15 @@ final class ClaudeUsageFetcher {
             case .outputTooLarge:
                 completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                 return
+            case .launchFailed(let reason):
+                completion(.unavailable("Claude Code", .claudeLaunchFailed(reason)))
+                return
+            case .commandFailed:
+                completion(.unavailable("Claude Code", .claudeAuthFailed))
+                return
+            case .invalidResponse:
+                completion(.unavailable("Claude Code", .claudeAuthInvalidResponse))
+                return
             }
 
             let process = Process()
@@ -949,39 +987,64 @@ final class ClaudeUsageFetcher {
             process.standardError = output
             ProviderProcessContext.apply(to: process)
 
-            let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
-            output.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                captured.append(chunk)
-            }
-
             do {
                 try process.run()
-                Thread.sleep(forTimeInterval: 1.5)
-                input.fileHandleForWriting.write(Data("/usage\r".utf8))
-                Thread.sleep(forTimeInterval: 5.0)
-                input.fileHandleForWriting.write(Data([0x1B]))
-                Thread.sleep(forTimeInterval: 0.5)
-                input.fileHandleForWriting.write(Data("/exit\r".utf8))
-                Thread.sleep(forTimeInterval: 1.0)
+                let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let dataAvailable = DispatchSemaphore(value: 0)
+                let drainer = PipeDrainer.start(
+                    output,
+                    capture: captured,
+                    dataAvailable: dataAvailable
+                )
+                let startedAt = Date()
+                let deadline = startedAt.addingTimeInterval(Self.usageTimeout)
+                var sentUsageFallback = false
+                var parsedUsage: ProviderUsage?
+
+                while Date() < deadline {
+                    let snapshot = captured.snapshot()
+                    if snapshot.exceeded { break }
+
+                    let screen = String(decoding: snapshot.data, as: UTF8.self)
+                    if let structured = UsageParser.claudeStatusLine(screen) {
+                        parsedUsage = structured
+                        break
+                    }
+                    let fallback = UsageParser.claudeScreen(screen)
+                    if fallback.session != nil || fallback.weekly != nil {
+                        parsedUsage = fallback
+                        break
+                    }
+
+                    if !sentUsageFallback,
+                       Date().timeIntervalSince(startedAt) >= Self.usageFallbackDelay,
+                       process.isRunning {
+                        try? input.fileHandleForWriting.write(contentsOf: Data("/usage\r".utf8))
+                        sentUsageFallback = true
+                    }
+
+                    if !process.isRunning { break }
+                    _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
+                }
+
                 input.fileHandleForWriting.closeFile()
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
+                _ = drainer.wait(timeout: .now() + .seconds(1))
 
                 let snapshot = captured.snapshot()
                 guard !snapshot.exceeded else {
                     completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                     return
                 }
-                let screen = String(decoding: snapshot.data, as: UTF8.self)
-                completion(
-                    UsageParser.claudeStatusLine(screen)
-                        ?? UsageParser.claudeScreen(screen)
-                )
+                if let parsedUsage {
+                    completion(parsedUsage)
+                } else if Date() >= deadline {
+                    completion(.unavailable("Claude Code", .processTimedOut("Claude Code")))
+                } else {
+                    completion(.unavailable("Claude Code", .claudeUsageUnreadable))
+                }
             } catch {
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
@@ -992,6 +1055,9 @@ final class ClaudeUsageFetcher {
         case loggedOut
         case timedOut
         case outputTooLarge
+        case launchFailed(String)
+        case commandFailed
+        case invalidResponse
     }
 
     private static func loginStatus(_ executable: String) -> LoginStatus {
@@ -999,6 +1065,7 @@ final class ClaudeUsageFetcher {
         let output = Pipe()
         let errors = Pipe()
         let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+        let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
         let terminated = DispatchSemaphore(value: 0)
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = ["auth", "status"]
@@ -1007,36 +1074,30 @@ final class ClaudeUsageFetcher {
         process.terminationHandler = { _ in terminated.signal() }
         ProviderProcessContext.apply(to: process)
 
-        output.fileHandleForReading.readabilityHandler = { handle in
-            captured.append(handle.availableData)
-        }
-        errors.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
-        }
-
         do {
             try process.run()
+            let outputDrainer = PipeDrainer.start(output, capture: captured)
+            let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
             let waitResult = terminated.wait(timeout: .now() + ProviderProcessLimits.authTimeout)
             if waitResult == .timedOut {
                 ProviderProcessLimits.stop(process)
             }
-            output.fileHandleForReading.readabilityHandler = nil
-            errors.fileHandleForReading.readabilityHandler = nil
-            captured.append(output.fileHandleForReading.readDataToEndOfFile())
+            _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+            _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
             if waitResult == .timedOut { return .timedOut }
             let snapshot = captured.snapshot()
-            if snapshot.exceeded { return .outputTooLarge }
+            if snapshot.exceeded || errorCapture.snapshot().exceeded { return .outputTooLarge }
             guard
                 let object = try JSONSerialization.jsonObject(with: snapshot.data) as? [String: Any],
                 let loggedIn = object["loggedIn"] as? Bool
-            else { return .loggedOut }
+            else {
+                return process.terminationStatus == 0 ? .invalidResponse : .commandFailed
+            }
             return loggedIn ? .loggedIn : .loggedOut
         } catch {
             ProviderProcessLimits.stop(process)
-            output.fileHandleForReading.readabilityHandler = nil
-            errors.fileHandleForReading.readabilityHandler = nil
-            return .loggedOut
+            return .launchFailed(error.localizedDescription)
         }
     }
 
