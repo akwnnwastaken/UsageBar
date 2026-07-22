@@ -163,10 +163,17 @@ struct UsageSummary {
 enum UsageSummaryCalculator {
     static func summary(for providerName: String, in usages: [String: ProviderUsage]) -> UsageSummary? {
         guard let usage = usages[providerName] else { return nil }
-        let usedPercent = [
-            usage.session?.usedPercent,
-            usage.weekly?.usedPercent
-        ].compactMap { $0 }.max()
+        let usedPercent: Int?
+        if providerName == "Claude Code" {
+            // Claude's menu-bar value represents the active five-hour window.
+            // Fall back to weekly only when Claude does not return session data.
+            usedPercent = usage.session?.usedPercent ?? usage.weekly?.usedPercent
+        } else {
+            usedPercent = [
+                usage.session?.usedPercent,
+                usage.weekly?.usedPercent
+            ].compactMap { $0 }.max()
+        }
         guard let usedPercent else { return nil }
         return UsageSummary(
             providerName: providerName,
@@ -1414,6 +1421,34 @@ private func runSelfTest() -> Int32 {
     ])
     guard summary?.providerName == "Claude Code", summary?.remainingPercent == 59 else {
         fputs("Kalan kullanım özeti testi başarısız\n", stderr)
+        return 1
+    }
+
+    let claudeSessionFirst = ProviderUsage(
+        name: "Claude Code",
+        session: UsageWindow(usedPercent: 20, resetsAt: nil, durationMinutes: 300),
+        weekly: UsageWindow(usedPercent: 95, resetsAt: nil, durationMinutes: 10_080),
+        error: nil
+    )
+    let sessionFirstSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
+        "Claude Code": claudeSessionFirst
+    ])
+    guard sessionFirstSummary?.remainingPercent == 80 else {
+        fputs("Claude 5 saatlik pencere önceliği testi başarısız\n", stderr)
+        return 1
+    }
+
+    let claudeWeeklyFallback = ProviderUsage(
+        name: "Claude Code",
+        session: nil,
+        weekly: UsageWindow(usedPercent: 26, resetsAt: nil, durationMinutes: 10_080),
+        error: nil
+    )
+    let weeklyFallbackSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
+        "Claude Code": claudeWeeklyFallback
+    ])
+    guard weeklyFallbackSummary?.remainingPercent == 74 else {
+        fputs("Claude haftalık yedek pencere testi başarısız\n", stderr)
         return 1
     }
 
