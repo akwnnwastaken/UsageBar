@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 import ServiceManagement
 import UsageBarCore
+import UsageBarProcessLauncher
 
 enum UsageWindowKind: Equatable {
     case fiveHour
@@ -815,21 +816,46 @@ private enum ProviderProcessContext {
     }
 }
 
+private enum ProviderProcessLauncher {
+    static func configure(
+        _ process: Process,
+        executable: String,
+        arguments: [String]
+    ) {
+        let launcher = Bundle.main.executableURL?.path
+            ?? ProcessInfo.processInfo.arguments[0]
+        process.executableURL = URL(fileURLWithPath: launcher)
+        process.arguments = ["--process-group-launcher", executable] + arguments
+    }
+}
+
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
     static let authTimeout: DispatchTimeInterval = .seconds(5)
     private static let terminationGrace: TimeInterval = 1
 
     static func stop(_ process: Process) {
-        guard process.isRunning else { return }
-        process.terminate()
+        let processIdentifier = process.processIdentifier
+        guard processIdentifier > 0 else { return }
+        Darwin.kill(-processIdentifier, SIGTERM)
+        if process.isRunning {
+            process.terminate()
+        }
         let deadline = Date().addingTimeInterval(terminationGrace)
-        while process.isRunning, Date() < deadline {
+        while processGroupExists(processIdentifier), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
-        if process.isRunning {
-            Darwin.kill(process.processIdentifier, SIGKILL)
+        if processGroupExists(processIdentifier) {
+            Darwin.kill(-processIdentifier, SIGKILL)
         }
+        if process.isRunning {
+            Darwin.kill(processIdentifier, SIGKILL)
+        }
+    }
+
+    private static func processGroupExists(_ processIdentifier: pid_t) -> Bool {
+        if Darwin.kill(-processIdentifier, 0) == 0 { return true }
+        return errno != ESRCH
     }
 }
 
@@ -901,17 +927,16 @@ final class CodexUsageFetcher {
             let input = Pipe()
             let output = Pipe()
             let errors = Pipe()
-            process.executableURL = URL(fileURLWithPath: executable)
             // UsageBar only needs the account quota RPC. Disabling unrelated
             // app/plugin features avoids background catalog scans and their
             // associated file/network access.
-            process.arguments = [
+            ProviderProcessLauncher.configure(process, executable: executable, arguments: [
                 "app-server", "--stdio",
                 "--disable", "apps",
                 "--disable", "plugins",
                 "--disable", "remote_plugin",
                 "--disable", "plugin_sharing"
-            ]
+            ])
             process.standardInput = input
             process.standardOutput = output
             process.standardError = errors
@@ -1044,19 +1069,18 @@ final class ClaudeUsageFetcher {
             let process = Process()
             let input = Pipe()
             let output = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
             // Ignore user/project/local settings and inject only a tiny status
             // line that exposes Claude's official structured quota fields.
             // This avoids project files, hooks, plugins, MCP and Chrome while
             // keeping normal local authentication available.
-            process.arguments = [
+            ProviderProcessLauncher.configure(process, executable: "/usr/bin/script", arguments: [
                 "-q", "/dev/null", executable,
                 "--setting-sources", "",
                 "--settings", Self.statusLineSettings,
                 "--no-chrome",
                 "--strict-mcp-config",
                 "--tools", ""
-            ]
+            ])
             process.standardInput = input
             process.standardOutput = output
             process.standardError = output
@@ -1142,8 +1166,11 @@ final class ClaudeUsageFetcher {
         let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
         let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
         let terminated = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["auth", "status"]
+        ProviderProcessLauncher.configure(
+            process,
+            executable: executable,
+            arguments: ["auth", "status"]
+        )
         process.standardOutput = output
         process.standardError = errors
         process.terminationHandler = { _ in terminated.signal() }
@@ -2393,12 +2420,26 @@ private func runClaudeStatusFilter() -> Int32 {
     return 0
 }
 
+private func runProcessGroupLauncher() -> Int32 {
+    let argumentOffset: Int32 = 2
+    guard CommandLine.argc > argumentOffset else { return Int32(EINVAL) }
+    return Int32(usagebar_exec_in_new_process_group(
+        CommandLine.argc - argumentOffset,
+        CommandLine.unsafeArgv.advanced(by: Int(argumentOffset))
+    ))
+}
+
 if CommandLine.arguments.contains("--self-test") {
     exit(runSelfTest())
 }
 
 if CommandLine.arguments.contains("--claude-status-filter") {
     exit(runClaudeStatusFilter())
+}
+
+if CommandLine.arguments.count > 2,
+   CommandLine.arguments[1] == "--process-group-launcher" {
+    exit(runProcessGroupLauncher())
 }
 
 let application = NSApplication.shared

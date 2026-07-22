@@ -15,9 +15,13 @@ let package = Package(
         .target(
             name: "UsageBarCore"
         ),
+        .target(
+            name: "UsageBarProcessLauncher",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "UsageBar",
-            dependencies: ["UsageBarCore"],
+            dependencies: ["UsageBarCore", "UsageBarProcessLauncher"],
             path: "Sources/UsageBar"
         ),
         .testTarget(
