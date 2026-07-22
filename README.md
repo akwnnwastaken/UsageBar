@@ -15,6 +15,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - 5 saatlik ve haftalık pencereleri ayrı ayrı listeler; yalnızca hesapta bulunan pencereleri gösterir.
 - Sıfırlama zamanını yüzde bilgisinin altında gösterir (`1sa 15dk` / `1h 15m`).
 - Kalan oranı seviyesine göre yeşil, turuncu veya kırmızı renklendirir.
+- Menü çubuğundaki yüzdeyi kritik seviyelerde turuncu veya kırmızı gösterir; renkler kapatılabilir ve üç farklı eşik profili seçilebilir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
@@ -146,6 +147,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Lists five-hour and weekly windows separately and only displays windows available on the account.
 - Shows the reset countdown below the remaining percentage (`1h 15m`).
 - Highlights the remaining percentage in green, orange, or red based on its level.
+- Colors the menu-bar percentage orange or red at critical levels; colors can be disabled and three threshold profiles are available.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.

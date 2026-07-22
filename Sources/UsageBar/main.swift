@@ -42,6 +42,47 @@ enum AppLanguage: String {
     case english
 }
 
+enum UsageAlertLevel: Equatable {
+    case normal
+    case warning
+    case critical
+}
+
+enum UsageAlertPreset: String, CaseIterable {
+    case late
+    case balanced
+    case early
+
+    var warningThreshold: Int {
+        switch self {
+        case .late: return 10
+        case .balanced: return 20
+        case .early: return 30
+        }
+    }
+
+    var criticalThreshold: Int {
+        switch self {
+        case .late: return 5
+        case .balanced: return 10
+        case .early: return 15
+        }
+    }
+}
+
+struct UsageAlertPolicy {
+    let isEnabled: Bool
+    let preset: UsageAlertPreset
+
+    func level(for remainingPercent: Int) -> UsageAlertLevel {
+        guard isEnabled else { return .normal }
+        let clamped = min(100, max(0, remainingPercent))
+        if clamped <= preset.criticalThreshold { return .critical }
+        if clamped <= preset.warningThreshold { return .warning }
+        return .normal
+    }
+}
+
 struct Localizer {
     let language: AppLanguage
 
@@ -59,6 +100,8 @@ struct Localizer {
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
     var languageTitle: String { pick("Dil", "Language") }
+    var usageColorsTitle: String { pick("Kullanım renkleri", "Usage colors") }
+    var usageColorsEnabled: String { pick("Renkleri kullan", "Use colors") }
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
@@ -94,6 +137,19 @@ struct Localizer {
 
     func waitingForUsage(provider: String) -> String {
         pick("\(provider) kullanım bilgisi bekleniyor", "Waiting for \(provider) usage")
+    }
+
+    func alertPresetTitle(_ preset: UsageAlertPreset) -> String {
+        let name: String
+        switch preset {
+        case .late: name = pick("Geç", "Late")
+        case .balanced: name = pick("Dengeli", "Balanced")
+        case .early: name = pick("Erken", "Early")
+        }
+        return pick(
+            "\(name) — turuncu %\(preset.warningThreshold), kırmızı %\(preset.criticalThreshold)",
+            "\(name) — orange \(preset.warningThreshold)%, red \(preset.criticalThreshold)%"
+        )
     }
 
     func resetIn(_ duration: String) -> String {
@@ -863,6 +919,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let claudeConnected = "provider.claude.connected"
         static let selectedProvider = "status.selected.provider"
         static let language = "app.language"
+        static let usageColorsEnabled = "status.usage.colors.enabled"
+        static let usageAlertPreset = "status.usage.alert.preset"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
     }
@@ -887,6 +945,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var text: Localizer { Localizer(language: language) }
+
+    private var usageColorsEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: PreferenceKey.usageColorsEnabled) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: PreferenceKey.usageColorsEnabled)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.usageColorsEnabled) }
+    }
+
+    private var usageAlertPreset: UsageAlertPreset {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.usageAlertPreset) else {
+                return .balanced
+            }
+            return UsageAlertPreset(rawValue: raw) ?? .balanced
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.usageAlertPreset) }
+    }
+
+    private var usageAlertPolicy: UsageAlertPolicy {
+        UsageAlertPolicy(isEnabled: usageColorsEnabled, preset: usageAlertPreset)
+    }
 
     private var codexConnected: Bool {
         get { UserDefaults.standard.bool(forKey: PreferenceKey.codexConnected) }
@@ -982,7 +1064,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusTitle() {
         if let selectedProviderName,
            let summary = UsageSummaryCalculator.summary(for: selectedProviderName, in: usages) {
-            statusItem.button?.title = "%\(summary.remainingPercent)"
+            let title = "%\(summary.remainingPercent)"
+            let level = usageAlertPolicy.level(for: summary.remainingPercent)
+            statusItem.button?.title = ""
+            statusItem.button?.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold),
+                    .foregroundColor: statusColor(for: level)
+                ]
+            )
             statusItem.button?.image = providerIcon(for: summary.providerName, size: 16)
             statusItem.button?.imagePosition = .imageLeading
             statusItem.button?.imageScaling = .scaleProportionallyDown
@@ -991,6 +1082,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 percent: summary.remainingPercent
             )
         } else {
+            statusItem.button?.attributedTitle = NSAttributedString(string: "")
             statusItem.button?.title = "%—"
             statusItem.button?.image = selectedProviderName.flatMap { providerIcon(for: $0, size: 16) }
             statusItem.button?.toolTip = selectedProviderName.map { text.waitingForUsage(provider: $0) }
@@ -1027,6 +1119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !connectedNames.isEmpty {
             menu.addItem(.separator())
             addProviderSelector()
+            addUsageColorSettings()
         }
 
         if !codexConnected || !claudeConnected {
@@ -1126,6 +1219,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem()
         item.view = container
         menu.addItem(item)
+    }
+
+    private func addUsageColorSettings() {
+        let rootItem = NSMenuItem(title: text.usageColorsTitle, action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        let enabledItem = NSMenuItem(
+            title: text.usageColorsEnabled,
+            action: #selector(toggleUsageColors),
+            keyEquivalent: ""
+        )
+        enabledItem.target = self
+        enabledItem.state = usageColorsEnabled ? .on : .off
+        submenu.addItem(enabledItem)
+        submenu.addItem(.separator())
+
+        for preset in UsageAlertPreset.allCases {
+            let item = NSMenuItem(
+                title: text.alertPresetTitle(preset),
+                action: #selector(selectUsageAlertPreset(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = preset.rawValue
+            item.state = usageAlertPreset == preset ? .on : .off
+            item.isEnabled = usageColorsEnabled
+            submenu.addItem(item)
+        }
+
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
     }
 
     private func addConnectionItem(title: String, providerName: String, action: Selector) {
@@ -1238,9 +1362,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func remainingColor(_ percent: Int) -> NSColor {
-        if percent <= 20 { return .systemRed }
-        if percent <= 40 { return .systemOrange }
-        return .systemGreen
+        guard usageColorsEnabled else { return .labelColor }
+        switch usageAlertPolicy.level(for: percent) {
+        case .critical: return .systemRed
+        case .warning: return .systemOrange
+        case .normal: return .systemGreen
+        }
+    }
+
+    private func statusColor(for level: UsageAlertLevel) -> NSColor {
+        switch level {
+        case .critical: return .systemRed
+        case .warning: return .systemOrange
+        case .normal: return .labelColor
+        }
     }
 
     private func providerIcon(for providerName: String, size: CGFloat) -> NSImage? {
@@ -1323,6 +1458,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusTitle()
     }
 
+    @objc private func toggleUsageColors() {
+        usageColorsEnabled.toggle()
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
+    @objc private func selectUsageAlertPreset(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let preset = UsageAlertPreset(rawValue: raw)
+        else { return }
+        usageAlertPreset = preset
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
     @objc private func selectLanguage(_ sender: NSSegmentedControl) {
         let selectedLanguage: AppLanguage = sender.selectedSegment == 1 ? .english : .turkish
         guard selectedLanguage != language else { return }
@@ -1369,6 +1520,20 @@ private func runSelfTest() -> Int32 {
         ) == "6d 21h"
     else {
         fputs("Dil testi başarısız\n", stderr)
+        return 1
+    }
+
+    let balancedAlerts = UsageAlertPolicy(isEnabled: true, preset: .balanced)
+    let disabledAlerts = UsageAlertPolicy(isEnabled: false, preset: .early)
+    guard
+        balancedAlerts.level(for: 21) == .normal,
+        balancedAlerts.level(for: 20) == .warning,
+        balancedAlerts.level(for: 11) == .warning,
+        balancedAlerts.level(for: 10) == .critical,
+        balancedAlerts.level(for: -1) == .critical,
+        disabledAlerts.level(for: 0) == .normal
+    else {
+        fputs("Kullanım renk eşiği testi başarısız\n", stderr)
         return 1
     }
 
