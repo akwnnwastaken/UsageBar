@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import ServiceManagement
 
 struct UsageWindow {
     let usedPercent: Int
@@ -42,6 +43,95 @@ enum AppLanguage: String {
     case english
 }
 
+enum UsageAlertLevel: Equatable {
+    case normal
+    case warning
+    case critical
+}
+
+enum UsageAlertPreset: String, CaseIterable {
+    case late
+    case balanced
+    case early
+
+    var warningThreshold: Int {
+        switch self {
+        case .late: return 10
+        case .balanced: return 20
+        case .early: return 30
+        }
+    }
+
+    var criticalThreshold: Int {
+        switch self {
+        case .late: return 5
+        case .balanced: return 10
+        case .early: return 15
+        }
+    }
+}
+
+struct UsageAlertPolicy {
+    let isEnabled: Bool
+    let preset: UsageAlertPreset
+
+    func level(for remainingPercent: Int) -> UsageAlertLevel {
+        guard isEnabled else { return .normal }
+        let clamped = min(100, max(0, remainingPercent))
+        if clamped <= preset.criticalThreshold { return .critical }
+        if clamped <= preset.warningThreshold { return .warning }
+        return .normal
+    }
+}
+
+enum ProviderRotation {
+    static let interval: TimeInterval = 30
+
+    static func nextIndex(after currentIndex: Int, providerCount: Int) -> Int {
+        guard providerCount > 0 else { return 0 }
+        return (max(0, currentIndex) + 1) % providerCount
+    }
+}
+
+struct UsageHistorySample: Codable, Equatable {
+    let recordedAt: Date
+    let remainingPercent: Int
+}
+
+enum UsageHistoryModel {
+    static let retentionInterval: TimeInterval = 24 * 60 * 60
+    static let minimumSampleInterval: TimeInterval = 60
+
+    static func adding(
+        remainingPercent: Int,
+        at date: Date,
+        to existing: [UsageHistorySample]
+    ) -> [UsageHistorySample] {
+        let cutoff = date.addingTimeInterval(-retentionInterval)
+        var samples = existing.filter { $0.recordedAt >= cutoff && $0.recordedAt <= date }
+        let sample = UsageHistorySample(
+            recordedAt: date,
+            remainingPercent: min(100, max(0, remainingPercent))
+        )
+        if let last = samples.last,
+           date.timeIntervalSince(last.recordedAt) < minimumSampleInterval {
+            samples[samples.count - 1] = sample
+        } else {
+            samples.append(sample)
+        }
+        return samples
+    }
+
+    static func encode(_ history: [String: [UsageHistorySample]]) -> Data? {
+        try? JSONEncoder().encode(history)
+    }
+
+    static func decode(_ data: Data?) -> [String: [UsageHistorySample]] {
+        guard let data else { return [:] }
+        return (try? JSONDecoder().decode([String: [UsageHistorySample]].self, from: data)) ?? [:]
+    }
+}
+
 struct Localizer {
     let language: AppLanguage
 
@@ -59,6 +149,18 @@ struct Localizer {
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
     var languageTitle: String { pick("Dil", "Language") }
+    var usageColorsTitle: String { pick("Kullanım renkleri", "Usage colors") }
+    var usageColorsEnabled: String { pick("Renkleri kullan", "Use colors") }
+    var menuBarAppearance: String { pick("Üst çubuk görünümü", "Menu bar appearance") }
+    var showResetInMenuBar: String { pick("Sıfırlanma süresini göster", "Show reset countdown") }
+    var automatic: String { pick("Otomatik", "Auto") }
+    var usageHistoryTitle: String { pick("Kullanım geçmişi", "Usage history") }
+    var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
+    var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
+    var last24Hours: String { pick("Son 24 saat", "Last 24 hours") }
+    var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
+    var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
+    var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
@@ -94,6 +196,19 @@ struct Localizer {
 
     func waitingForUsage(provider: String) -> String {
         pick("\(provider) kullanım bilgisi bekleniyor", "Waiting for \(provider) usage")
+    }
+
+    func alertPresetTitle(_ preset: UsageAlertPreset) -> String {
+        let name: String
+        switch preset {
+        case .late: name = pick("Geç", "Late")
+        case .balanced: name = pick("Dengeli", "Balanced")
+        case .early: name = pick("Erken", "Early")
+        }
+        return pick(
+            "\(name) — turuncu %\(preset.warningThreshold), kırmızı %\(preset.criticalThreshold)",
+            "\(name) — orange \(preset.warningThreshold)%, red \(preset.criticalThreshold)%"
+        )
     }
 
     func resetIn(_ duration: String) -> String {
@@ -158,26 +273,27 @@ struct Localizer {
 struct UsageSummary {
     let providerName: String
     let remainingPercent: Int
+    let resetsAt: Date?
 }
 
 enum UsageSummaryCalculator {
     static func summary(for providerName: String, in usages: [String: ProviderUsage]) -> UsageSummary? {
         guard let usage = usages[providerName] else { return nil }
-        let usedPercent: Int?
+        let selectedWindow: UsageWindow?
         if providerName == "Claude Code" {
             // Claude's menu-bar value represents the active five-hour window.
             // Fall back to weekly only when Claude does not return session data.
-            usedPercent = usage.session?.usedPercent ?? usage.weekly?.usedPercent
+            selectedWindow = usage.session ?? usage.weekly
         } else {
-            usedPercent = [
-                usage.session?.usedPercent,
-                usage.weekly?.usedPercent
-            ].compactMap { $0 }.max()
+            selectedWindow = [usage.session, usage.weekly]
+                .compactMap { $0 }
+                .max(by: { $0.usedPercent < $1.usedPercent })
         }
-        guard let usedPercent else { return nil }
+        guard let selectedWindow else { return nil }
         return UsageSummary(
             providerName: providerName,
-            remainingPercent: min(100, max(0, 100 - usedPercent))
+            remainingPercent: min(100, max(0, 100 - selectedWindow.usedPercent)),
+            resetsAt: selectedWindow.resetsAt
         )
     }
 }
@@ -857,12 +973,68 @@ final class ClaudeUsageFetcher {
 
 }
 
+final class UsageSparklineView: NSView {
+    private let samples: [UsageHistorySample]
+    private let lineColor: NSColor
+
+    init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor) {
+        self.samples = samples.sorted { $0.recordedAt < $1.recordedAt }
+        self.lineColor = lineColor
+        super.init(frame: frameRect)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let chartRect = bounds.insetBy(dx: 1, dy: 2)
+        NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
+        NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
+        guard let first = samples.first, let last = samples.last else { return }
+
+        let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
+        let path = NSBezierPath()
+        for (index, sample) in samples.enumerated() {
+            let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
+            let x = samples.count == 1
+                ? chartRect.maxX
+                : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
+            let y = chartRect.minY
+                + CGFloat(min(100, max(0, sample.remainingPercent))) / 100 * chartRect.height
+            let point = NSPoint(x: x, y: y)
+            if index == 0 { path.move(to: point) } else { path.line(to: point) }
+        }
+        lineColor.setStroke()
+        path.lineWidth = 1.75
+        path.lineJoinStyle = .round
+        path.lineCapStyle = .round
+        path.stroke()
+
+        let latestPercent = min(100, max(0, last.remainingPercent))
+        let latestY = chartRect.minY + CGFloat(latestPercent) / 100 * chartRect.height
+        let dotRect = NSRect(x: chartRect.maxX - 2, y: latestY - 2, width: 4, height: 4)
+        lineColor.setFill()
+        NSBezierPath(ovalIn: dotRect).fill()
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private enum PreferenceKey {
         static let codexConnected = "provider.codex.connected"
         static let claudeConnected = "provider.claude.connected"
         static let selectedProvider = "status.selected.provider"
         static let language = "app.language"
+        static let usageColorsEnabled = "status.usage.colors.enabled"
+        static let usageAlertPreset = "status.usage.alert.preset"
+        static let showResetInMenuBar = "status.reset.countdown.visible"
+        static let autoRotateProviders = "status.providers.auto.rotate"
+        static let usageHistoryEnabled = "usage.history.enabled"
+        static let usageHistoryData = "usage.history.samples.v1"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
     }
@@ -875,6 +1047,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastUpdated: Date?
     private var isRefreshing = false
     private var refreshTimer: Timer?
+    private var statusPresentationTimer: Timer?
+    private var rotatingProviderIndex = 0
+    private var usageHistory: [String: [UsageHistorySample]] = [:]
 
     private var language: AppLanguage {
         get {
@@ -887,6 +1062,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var text: Localizer { Localizer(language: language) }
+
+    private var usageColorsEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: PreferenceKey.usageColorsEnabled) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: PreferenceKey.usageColorsEnabled)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.usageColorsEnabled) }
+    }
+
+    private var usageAlertPreset: UsageAlertPreset {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.usageAlertPreset) else {
+                return .balanced
+            }
+            return UsageAlertPreset(rawValue: raw) ?? .balanced
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.usageAlertPreset) }
+    }
+
+    private var usageAlertPolicy: UsageAlertPolicy {
+        UsageAlertPolicy(isEnabled: usageColorsEnabled, preset: usageAlertPreset)
+    }
+
+    private var showResetInMenuBar: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.showResetInMenuBar) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.showResetInMenuBar) }
+    }
+
+    private var autoRotateProviders: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.autoRotateProviders) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.autoRotateProviders) }
+    }
+
+    private var usageHistoryEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: PreferenceKey.usageHistoryEnabled) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: PreferenceKey.usageHistoryEnabled)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.usageHistoryEnabled) }
+    }
 
     private var codexConnected: Bool {
         get { UserDefaults.standard.bool(forKey: PreferenceKey.codexConnected) }
@@ -920,8 +1139,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var statusProviderName: String? {
+        let providers = connectedProviderNames
+        guard !providers.isEmpty else { return nil }
+        if autoRotateProviders && providers.count > 1 {
+            return providers[rotatingProviderIndex % providers.count]
+        }
+        return selectedProviderName
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         migrateLegacyPreferences()
+        usageHistory = UsageHistoryModel.decode(
+            UserDefaults.standard.data(forKey: PreferenceKey.usageHistoryData)
+        )
         NSApp.setActivationPolicy(.accessory)
         menu.delegate = self
         statusItem.menu = menu
@@ -932,6 +1163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+        configureStatusPresentationTimer()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -973,16 +1205,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         group.notify(queue: .main) { [weak self] in
             guard let self else { return }
             self.isRefreshing = false
-            self.lastUpdated = Date()
+            let updateDate = Date()
+            self.lastUpdated = updateDate
+            self.recordUsageHistory(at: updateDate)
             self.updateStatusTitle()
             self.rebuildMenu()
         }
     }
 
     private func updateStatusTitle() {
-        if let selectedProviderName,
-           let summary = UsageSummaryCalculator.summary(for: selectedProviderName, in: usages) {
-            statusItem.button?.title = "%\(summary.remainingPercent)"
+        if let statusProviderName,
+           let summary = UsageSummaryCalculator.summary(for: statusProviderName, in: usages) {
+            var title = "%\(summary.remainingPercent)"
+            if showResetInMenuBar, let resetsAt = summary.resetsAt {
+                title += " · \(text.relativeReset(resetsAt))"
+            }
+            let level = usageAlertPolicy.level(for: summary.remainingPercent)
+            statusItem.button?.title = ""
+            statusItem.button?.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold),
+                    .foregroundColor: statusColor(for: level)
+                ]
+            )
             statusItem.button?.image = providerIcon(for: summary.providerName, size: 16)
             statusItem.button?.imagePosition = .imageLeading
             statusItem.button?.imageScaling = .scaleProportionallyDown
@@ -991,11 +1237,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 percent: summary.remainingPercent
             )
         } else {
+            statusItem.button?.attributedTitle = NSAttributedString(string: "")
             statusItem.button?.title = "%—"
-            statusItem.button?.image = selectedProviderName.flatMap { providerIcon(for: $0, size: 16) }
-            statusItem.button?.toolTip = selectedProviderName.map { text.waitingForUsage(provider: $0) }
+            statusItem.button?.image = statusProviderName.flatMap { providerIcon(for: $0, size: 16) }
+            statusItem.button?.toolTip = statusProviderName.map { text.waitingForUsage(provider: $0) }
                 ?? text.connectFirst
         }
+    }
+
+    private func configureStatusPresentationTimer() {
+        statusPresentationTimer?.invalidate()
+        statusPresentationTimer = nil
+
+        let shouldRotate = autoRotateProviders && connectedProviderNames.count > 1
+        guard shouldRotate || showResetInMenuBar else { return }
+        let interval: TimeInterval = shouldRotate ? ProviderRotation.interval : 60
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if self.autoRotateProviders && self.connectedProviderNames.count > 1 {
+                self.rotatingProviderIndex = ProviderRotation.nextIndex(
+                    after: self.rotatingProviderIndex,
+                    providerCount: self.connectedProviderNames.count
+                )
+            }
+            self.updateStatusTitle()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        statusPresentationTimer = timer
+    }
+
+    private func recordUsageHistory(at date: Date) {
+        guard usageHistoryEnabled else { return }
+        for providerName in connectedProviderNames {
+            guard let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) else {
+                continue
+            }
+            usageHistory[providerName] = UsageHistoryModel.adding(
+                remainingPercent: summary.remainingPercent,
+                at: date,
+                to: usageHistory[providerName] ?? []
+            )
+        }
+        persistUsageHistory()
+    }
+
+    private func persistUsageHistory() {
+        guard let data = UsageHistoryModel.encode(usageHistory) else { return }
+        UserDefaults.standard.set(data, forKey: PreferenceKey.usageHistoryData)
     }
 
     private func migrateLegacyPreferences() {
@@ -1027,6 +1315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !connectedNames.isEmpty {
             menu.addItem(.separator())
             addProviderSelector()
+            addMenuBarAppearanceSettings()
+            addUsageColorSettings()
+            addUsageHistorySettings()
         }
 
         if !codexConnected || !claudeConnected {
@@ -1049,6 +1340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         addLanguageSelector()
+        addLaunchAtLoginItem()
         menu.addItem(.separator())
 
         if let lastUpdated {
@@ -1078,7 +1370,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addProviderSelector() {
         let providerNames = connectedProviderNames
-        let labels = providerNames.map { $0 == "Claude Code" ? "Claude" : $0 }
+        let supportsAutomatic = providerNames.count > 1
+        let providerLabels = providerNames.map { $0 == "Claude Code" ? "Claude" : $0 }
+        let labels = supportsAutomatic ? [text.automatic] + providerLabels : providerLabels
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 58))
 
         let label = NSTextField(labelWithString: text.showInMenuBar)
@@ -1095,12 +1389,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         selector.segmentStyle = .rounded
         selector.frame = NSRect(x: 12, y: 7, width: 252, height: 28)
-        selector.selectedSegment = providerNames.firstIndex(of: selectedProviderName ?? "") ?? 0
+        if supportsAutomatic && autoRotateProviders {
+            selector.selectedSegment = 0
+        } else {
+            let providerIndex = providerNames.firstIndex(of: selectedProviderName ?? "") ?? 0
+            selector.selectedSegment = providerIndex + (supportsAutomatic ? 1 : 0)
+        }
         container.addSubview(selector)
 
         let item = NSMenuItem()
         item.view = container
         menu.addItem(item)
+    }
+
+    private func addMenuBarAppearanceSettings() {
+        let rootItem = NSMenuItem(title: text.menuBarAppearance, action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let resetItem = NSMenuItem(
+            title: text.showResetInMenuBar,
+            action: #selector(toggleResetInMenuBar),
+            keyEquivalent: ""
+        )
+        resetItem.target = self
+        resetItem.state = showResetInMenuBar ? .on : .off
+        submenu.addItem(resetItem)
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
     }
 
     private func addLanguageSelector() {
@@ -1128,6 +1442,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item)
     }
 
+    private func addUsageColorSettings() {
+        let rootItem = NSMenuItem(title: text.usageColorsTitle, action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        let enabledItem = NSMenuItem(
+            title: text.usageColorsEnabled,
+            action: #selector(toggleUsageColors),
+            keyEquivalent: ""
+        )
+        enabledItem.target = self
+        enabledItem.state = usageColorsEnabled ? .on : .off
+        submenu.addItem(enabledItem)
+        submenu.addItem(.separator())
+
+        for preset in UsageAlertPreset.allCases {
+            let item = NSMenuItem(
+                title: text.alertPresetTitle(preset),
+                action: #selector(selectUsageAlertPreset(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = preset.rawValue
+            item.state = usageAlertPreset == preset ? .on : .off
+            item.isEnabled = usageColorsEnabled
+            submenu.addItem(item)
+        }
+
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
+    }
+
+    private func addUsageHistorySettings() {
+        let rootItem = NSMenuItem(title: text.usageHistoryTitle, action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        let enabledItem = NSMenuItem(
+            title: text.showUsageHistory,
+            action: #selector(toggleUsageHistory),
+            keyEquivalent: ""
+        )
+        enabledItem.target = self
+        enabledItem.state = usageHistoryEnabled ? .on : .off
+        submenu.addItem(enabledItem)
+
+        let clearItem = NSMenuItem(
+            title: text.clearUsageHistory,
+            action: #selector(clearUsageHistory),
+            keyEquivalent: ""
+        )
+        clearItem.target = self
+        clearItem.isEnabled = usageHistory.values.contains { !$0.isEmpty }
+        submenu.addItem(clearItem)
+
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
+    }
+
+    private func addLaunchAtLoginItem() {
+        let status = SMAppService.mainApp.status
+        let suffix = status == .requiresApproval ? " (\(text.loginItemNeedsApproval))" : ""
+        let item = NSMenuItem(
+            title: text.launchAtLogin + suffix,
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.state = status == .enabled ? .on : (status == .requiresApproval ? .mixed : .off)
+        menu.addItem(item)
+    }
+
     private func addConnectionItem(title: String, providerName: String, action: Selector) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
@@ -1147,11 +1531,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             rows.append(errorTitle(error))
         }
 
+        let historySamples = usageHistoryEnabled ? (usageHistory[usage.name] ?? []) : []
+        let historyHeight: CGFloat = historySamples.isEmpty ? 0 : 44
+
         let width: CGFloat = 276
         let rowHeights = rows.map { attributedTitle in
             attributedTitle.string.contains("\n") ? CGFloat(40) : CGFloat(25)
         }
-        let height = 46 + rowHeights.reduce(0, +)
+        let height = 46 + rowHeights.reduce(0, +) + historyHeight
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
         if let icon = providerIcon(for: usage.name, size: 18) {
@@ -1180,6 +1567,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 height: rowHeight
             )
             container.addSubview(row)
+        }
+
+        if let latestSample = historySamples.last {
+            let historyLabel = NSTextField(labelWithString: text.last24Hours)
+            historyLabel.font = .systemFont(ofSize: 10, weight: .medium)
+            historyLabel.textColor = .secondaryLabelColor
+            historyLabel.frame = NSRect(x: 14, y: 29, width: width - 28, height: 13)
+            container.addSubview(historyLabel)
+
+            let graph = UsageSparklineView(
+                frame: NSRect(x: 14, y: 6, width: width - 28, height: 22),
+                samples: historySamples,
+                lineColor: remainingColor(latestSample.remainingPercent)
+            )
+            graph.setAccessibilityLabel(text.last24Hours)
+            graph.setAccessibilityValue(text.remaining(latestSample.remainingPercent))
+            container.addSubview(graph)
         }
 
         let item = NSMenuItem()
@@ -1238,9 +1642,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func remainingColor(_ percent: Int) -> NSColor {
-        if percent <= 20 { return .systemRed }
-        if percent <= 40 { return .systemOrange }
-        return .systemGreen
+        guard usageColorsEnabled else { return .labelColor }
+        switch usageAlertPolicy.level(for: percent) {
+        case .critical: return .systemRed
+        case .warning: return .systemOrange
+        case .normal: return .systemGreen
+        }
+    }
+
+    private func statusColor(for level: UsageAlertLevel) -> NSColor {
+        switch level {
+        case .critical: return .systemRed
+        case .warning: return .systemOrange
+        case .normal: return .labelColor
+        }
     }
 
     private func providerIcon(for providerName: String, size: CGFloat) -> NSImage? {
@@ -1285,6 +1700,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let wasEmpty = connectedProviderNames.isEmpty
         codexConnected = true
         if wasEmpty { selectedProviderName = "Codex" }
+        configureStatusPresentationTimer()
         updateStatusTitle()
         rebuildMenu()
         refresh()
@@ -1311,6 +1727,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let wasEmpty = connectedProviderNames.isEmpty
         claudeConnected = true
         if wasEmpty { selectedProviderName = "Claude Code" }
+        configureStatusPresentationTimer()
         updateStatusTitle()
         rebuildMenu()
         refresh()
@@ -1318,9 +1735,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func selectStatusProvider(_ sender: NSSegmentedControl) {
         let providerNames = connectedProviderNames
-        guard providerNames.indices.contains(sender.selectedSegment) else { return }
-        selectedProviderName = providerNames[sender.selectedSegment]
+        let supportsAutomatic = providerNames.count > 1
+        if supportsAutomatic && sender.selectedSegment == 0 {
+            autoRotateProviders = true
+            rotatingProviderIndex = providerNames.firstIndex(of: selectedProviderName ?? "") ?? 0
+        } else {
+            let providerIndex = sender.selectedSegment - (supportsAutomatic ? 1 : 0)
+            guard providerNames.indices.contains(providerIndex) else { return }
+            autoRotateProviders = false
+            rotatingProviderIndex = providerIndex
+            selectedProviderName = providerNames[providerIndex]
+        }
+        configureStatusPresentationTimer()
         updateStatusTitle()
+    }
+
+    @objc private func toggleResetInMenuBar() {
+        showResetInMenuBar.toggle()
+        configureStatusPresentationTimer()
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
+    @objc private func toggleUsageColors() {
+        usageColorsEnabled.toggle()
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
+    @objc private func selectUsageAlertPreset(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let preset = UsageAlertPreset(rawValue: raw)
+        else { return }
+        usageAlertPreset = preset
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
+    @objc private func toggleUsageHistory() {
+        usageHistoryEnabled.toggle()
+        if usageHistoryEnabled { recordUsageHistory(at: Date()) }
+        rebuildMenu()
+    }
+
+    @objc private func clearUsageHistory() {
+        usageHistory.removeAll()
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.usageHistoryData)
+        rebuildMenu()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        if service.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+            return
+        }
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+            rebuildMenu()
+        } catch {
+            showConnectionError(
+                title: text.loginItemFailed,
+                message: error.localizedDescription
+            )
+        }
     }
 
     @objc private func selectLanguage(_ sender: NSSegmentedControl) {
@@ -1369,6 +1852,50 @@ private func runSelfTest() -> Int32 {
         ) == "6d 21h"
     else {
         fputs("Dil testi başarısız\n", stderr)
+        return 1
+    }
+
+    let balancedAlerts = UsageAlertPolicy(isEnabled: true, preset: .balanced)
+    let disabledAlerts = UsageAlertPolicy(isEnabled: false, preset: .early)
+    guard
+        balancedAlerts.level(for: 21) == .normal,
+        balancedAlerts.level(for: 20) == .warning,
+        balancedAlerts.level(for: 11) == .warning,
+        balancedAlerts.level(for: 10) == .critical,
+        balancedAlerts.level(for: -1) == .critical,
+        disabledAlerts.level(for: 0) == .normal
+    else {
+        fputs("Kullanım renk eşiği testi başarısız\n", stderr)
+        return 1
+    }
+
+    let historyOrigin = Date(timeIntervalSince1970: 2_000_000)
+    let historyWithExpiredSample = [
+        UsageHistorySample(
+            recordedAt: historyOrigin.addingTimeInterval(-UsageHistoryModel.retentionInterval - 1),
+            remainingPercent: 95
+        ),
+        UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(-120), remainingPercent: 80)
+    ]
+    let prunedHistory = UsageHistoryModel.adding(
+        remainingPercent: 70,
+        at: historyOrigin,
+        to: historyWithExpiredSample
+    )
+    let replacedHistory = UsageHistoryModel.adding(
+        remainingPercent: 65,
+        at: historyOrigin.addingTimeInterval(30),
+        to: prunedHistory
+    )
+    let encodedHistory = UsageHistoryModel.encode(["Codex": replacedHistory])
+    let decodedHistory = UsageHistoryModel.decode(encodedHistory)
+    guard
+        prunedHistory.count == 2,
+        replacedHistory.count == 2,
+        replacedHistory.last?.remainingPercent == 65,
+        decodedHistory["Codex"] == replacedHistory
+    else {
+        fputs("Yerel kullanım geçmişi testi başarısız\n", stderr)
         return 1
     }
 
@@ -1426,15 +1953,32 @@ private func runSelfTest() -> Int32 {
 
     let claudeSessionFirst = ProviderUsage(
         name: "Claude Code",
-        session: UsageWindow(usedPercent: 20, resetsAt: nil, durationMinutes: 300),
+        session: UsageWindow(
+            usedPercent: 20,
+            resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
+            durationMinutes: 300
+        ),
         weekly: UsageWindow(usedPercent: 95, resetsAt: nil, durationMinutes: 10_080),
         error: nil
     )
     let sessionFirstSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
         "Claude Code": claudeSessionFirst
     ])
-    guard sessionFirstSummary?.remainingPercent == 80 else {
+    guard
+        sessionFirstSummary?.remainingPercent == 80,
+        sessionFirstSummary?.resetsAt?.timeIntervalSince1970 == 1_800_000_000
+    else {
         fputs("Claude 5 saatlik pencere önceliği testi başarısız\n", stderr)
+        return 1
+    }
+
+    guard
+        ProviderRotation.nextIndex(after: 0, providerCount: 2) == 1,
+        ProviderRotation.nextIndex(after: 1, providerCount: 2) == 0,
+        ProviderRotation.nextIndex(after: 8, providerCount: 0) == 0,
+        ProviderRotation.interval == 30
+    else {
+        fputs("Sağlayıcı dönüşüm testi başarısız\n", stderr)
         return 1
     }
 
