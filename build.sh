@@ -27,6 +27,19 @@ remove_signature_detritus() {
   xattr -d com.apple.FinderInfo "$bundle" 2>/dev/null || true
   xattr -d com.apple.ResourceFork "$bundle" 2>/dev/null || true
 }
+
+verify_published_signature() {
+  local bundle="$1"
+  local attempt
+  for attempt in 1 2 3; do
+    remove_signature_detritus "$bundle"
+    if codesign --verify --deep --strict "$bundle"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
 trap cleanup EXIT
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
@@ -51,8 +64,7 @@ codesign --verify --deep --strict "$APP_DIR"
 # Publish from a clean directory. Copying into an existing .app would preserve
 # stale files from an earlier build and invalidate the final code signature.
 ditto "$APP_DIR" "$PUBLISH_APP_DIR"
-remove_signature_detritus "$PUBLISH_APP_DIR"
-codesign --verify --deep --strict "$PUBLISH_APP_DIR"
+verify_published_signature "$PUBLISH_APP_DIR"
 
 if [[ -e "$OUTPUT_APP_DIR" ]]; then
   mv "$OUTPUT_APP_DIR" "$BACKUP_APP_DIR"
@@ -65,8 +77,7 @@ if ! mv "$PUBLISH_APP_DIR" "$OUTPUT_APP_DIR"; then
   exit 1
 fi
 
-remove_signature_detritus "$OUTPUT_APP_DIR"
-if ! codesign --verify --deep --strict "$OUTPUT_APP_DIR"; then
+if ! verify_published_signature "$OUTPUT_APP_DIR"; then
   rm -rf "$OUTPUT_APP_DIR"
   if [[ -e "$BACKUP_APP_DIR" ]]; then
     mv "$BACKUP_APP_DIR" "$OUTPUT_APP_DIR"
