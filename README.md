@@ -8,10 +8,13 @@ Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren kü
 
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
+> [!NOTE]
+> `main` dalı yaklaşan **v1.5.0** sürümünün kaynak kodunu içerir. Şu an indirilebilen son paket **v1.4.4** sürümüdür; v1.5.0 yayımlanana kadar aşağıdaki yeni özellikleri denemek için kaynak koddan derleme yapabilirsiniz.
+
 ### Özellikler
 
 - Codex ve Claude Code kullanımını tek uygulamada izler.
-- Menü çubuğunda seçili sağlayıcının en düşük kalan oranını gösterir.
+- Menü çubuğunda seçili sağlayıcının aktif kullanım penceresine ait kalan oranı gösterir.
 - 5 saatlik ve haftalık pencereleri ayrı ayrı listeler; yalnızca hesapta bulunan pencereleri gösterir.
 - Sıfırlama zamanını yüzde bilgisinin altında gösterir (`1sa 15dk` / `1h 15m`).
 - Kalan oranı seviyesine göre yeşil, turuncu veya kırmızı renklendirir.
@@ -19,7 +22,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
-- Her sağlayıcının son 24 saatlik kalan yüzde geçmişini yerel bir mini grafikte gösterir; grafik kapatılabilir ve geçmiş temizlenebilir.
+- Her sağlayıcının 24 saate kadar kalan yüzde geçmişini yerel bir mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Tek ölçümlük ±1 puan yuvarlama dalgalanmaları yalnızca çizimde yumuşatılır.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
@@ -29,7 +32,10 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 
 Üst çubuktaki değer **kullanılan değil, kalan yüzdedir**.
 
-Örneğin seçili sağlayıcının 5 saatlik penceresinde `%35`, haftalık penceresinde `%20` kullanım hakkı kaldıysa üst çubukta daha kritik olan `%20` gösterilir. Menüye tıkladığınızda iki pencerenin ayrıntısını da görebilirsiniz.
+- **Claude Code:** 5 saatlik pencere varsa menü çubuğunda her zaman onu gösterir. Bu veri yoksa haftalık pencereye geri döner.
+- **Codex:** Hesabın sunduğu pencereler arasından en düşük kalan oranı gösterir. Hesap yalnızca haftalık pencere sunuyorsa onu kullanır.
+
+Menüye tıkladığınızda sağlayıcının sunduğu tüm pencereleri ayrı ayrı görebilirsiniz.
 
 ### Gereksinimler
 
@@ -47,7 +53,7 @@ Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
 
 > [!WARNING]
-> İlk Beta sürümü Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
+> Mevcut Beta paketi Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
 
 #### İlk açılışta macOS uyarısını onaylama
 
@@ -77,11 +83,12 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 1. UsageBar'ı açın.
 2. Menü çubuğundaki `%—` simgesine tıklayın.
 3. **Codex'e bağlan** veya **Claude Code'a bağlan** seçeneğini kullanın.
-4. İki sağlayıcı da bağlıysa üst çubukta gösterilecek olanı `Codex | Claude` anahtarıyla seçin.
+4. İki sağlayıcı da bağlıysa `Otomatik | Codex | Claude` anahtarıyla sabit bir sağlayıcı seçin veya 30 saniyelik otomatik geçişi açın.
+5. `Üst çubuk görünümü`, `Kullanım renkleri` ve `Kullanım geçmişi` menülerinden görünümü isteğinize göre ayarlayın.
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
 
-Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
+Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Başlangıçta grafik yalnızca gerçekten kaydedilmiş süreyi gösterir ve zamanla 24 saate ulaşır. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
 
 ### Gizlilik ve macOS izinleri
 
@@ -98,7 +105,7 @@ Uygulama şunlara ihtiyaç duymaz:
 
 Claude Code bağlantısında macOS, mevcut `Claude Code-credentials` Anahtar Zinciri kaydı için izin isteyebilir. Sürekli sorulmaması için bu pencerede bir kez **Her Zaman İzin Ver** seçilebilir. Bunun dışındaki izin istekleri reddedilebilir.
 
-**Mac açılışında başlat** seçeneği yalnızca macOS'un Giriş Öğeleri sistemini kullanır. macOS bu değişikliği bir sistem bildirimiyle gösterebilir; ekran, disk veya otomasyon izni verilmez.
+**Mac açılışında başlat** seçeneği yalnızca macOS'un Giriş Öğeleri sistemini kullanır ve uygulama `/Applications` klasöründeyken kullanılmalıdır. macOS bu değişikliği bir sistem bildirimiyle gösterebilir veya Sistem Ayarları'ndan onay isteyebilir; ekran, disk veya otomasyon izni verilmez.
 
 Sağlayıcı komutları uygulamaya özel geçici bir klasörde çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez.
 
@@ -119,17 +126,26 @@ chmod +x build.sh
 open build/UsageBar.app
 ```
 
-Derleme betiği uygulamayı oluşturur, yerleşik parser ve yerelleştirme testlerini çalıştırır ve yerel kullanım için ad hoc imzalar.
+Derleme betiği uygulamayı oluşturur; parser, yerelleştirme, pencere önceliği, renk eşikleri, geçmiş ve sağlayıcı dönüşümü öz testlerini çalıştırır; ardından temiz paketi yerel kullanım için ad hoc imzalar.
+
+Paketleme regresyonunu da çalıştırmak için:
+
+```sh
+./tests/build_regression.sh
+```
 
 ### Proje yapısı
 
 ```text
 UsageBar/
-├── Sources/UsageBar/main.swift   # Uygulama, arayüz ve veri okuyucuları
-├── Info.plist                    # macOS uygulama ayarları
-├── build.sh                      # Derleme, test ve yerel imzalama
-├── LICENSE                       # MIT Lisansı
-└── README.md
+├── Sources/UsageBar/main.swift    # Uygulama, arayüz, veri okuyucuları ve öz testler
+├── tests/build_regression.sh      # Temiz paketleme ve imza regresyonu
+├── .github/workflows/ci.yml       # GitHub Actions derleme kontrolü
+├── Package.swift                  # SwiftPM ve CodeQL derleme tanımı
+├── Info.plist                     # macOS uygulama ve sürüm metadata'sı
+├── build.sh                       # Derleme, test ve yerel imzalama
+├── LICENSE                        # MIT Lisansı
+└── README.md                      # Türkçe ve İngilizce dokümantasyon
 ```
 
 ### Geliştirme
@@ -148,10 +164,13 @@ UsageBar is a small, local macOS menu bar app that displays Codex and Claude Cod
 
 It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
 
+> [!NOTE]
+> The `main` branch contains the source for the upcoming **v1.5.0** release. The latest downloadable package is currently **v1.4.4**; build from source to try the new features below until v1.5.0 is published.
+
 ### Features
 
 - Tracks Codex and Claude Code usage in one app.
-- Shows the lowest remaining percentage for the selected provider in the menu bar.
+- Shows the remaining percentage for the selected provider's active usage window in the menu bar.
 - Lists five-hour and weekly windows separately and only displays windows available on the account.
 - Shows the reset countdown below the remaining percentage (`1h 15m`).
 - Highlights the remaining percentage in green, orange, or red based on its level.
@@ -159,7 +178,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
-- Shows each provider's remaining-percentage history for the last 24 hours in a local mini chart; the chart can be disabled and its history cleared.
+- Shows up to 24 hours of each provider's remaining-percentage history in a local mini chart. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Isolated one-sample ±1 point rounding fluctuations are smoothed only in the drawing.
 - Can launch automatically at login through macOS Login Items.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.
@@ -169,7 +188,10 @@ It shows the **remaining usage percentage** for the selected provider, together 
 
 The menu bar value is the **remaining percentage, not the used percentage**.
 
-For example, if the selected provider has `%35` remaining in its five-hour window and `%20` remaining in its weekly window, the menu bar displays the more critical `%20`. Open the menu to see both windows in detail.
+- **Claude Code:** Always shows the five-hour window when it is available, falling back to weekly usage only when five-hour data is missing.
+- **Codex:** Shows the lowest remaining percentage among the windows available on the account. If the account exposes only a weekly window, UsageBar uses that window.
+
+Open the menu to see every window returned by the selected provider.
 
 ### Requirements
 
@@ -187,7 +209,7 @@ You only need to install the provider you want to track.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
 > [!WARNING]
-> The first Beta release supports Apple Silicon (`arm64`) Macs and has not yet been notarized by Apple. macOS may therefore report that Apple could not verify UsageBar is free of malware. Follow the steps below only if you downloaded the official Release file from this repository.
+> The current Beta package supports Apple Silicon (`arm64`) Macs and has not yet been notarized by Apple. macOS may therefore report that Apple could not verify UsageBar is free of malware. Follow the steps below only if you downloaded the official Release file from this repository.
 
 #### Approving the macOS warning on first launch
 
@@ -217,11 +239,12 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 1. Open UsageBar.
 2. Click the `%—` icon in the menu bar.
 3. Choose **Connect Codex** or **Connect Claude Code**.
-4. If both providers are connected, use the `Codex | Claude` selector to choose which one appears in the menu bar.
+4. If both providers are connected, use `Auto | Codex | Claude` to pin one provider or enable 30-second automatic rotation.
+5. Customize the display through the `Menu bar appearance`, `Usage colors`, and `Usage history` menus.
 
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
 
-When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
+When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. The chart initially shows only the span actually recorded and grows toward 24 hours. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
 
 ### Privacy and macOS permissions
 
@@ -238,7 +261,7 @@ The app does not require:
 
 When connecting Claude Code, macOS may request access to the existing `Claude Code-credentials` Keychain item. Choose **Always Allow** once if you do not want the prompt to reappear. Other unrelated permission requests can be denied.
 
-The **Launch at login** option uses only the macOS Login Items system. macOS may show a system notification for this change; no screen, disk, or automation permission is granted.
+The **Launch at login** option uses only the macOS Login Items system and should be enabled while the app is in `/Applications`. macOS may show a system notification or require approval in System Settings; no screen, disk, or automation permission is granted.
 
 Provider commands run in an app-specific temporary directory. Project settings, plugins, MCP servers, Chrome integration, and shell startup files are not loaded.
 
@@ -259,17 +282,26 @@ chmod +x build.sh
 open build/UsageBar.app
 ```
 
-The build script compiles the app, runs the built-in parser and localization tests, and applies an ad hoc signature for local use.
+The build script compiles the app; runs built-in tests for parsing, localization, window priority, color thresholds, history, and provider rotation; then applies an ad hoc signature to the clean bundle for local use.
+
+To run the packaging regression as well:
+
+```sh
+./tests/build_regression.sh
+```
 
 ### Project structure
 
 ```text
 UsageBar/
-├── Sources/UsageBar/main.swift   # Application, UI, and usage readers
-├── Info.plist                    # macOS application settings
-├── build.sh                      # Build, test, and local signing
-├── LICENSE                       # MIT License
-└── README.md
+├── Sources/UsageBar/main.swift    # Application, UI, usage readers, and self-tests
+├── tests/build_regression.sh      # Clean packaging and signature regression
+├── .github/workflows/ci.yml       # GitHub Actions build check
+├── Package.swift                  # SwiftPM and CodeQL build definition
+├── Info.plist                     # macOS application and version metadata
+├── build.sh                       # Build, test, and local signing
+├── LICENSE                        # MIT License
+└── README.md                      # Turkish and English documentation
 ```
 
 ### Development
