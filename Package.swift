@@ -8,12 +8,21 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "UsageBar", targets: ["UsageBar"])
+        .executable(name: "UsageBar", targets: ["UsageBar"]),
+        .library(name: "UsageBarCore", targets: ["UsageBarCore"])
     ],
     targets: [
+        .target(
+            name: "UsageBarCore"
+        ),
         .executableTarget(
             name: "UsageBar",
+            dependencies: ["UsageBarCore"],
             path: "Sources/UsageBar"
+        ),
+        .testTarget(
+            name: "UsageBarCoreTests",
+            dependencies: ["UsageBarCore"]
         )
     ]
 )

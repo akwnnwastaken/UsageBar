@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 import ServiceManagement
+import UsageBarCore
 
 struct UsageWindow {
     let usedPercent: Int
@@ -38,68 +39,9 @@ struct ProviderUsage {
     }
 }
 
-enum AppLanguage: String {
-    case turkish
-    case english
-
-    static func preferred(from preferredLanguages: [String]) -> AppLanguage {
-        preferredLanguages.first?.lowercased().hasPrefix("tr") == true ? .turkish : .english
-    }
-}
-
 enum AppMetadata {
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
-    }
-}
-
-enum UsageAlertLevel: Equatable {
-    case normal
-    case warning
-    case critical
-}
-
-enum UsageAlertPreset: String, CaseIterable {
-    case late
-    case balanced
-    case early
-
-    var warningThreshold: Int {
-        switch self {
-        case .late: return 10
-        case .balanced: return 20
-        case .early: return 30
-        }
-    }
-
-    var criticalThreshold: Int {
-        switch self {
-        case .late: return 5
-        case .balanced: return 10
-        case .early: return 15
-        }
-    }
-}
-
-struct UsageAlertPolicy {
-    let isEnabled: Bool
-    let preset: UsageAlertPreset
-
-    func level(for remainingPercent: Int) -> UsageAlertLevel {
-        guard isEnabled else { return .normal }
-        let clamped = min(100, max(0, remainingPercent))
-        if clamped <= preset.criticalThreshold { return .critical }
-        if clamped <= preset.warningThreshold { return .warning }
-        return .normal
-    }
-}
-
-enum ProviderRotation {
-    static let interval: TimeInterval = 30
-
-    static func nextIndex(after currentIndex: Int, providerCount: Int) -> Int {
-        guard providerCount > 0 else { return 0 }
-        return (max(0, currentIndex) + 1) % providerCount
     }
 }
 
