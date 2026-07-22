@@ -37,8 +37,31 @@ Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 2. ZIP dosyasını açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
 3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
 
-> [!NOTE]
-> İlk Beta sürümü Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. macOS ilk açılışta uyarı gösterirse Finder'da uygulamaya sağ tıklayıp **Aç** seçeneğini kullanın.
+> [!WARNING]
+> İlk Beta sürümü Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
+
+### İlk açılışta macOS uyarısını onaylama
+
+1. İndirdiğiniz ZIP'i açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
+2. UsageBar'ı bir kez açmayı deneyin.
+3. Doğrulama uyarısı gelirse **Çöp Sepeti'ne Taşı** yerine **Bitti** düğmesine basın.
+4. Apple menüsü  → **Sistem Ayarları** → **Gizlilik ve Güvenlik** bölümünü açın.
+5. Aşağı kaydırıp **Güvenlik** bölümünde UsageBar'ın engellendiğini belirten mesajı bulun.
+6. **Yine de Aç** düğmesine basın.
+7. Touch ID veya Mac oturum parolanızla işlemi onaylayın ve sonraki pencerede **Aç** düğmesine basın.
+
+Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç** düğmesi görünmüyorsa UsageBar'ı tekrar açmayı deneyip aynı bölüme dönün; Apple bu seçeneği açma denemesinden sonra yaklaşık bir saat gösterir.
+
+> [!CAUTION]
+> Gatekeeper'ı tamamen kapatmayın ve internetteki rastgele `sudo`, `spctl` veya `xattr` komutlarını çalıştırmayın. Uyarıda uygulamanın bilinen kötü amaçlı yazılım içerdiği yazıyorsa devam etmeyin; dosyayı silip resmi Release'den yeniden indirin.
+
+İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
+
+```sh
+shasum -a 256 ~/Downloads/UsageBar-1.4.2-macOS-arm64.zip
+```
+
+Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yapamadığı bir uygulamayı açma](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
 
 ## Kullanım
 
