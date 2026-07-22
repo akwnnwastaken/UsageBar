@@ -19,6 +19,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 10 saniyede bir geçiş yapar.
+- Her sağlayıcının son 24 saatlik kalan yüzde geçmişini yerel bir mini grafikte gösterir; grafik kapatılabilir ve geçmiş temizlenebilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
 - Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
@@ -78,6 +79,8 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 4. İki sağlayıcı da bağlıysa üst çubukta gösterilecek olanı `Codex | Claude` anahtarıyla seçin.
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
+
+Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
 
 ### Gizlilik ve macOS izinleri
 
@@ -153,6 +156,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every ten seconds when `Auto` is selected and both providers are connected.
+- Shows each provider's remaining-percentage history for the last 24 hours in a local mini chart; the chart can be disabled and its history cleared.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.
 - Runs only in the menu bar without a Dock icon or main window.
@@ -212,6 +216,8 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 4. If both providers are connected, use the `Codex | Claude` selector to choose which one appears in the menu bar.
 
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
+
+When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
 
 ### Privacy and macOS permissions
 
