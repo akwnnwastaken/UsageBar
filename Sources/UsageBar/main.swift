@@ -38,12 +38,31 @@ enum UsageParser {
             return .unavailable("Codex", "Codex kullanım sınırı bulunamadı")
         }
 
-        return ProviderUsage(
-            name: "Codex",
-            session: rateWindow(limits["primary"]),
-            weekly: rateWindow(limits["secondary"]),
-            error: nil
-        )
+        let primary = rateWindow(limits["primary"])
+        let secondary = rateWindow(limits["secondary"])
+        let windows = [primary, secondary].compactMap { $0 }
+
+        // `primary` and `secondary` describe ordering, not duration. Some
+        // accounts expose a five-hour primary window, while others expose only
+        // a weekly primary window. Classify using the duration returned by the
+        // API instead of assigning fixed labels by position.
+        var session = windows.first(where: { window in
+            guard let minutes = window.durationMinutes else { return false }
+            return minutes <= 24 * 60
+        })
+        var weekly = windows.first(where: { window in
+            guard let minutes = window.durationMinutes else { return false }
+            return minutes >= 6 * 24 * 60 && minutes <= 8 * 24 * 60
+        })
+
+        // Older Codex versions may omit windowDurationMins. Preserve their
+        // positional behavior only when no duration can be classified.
+        if session == nil && weekly == nil {
+            session = primary
+            weekly = secondary
+        }
+
+        return ProviderUsage(name: "Codex", session: session, weekly: weekly, error: nil)
     }
 
     static func claudeScreen(_ raw: String) -> ProviderUsage {
@@ -417,10 +436,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateStatusTitle() {
-        let percentages = usages.values.compactMap { $0.session?.usedPercent }
+        let percentages = usages.values.flatMap { usage in
+            [usage.session?.usedPercent, usage.weekly?.usedPercent].compactMap { $0 }
+        }
         if let highest = percentages.max() {
             statusItem.button?.title = "%\(highest)"
-            statusItem.button?.toolTip = "En yüksek 5 saatlik kullanım: %\(highest)"
+            statusItem.button?.toolTip = "En yüksek kullanım: %\(highest)"
         } else {
             statusItem.button?.title = "%—"
             statusItem.button?.toolTip = "Kullanım bilgisi bekleniyor"
@@ -568,6 +589,18 @@ private func runSelfTest() -> Int32 {
     let parsedClaude = UsageParser.claudeScreen(claude)
     guard parsedClaude.session?.usedPercent == 41, parsedClaude.weekly?.usedPercent == 18 else {
         fputs("Claude parser testi başarısız\n", stderr)
+        return 1
+    }
+
+    let weeklyOnlyCodex = """
+    {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":13,"windowDurationMins":10080,"resetsAt":1785340800},"secondary":null}}}
+    """
+    guard
+        let parsedWeeklyOnly = UsageParser.codexResponse(from: Data(weeklyOnlyCodex.utf8)),
+        parsedWeeklyOnly.session == nil,
+        parsedWeeklyOnly.weekly?.usedPercent == 13
+    else {
+        fputs("Codex haftalık-only parser testi başarısız\n", stderr)
         return 1
     }
 

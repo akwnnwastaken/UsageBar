@@ -2,8 +2,8 @@
 
 Codex ve Claude Code kullanımını macOS menü çubuğunda tek yüzde olarak gösteren küçük, yerel bir uygulama.
 
-- Menü çubuğundaki `%35`, iki servisin 5 saatlik pencereleri içindeki **en yüksek kullanılan oranı** gösterir.
-- Menü açıldığında Codex ve Claude Code için 5 saatlik ve haftalık oranlar ayrı görünür.
+- Menü çubuğundaki `%35`, iki servisin sunduğu kullanım pencereleri içindeki **en yüksek kullanılan oranı** gösterir.
+- Menü açıldığında Codex ve Claude Code için hesapta gerçekten bulunan pencereler görünür. Haftalık-only Codex hesapları yanlışlıkla 5 saatlik olarak etiketlenmez.
 - Her 5 dakikada bir ve menü açıldığında yenilenir.
 - Şifre veya erişim anahtarı saklamaz.
 - Codex takibi ilk açılışta açıktır. Claude Code takibi varsayılan olarak kapalıdır ve yalnızca menüden açıkça etkinleştirildiğinde Claude kimliğine erişir.
