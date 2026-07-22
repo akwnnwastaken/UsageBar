@@ -22,7 +22,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
-- Her sağlayıcının 24 saate kadar kalan yüzde geçmişini yerel bir mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar.
+- Her sağlayıcının 24 saate kadar kalan yüzde geçmişini yerel bir mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Tek ölçümlük ±1 puan yuvarlama dalgalanmaları yalnızca çizimde yumuşatılır.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
@@ -178,7 +178,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
-- Shows up to 24 hours of each provider's remaining-percentage history in a local mini chart. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets.
+- Shows up to 24 hours of each provider's remaining-percentage history in a local mini chart. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Isolated one-sample ±1 point rounding fluctuations are smoothed only in the drawing.
 - Can launch automatically at login through macOS Login Items.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.

@@ -137,6 +137,7 @@ struct UsageHistoryChartModel {
     static let minimumVerticalSpan = 10.0
 
     let samples: [UsageHistorySample]
+    let displaySamples: [UsageHistorySample]
     let lowerBound: Double
     let upperBound: Double
     let resetIndices: [Int]
@@ -144,7 +145,15 @@ struct UsageHistoryChartModel {
     init(samples: [UsageHistorySample]) {
         let sortedSamples = samples.sorted { $0.recordedAt < $1.recordedAt }
         self.samples = sortedSamples
-        let values = sortedSamples.map { Double(min(100, max(0, $0.remainingPercent))) }
+        displaySamples = sortedSamples.enumerated().map { index, sample in
+            guard index > 0, index < sortedSamples.count - 1 else { return sample }
+            let previous = sortedSamples[index - 1].remainingPercent
+            let current = sample.remainingPercent
+            let next = sortedSamples[index + 1].remainingPercent
+            guard previous == next, abs(current - previous) == 1 else { return sample }
+            return UsageHistorySample(recordedAt: sample.recordedAt, remainingPercent: previous)
+        }
+        let values = displaySamples.map { Double(min(100, max(0, $0.remainingPercent))) }
         let minimum = values.min() ?? 0
         let maximum = values.max() ?? 100
         let rawSpan = maximum - minimum
@@ -1101,12 +1110,12 @@ final class UsageSparklineView: NSView {
         let chartRect = bounds.insetBy(dx: 1, dy: 2)
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
         NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
-        guard let first = model.samples.first, let last = model.samples.last else { return }
+        guard let first = model.displaySamples.first, let last = model.displaySamples.last else { return }
 
         let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
         let point: (Int, UsageHistorySample) -> NSPoint = { index, sample in
             let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
-            let x = self.model.samples.count == 1
+            let x = self.model.displaySamples.count == 1
                 ? chartRect.midX
                 : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
             let y = chartRect.minY + self.model.normalizedY(for: sample.remainingPercent) * chartRect.height
@@ -1134,7 +1143,7 @@ final class UsageSparklineView: NSView {
         }
 
         let path = NSBezierPath()
-        for (index, sample) in model.samples.enumerated() {
+        for (index, sample) in model.displaySamples.enumerated() {
             let samplePoint = point(index, sample)
             if index == 0 { path.move(to: samplePoint) } else { path.line(to: samplePoint) }
         }
@@ -1144,7 +1153,7 @@ final class UsageSparklineView: NSView {
         path.lineCapStyle = .round
         path.stroke()
 
-        let latestPoint = point(model.samples.count - 1, last)
+        let latestPoint = point(model.displaySamples.count - 1, last)
         let dotRect = NSRect(x: latestPoint.x - 2, y: latestPoint.y - 2, width: 4, height: 4)
         lineColor.setFill()
         NSBezierPath(ovalIn: dotRect).fill()
@@ -2039,6 +2048,12 @@ private func runSelfTest() -> Int32 {
         UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(60), remainingPercent: 19),
         UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(120), remainingPercent: 90)
     ])
+    let noisyChart = UsageHistoryChartModel(samples: [33, 34, 33, 32, 31].enumerated().map {
+        UsageHistorySample(
+            recordedAt: historyOrigin.addingTimeInterval(Double($0.offset * 60)),
+            remainingPercent: $0.element
+        )
+    })
     guard
         prunedHistory.count == 2,
         replacedHistory.count == 2,
@@ -2048,6 +2063,8 @@ private func runSelfTest() -> Int32 {
         flatChart.upperBound == 38,
         changingChart.delta == -2,
         resetChart.resetIndices == [2],
+        noisyChart.samples.map(\.remainingPercent) == [33, 34, 33, 32, 31],
+        noisyChart.displaySamples.map(\.remainingPercent) == [33, 33, 33, 32, 31],
         turkish.usageHistoryRange(changingChart.recordedDuration) == "Son 35 dk",
         english.usageHistoryRange(changingChart.recordedDuration) == "Last 35m",
         english.usageHistorySummary(changingChart) == "33% → 31% · change -2"
