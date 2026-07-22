@@ -51,6 +51,7 @@ xcrun swiftc \
   -O \
   -framework AppKit \
   -framework Foundation \
+  -framework ServiceManagement \
   "$PROJECT_DIR/Sources/UsageBar/main.swift" \
   -o "$APP_DIR/Contents/MacOS/UsageBar"
 

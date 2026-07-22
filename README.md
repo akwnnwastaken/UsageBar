@@ -20,6 +20,8 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 10 saniyede bir geçiş yapar.
 - Her sağlayıcının son 24 saatlik kalan yüzde geçmişini yerel bir mini grafikte gösterir; grafik kapatılabilir ve geçmiş temizlenebilir.
+- İsteğe bağlı olarak GitHub Releases üzerinden yeni sürüm kontrolü yapar.
+- macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
 - Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
@@ -82,6 +84,8 @@ Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim an
 
 Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
 
+Otomatik güncelleme kontrolü varsayılan olarak kapalıdır. Açılırsa UsageBar en fazla 24 saatte bir `api.github.com` üzerindeki herkese açık Release listesini okur; API anahtarı, GitHub hesabı veya telemetri kullanılmaz.
+
 ### Gizlilik ve macOS izinleri
 
 UsageBar ilk açılışta hiçbir sağlayıcıya erişmez. Bir sağlayıcıyı ancak ilgili bağlantı düğmesine bastığınızda sorgular.
@@ -96,6 +100,8 @@ Uygulama şunlara ihtiyaç duymaz:
 - Otomasyon
 
 Claude Code bağlantısında macOS, mevcut `Claude Code-credentials` Anahtar Zinciri kaydı için izin isteyebilir. Sürekli sorulmaması için bu pencerede bir kez **Her Zaman İzin Ver** seçilebilir. Bunun dışındaki izin istekleri reddedilebilir.
+
+**Mac açılışında başlat** seçeneği yalnızca macOS'un Giriş Öğeleri sistemini kullanır. macOS bu değişikliği bir sistem bildirimiyle gösterebilir; ekran, disk veya otomasyon izni verilmez.
 
 Sağlayıcı komutları uygulamaya özel geçici bir klasörde çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez.
 
@@ -157,6 +163,8 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every ten seconds when `Auto` is selected and both providers are connected.
 - Shows each provider's remaining-percentage history for the last 24 hours in a local mini chart; the chart can be disabled and its history cleared.
+- Optionally checks GitHub Releases for a newer version.
+- Can launch automatically at login through macOS Login Items.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.
 - Runs only in the menu bar without a Dock icon or main window.
@@ -219,6 +227,8 @@ Connecting a provider only saves a local preference. UsageBar does not store pas
 
 When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
 
+Automatic update checks are disabled by default. When enabled, UsageBar reads the public Release list from `api.github.com` at most once every 24 hours; it uses no API key, GitHub account, or telemetry.
+
 ### Privacy and macOS permissions
 
 UsageBar does not access either provider on first launch. It queries a provider only after you explicitly click its connection button.
@@ -233,6 +243,8 @@ The app does not require:
 - Automation
 
 When connecting Claude Code, macOS may request access to the existing `Claude Code-credentials` Keychain item. Choose **Always Allow** once if you do not want the prompt to reappear. Other unrelated permission requests can be denied.
+
+The **Launch at login** option uses only the macOS Login Items system. macOS may show a system notification for this change; no screen, disk, or automation permission is granted.
 
 Provider commands run in an app-specific temporary directory. Project settings, plugins, MCP servers, Chrome integration, and shell startup files are not loaded.
 

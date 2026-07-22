@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import ServiceManagement
 
 struct UsageWindow {
     let usedPercent: Int
@@ -129,6 +130,63 @@ enum UsageHistoryModel {
     }
 }
 
+struct AppVersion: Comparable, Equatable {
+    let components: [Int]
+
+    init?(_ rawValue: String) {
+        let normalized = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+            .split(separator: "-", maxSplits: 1)
+            .first
+            .map(String.init) ?? ""
+        let parts = normalized.split(separator: ".")
+        guard !parts.isEmpty else { return nil }
+        let numbers = parts.compactMap { Int($0) }
+        guard numbers.count == parts.count else { return nil }
+        components = numbers
+    }
+
+    static func < (lhs: AppVersion, rhs: AppVersion) -> Bool {
+        let count = max(lhs.components.count, rhs.components.count)
+        for index in 0..<count {
+            let left = index < lhs.components.count ? lhs.components[index] : 0
+            let right = index < rhs.components.count ? rhs.components[index] : 0
+            if left != right { return left < right }
+        }
+        return false
+    }
+
+    static func == (lhs: AppVersion, rhs: AppVersion) -> Bool {
+        !(lhs < rhs) && !(rhs < lhs)
+    }
+}
+
+struct GitHubRelease: Decodable, Equatable {
+    let tagName: String
+    let htmlURL: URL
+    let isDraft: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case htmlURL = "html_url"
+        case isDraft = "draft"
+    }
+}
+
+enum UpdateCheckModel {
+    static func availableRelease(from data: Data, currentVersion: String) -> GitHubRelease? {
+        guard let current = AppVersion(currentVersion) else { return nil }
+        guard let releases = try? JSONDecoder().decode([GitHubRelease].self, from: data) else {
+            return nil
+        }
+        return releases.first { release in
+            guard !release.isDraft, let candidate = AppVersion(release.tagName) else { return false }
+            return candidate > current
+        }
+    }
+}
+
 struct Localizer {
     let language: AppLanguage
 
@@ -155,6 +213,16 @@ struct Localizer {
     var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
     var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
     var last24Hours: String { pick("Son 24 saat", "Last 24 hours") }
+    var updatesTitle: String { pick("Güncellemeler", "Updates") }
+    var automaticUpdateChecks: String { pick("Otomatik kontrol et", "Check automatically") }
+    var checkForUpdates: String { pick("Şimdi denetle", "Check now") }
+    var checkingForUpdates: String { pick("Denetleniyor…", "Checking…") }
+    var noUpdates: String { pick("UsageBar güncel", "UsageBar is up to date") }
+    var updateCheckFailed: String { pick("Güncelleme denetlenemedi", "Could not check for updates") }
+    var openRelease: String { pick("Release sayfasını aç", "Open release page") }
+    var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
+    var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
+    var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
@@ -203,6 +271,10 @@ struct Localizer {
             "\(name) — turuncu %\(preset.warningThreshold), kırmızı %\(preset.criticalThreshold)",
             "\(name) — orange \(preset.warningThreshold)%, red \(preset.criticalThreshold)%"
         )
+    }
+
+    func updateAvailable(_ tagName: String) -> String {
+        pick("Yeni sürüm: \(tagName)", "New version: \(tagName)")
     }
 
     func resetIn(_ duration: String) -> String {
@@ -1029,6 +1101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let autoRotateProviders = "status.providers.auto.rotate"
         static let usageHistoryEnabled = "usage.history.enabled"
         static let usageHistoryData = "usage.history.samples.v1"
+        static let automaticUpdateChecks = "updates.automatic.enabled"
+        static let lastUpdateCheck = "updates.last.check"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
     }
@@ -1044,6 +1118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusPresentationTimer: Timer?
     private var rotatingProviderIndex = 0
     private var usageHistory: [String: [UsageHistorySample]] = [:]
+    private var availableUpdate: GitHubRelease?
+    private var isCheckingForUpdates = false
 
     private var language: AppLanguage {
         get {
@@ -1099,6 +1175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return UserDefaults.standard.bool(forKey: PreferenceKey.usageHistoryEnabled)
         }
         set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.usageHistoryEnabled) }
+    }
+
+    private var automaticUpdateChecks: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.automaticUpdateChecks) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.automaticUpdateChecks) }
     }
 
     private var codexConnected: Bool {
@@ -1158,6 +1239,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.refresh()
         }
         configureStatusPresentationTimer()
+        if shouldCheckForUpdatesAutomatically {
+            checkForUpdates(userInitiated: false)
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -1280,6 +1364,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.set(data, forKey: PreferenceKey.usageHistoryData)
     }
 
+    private var shouldCheckForUpdatesAutomatically: Bool {
+        guard automaticUpdateChecks else { return false }
+        guard let lastCheck = UserDefaults.standard.object(forKey: PreferenceKey.lastUpdateCheck) as? Date else {
+            return true
+        }
+        return Date().timeIntervalSince(lastCheck) >= 24 * 60 * 60
+    }
+
     private func migrateLegacyPreferences() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: PreferenceKey.codexConnected) == nil {
@@ -1334,6 +1426,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         addLanguageSelector()
+        addLaunchAtLoginItem()
+        addUpdateSettings()
         menu.addItem(.separator())
 
         if let lastUpdated {
@@ -1487,6 +1581,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         clearItem.target = self
         clearItem.isEnabled = usageHistory.values.contains { !$0.isEmpty }
         submenu.addItem(clearItem)
+
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
+    }
+
+    private func addLaunchAtLoginItem() {
+        let status = SMAppService.mainApp.status
+        let suffix = status == .requiresApproval ? " (\(text.loginItemNeedsApproval))" : ""
+        let item = NSMenuItem(
+            title: text.launchAtLogin + suffix,
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.state = status == .enabled ? .on : (status == .requiresApproval ? .mixed : .off)
+        menu.addItem(item)
+    }
+
+    private func addUpdateSettings() {
+        let title = availableUpdate.map { text.updateAvailable($0.tagName) } ?? text.updatesTitle
+        let rootItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        let automaticItem = NSMenuItem(
+            title: text.automaticUpdateChecks,
+            action: #selector(toggleAutomaticUpdateChecks),
+            keyEquivalent: ""
+        )
+        automaticItem.target = self
+        automaticItem.state = automaticUpdateChecks ? .on : .off
+        submenu.addItem(automaticItem)
+
+        let checkItem = NSMenuItem(
+            title: isCheckingForUpdates ? text.checkingForUpdates : text.checkForUpdates,
+            action: #selector(checkForUpdatesNow),
+            keyEquivalent: ""
+        )
+        checkItem.target = self
+        checkItem.isEnabled = !isCheckingForUpdates
+        submenu.addItem(checkItem)
+
+        if availableUpdate != nil {
+            submenu.addItem(.separator())
+            let releaseItem = NSMenuItem(
+                title: text.openRelease,
+                action: #selector(openAvailableRelease),
+                keyEquivalent: ""
+            )
+            releaseItem.target = self
+            submenu.addItem(releaseItem)
+        }
 
         rootItem.submenu = submenu
         menu.addItem(rootItem)
@@ -1765,6 +1910,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        if service.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+            return
+        }
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+            rebuildMenu()
+        } catch {
+            showConnectionError(
+                title: text.loginItemFailed,
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    @objc private func toggleAutomaticUpdateChecks() {
+        automaticUpdateChecks.toggle()
+        rebuildMenu()
+        if automaticUpdateChecks { checkForUpdates(userInitiated: false) }
+    }
+
+    @objc private func checkForUpdatesNow() {
+        checkForUpdates(userInitiated: true)
+    }
+
+    @objc private func openAvailableRelease() {
+        guard let availableUpdate else { return }
+        NSWorkspace.shared.open(availableUpdate.htmlURL)
+    }
+
+    private func checkForUpdates(userInitiated: Bool) {
+        guard !isCheckingForUpdates else { return }
+        guard let endpoint = URL(
+            string: "https://api.github.com/repos/akwnnwastaken/UsageBar/releases?per_page=10"
+        ) else { return }
+
+        isCheckingForUpdates = true
+        UserDefaults.standard.set(Date(), forKey: PreferenceKey.lastUpdateCheck)
+        rebuildMenu()
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 10
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("UsageBar/\(currentAppVersion)", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isCheckingForUpdates = false
+                guard
+                    error == nil,
+                    let httpResponse = response as? HTTPURLResponse,
+                    httpResponse.statusCode == 200,
+                    let data,
+                    data.count <= 1_048_576,
+                    (try? JSONDecoder().decode([GitHubRelease].self, from: data)) != nil
+                else {
+                    self.rebuildMenu()
+                    if userInitiated { self.showUpdateCheckFailure() }
+                    return
+                }
+
+                let release = UpdateCheckModel.availableRelease(
+                    from: data,
+                    currentVersion: self.currentAppVersion
+                )
+                self.availableUpdate = release
+                self.rebuildMenu()
+                if userInitiated { self.showUpdateCheckResult(release) }
+            }
+        }.resume()
+    }
+
+    private var currentAppVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    private func showUpdateCheckResult(_ release: GitHubRelease?) {
+        let alert = NSAlert()
+        if let release {
+            alert.messageText = text.updateAvailable(release.tagName)
+            alert.informativeText = release.htmlURL.absoluteString
+            alert.addButton(withTitle: text.openRelease)
+            alert.addButton(withTitle: text.cancel)
+        } else {
+            alert.messageText = text.noUpdates
+            alert.addButton(withTitle: text.ok)
+        }
+        alert.alertStyle = .informational
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn, let release {
+            NSWorkspace.shared.open(release.htmlURL)
+        }
+    }
+
+    private func showUpdateCheckFailure() {
+        let alert = NSAlert()
+        alert.messageText = text.updateCheckFailed
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: text.ok)
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     @objc private func selectLanguage(_ sender: NSSegmentedControl) {
         let selectedLanguage: AppLanguage = sender.selectedSegment == 1 ? .english : .turkish
         guard selectedLanguage != language else { return }
@@ -1855,6 +2109,30 @@ private func runSelfTest() -> Int32 {
         decodedHistory["Codex"] == replacedHistory
     else {
         fputs("Yerel kullanım geçmişi testi başarısız\n", stderr)
+        return 1
+    }
+
+    let releaseResponse = """
+    [
+      {"tag_name":"v9.0.0","html_url":"https://example.com/draft","draft":true},
+      {"tag_name":"v1.5.0","html_url":"https://example.com/v1.5.0","draft":false},
+      {"tag_name":"v1.4.4","html_url":"https://example.com/v1.4.4","draft":false}
+    ]
+    """
+    let availableRelease = UpdateCheckModel.availableRelease(
+        from: Data(releaseResponse.utf8),
+        currentVersion: "1.4.4"
+    )
+    guard
+        AppVersion("v1.5.0")! > AppVersion("1.4.9")!,
+        AppVersion("1.4")! == AppVersion("1.4.0")!,
+        availableRelease?.tagName == "v1.5.0",
+        UpdateCheckModel.availableRelease(
+            from: Data(releaseResponse.utf8),
+            currentVersion: "2.0.0"
+        ) == nil
+    else {
+        fputs("Güncelleme karşılaştırma testi başarısız\n", stderr)
         return 1
     }
 
