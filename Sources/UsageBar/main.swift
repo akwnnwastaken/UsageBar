@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 struct UsageWindow {
@@ -21,6 +22,8 @@ enum ProviderIssue {
     case claudeNotLoggedIn
     case claudeUsageUnreadable
     case claudeLaunchFailed(String)
+    case processTimedOut(String)
+    case outputTooLarge(String)
 }
 
 struct ProviderUsage {
@@ -144,6 +147,10 @@ struct Localizer {
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
         case .claudeLaunchFailed(let reason):
             return pick("Claude Code başlatılamadı: \(reason)", "Could not start Claude Code: \(reason)")
+        case .processTimedOut(let provider):
+            return pick("\(provider) işlemi zaman aşımına uğradı", "\(provider) process timed out")
+        case .outputTooLarge(let provider):
+            return pick("\(provider) çok fazla çıktı üretti", "\(provider) produced too much output")
         }
     }
 }
@@ -528,6 +535,57 @@ private enum ProviderProcessContext {
     }
 }
 
+private enum ProviderProcessLimits {
+    static let maxOutputBytes = 2 * 1_024 * 1_024
+    static let authTimeout: DispatchTimeInterval = .seconds(5)
+    private static let terminationGrace: TimeInterval = 1
+
+    static func stop(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        let deadline = Date().addingTimeInterval(terminationGrace)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning {
+            Darwin.kill(process.processIdentifier, SIGKILL)
+        }
+    }
+}
+
+private final class BoundedDataCapture {
+    private let limit: Int
+    private let lock = NSLock()
+    private var data = Data()
+    private var exceeded = false
+
+    init(limit: Int) {
+        self.limit = max(0, limit)
+    }
+
+    @discardableResult
+    func append(_ chunk: Data) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !chunk.isEmpty else { return !exceeded }
+
+        let remaining = max(0, limit - data.count)
+        if chunk.count > remaining {
+            data.append(chunk.prefix(remaining))
+            exceeded = true
+        } else {
+            data.append(chunk)
+        }
+        return !exceeded
+    }
+
+    func snapshot() -> (data: Data, exceeded: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (data, exceeded)
+    }
+}
+
 final class CodexUsageFetcher {
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
@@ -560,21 +618,44 @@ final class CodexUsageFetcher {
             let lock = NSLock()
             var pending = Data()
             var result: ProviderUsage?
+            var totalOutputBytes = 0
+            var outputExceeded = false
+            var didSignal = false
 
             output.fileHandleForReading.readabilityHandler = { handle in
                 let chunk = handle.availableData
                 guard !chunk.isEmpty else { return }
                 lock.lock()
+                defer { lock.unlock() }
+
+                guard !outputExceeded else { return }
+                let remaining = ProviderProcessLimits.maxOutputBytes - totalOutputBytes
+                guard chunk.count <= remaining else {
+                    outputExceeded = true
+                    pending.removeAll(keepingCapacity: false)
+                    if !didSignal {
+                        didSignal = true
+                        semaphore.signal()
+                    }
+                    return
+                }
+                totalOutputBytes += chunk.count
                 pending.append(chunk)
                 while let newline = pending.firstIndex(of: 0x0A) {
                     let line = pending.prefix(upTo: newline)
                     pending.removeSubrange(...newline)
                     if let parsed = UsageParser.codexResponse(from: Data(line)) {
                         result = parsed
-                        semaphore.signal()
+                        if !didSignal {
+                            didSignal = true
+                            semaphore.signal()
+                        }
+                        break
                     }
                 }
-                lock.unlock()
+            }
+            errors.fileHandleForReading.readabilityHandler = { handle in
+                _ = handle.availableData
             }
 
             do {
@@ -587,14 +668,19 @@ final class CodexUsageFetcher {
                 input.fileHandleForWriting.write(Data(messages.utf8))
 
                 let waitResult = semaphore.wait(timeout: .now() + 15)
+                input.fileHandleForWriting.closeFile()
+                ProviderProcessLimits.stop(process)
                 output.fileHandleForReading.readabilityHandler = nil
-                if process.isRunning { process.terminate() }
+                errors.fileHandleForReading.readabilityHandler = nil
 
                 lock.lock()
                 let final = result
+                let exceeded = outputExceeded
                 lock.unlock()
 
-                if let final {
+                if exceeded {
+                    completion(.unavailable("Codex", .outputTooLarge("Codex")))
+                } else if let final {
                     completion(final)
                 } else if waitResult == .timedOut {
                     completion(.unavailable("Codex", .codexTimedOut))
@@ -602,7 +688,9 @@ final class CodexUsageFetcher {
                     completion(.unavailable("Codex", .codexEmptyResponse))
                 }
             } catch {
+                ProviderProcessLimits.stop(process)
                 output.fileHandleForReading.readabilityHandler = nil
+                errors.fileHandleForReading.readabilityHandler = nil
                 completion(.unavailable("Codex", .codexLaunchFailed(error.localizedDescription)))
             }
         }
@@ -634,8 +722,17 @@ final class ClaudeUsageFetcher {
                 return
             }
 
-            guard Self.isLoggedIn(executable) else {
+            switch Self.loginStatus(executable) {
+            case .loggedIn:
+                break
+            case .loggedOut:
                 completion(.unavailable("Claude Code", .claudeNotLoggedIn))
+                return
+            case .timedOut:
+                completion(.unavailable("Claude Code", .processTimedOut("Claude Code")))
+                return
+            case .outputTooLarge:
+                completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                 return
             }
 
@@ -660,14 +757,11 @@ final class ClaudeUsageFetcher {
             process.standardError = output
             ProviderProcessContext.apply(to: process)
 
-            let lock = NSLock()
-            var captured = Data()
+            let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
             output.fileHandleForReading.readabilityHandler = { handle in
                 let chunk = handle.availableData
                 guard !chunk.isEmpty else { return }
-                lock.lock()
                 captured.append(chunk)
-                lock.unlock()
             }
 
             do {
@@ -679,43 +773,78 @@ final class ClaudeUsageFetcher {
                 Thread.sleep(forTimeInterval: 0.5)
                 input.fileHandleForWriting.write(Data("/exit\r".utf8))
                 Thread.sleep(forTimeInterval: 1.0)
+                input.fileHandleForWriting.closeFile()
+                ProviderProcessLimits.stop(process)
                 output.fileHandleForReading.readabilityHandler = nil
-                if process.isRunning { process.terminate() }
 
-                lock.lock()
-                let data = captured
-                lock.unlock()
-                let screen = String(decoding: data, as: UTF8.self)
+                let snapshot = captured.snapshot()
+                guard !snapshot.exceeded else {
+                    completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
+                    return
+                }
+                let screen = String(decoding: snapshot.data, as: UTF8.self)
                 completion(
                     UsageParser.claudeStatusLine(screen)
                         ?? UsageParser.claudeScreen(screen)
                 )
             } catch {
+                ProviderProcessLimits.stop(process)
                 output.fileHandleForReading.readabilityHandler = nil
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
     }
 
-    private static func isLoggedIn(_ executable: String) -> Bool {
+    private enum LoginStatus {
+        case loggedIn
+        case loggedOut
+        case timedOut
+        case outputTooLarge
+    }
+
+    private static func loginStatus(_ executable: String) -> LoginStatus {
         let process = Process()
         let output = Pipe()
+        let errors = Pipe()
+        let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+        let terminated = DispatchSemaphore(value: 0)
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = ["auth", "status"]
         process.standardOutput = output
-        process.standardError = Pipe()
+        process.standardError = errors
+        process.terminationHandler = { _ in terminated.signal() }
         ProviderProcessContext.apply(to: process)
+
+        output.fileHandleForReading.readabilityHandler = { handle in
+            captured.append(handle.availableData)
+        }
+        errors.fileHandleForReading.readabilityHandler = { handle in
+            _ = handle.availableData
+        }
+
         do {
             try process.run()
-            process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let waitResult = terminated.wait(timeout: .now() + ProviderProcessLimits.authTimeout)
+            if waitResult == .timedOut {
+                ProviderProcessLimits.stop(process)
+            }
+            output.fileHandleForReading.readabilityHandler = nil
+            errors.fileHandleForReading.readabilityHandler = nil
+            captured.append(output.fileHandleForReading.readDataToEndOfFile())
+
+            if waitResult == .timedOut { return .timedOut }
+            let snapshot = captured.snapshot()
+            if snapshot.exceeded { return .outputTooLarge }
             guard
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let object = try JSONSerialization.jsonObject(with: snapshot.data) as? [String: Any],
                 let loggedIn = object["loggedIn"] as? Bool
-            else { return false }
-            return loggedIn
+            else { return .loggedOut }
+            return loggedIn ? .loggedIn : .loggedOut
         } catch {
-            return false
+            ProviderProcessLimits.stop(process)
+            output.fileHandleForReading.readabilityHandler = nil
+            errors.fileHandleForReading.readabilityHandler = nil
+            return .loggedOut
         }
     }
 
@@ -1297,6 +1426,17 @@ private func runSelfTest() -> Int32 {
         parsedWeeklyOnly.weekly?.usedPercent == 13
     else {
         fputs("Codex haftalık-only parser testi başarısız\n", stderr)
+        return 1
+    }
+
+    let boundedCapture = BoundedDataCapture(limit: 4)
+    guard
+        boundedCapture.append(Data([1, 2, 3])),
+        !boundedCapture.append(Data([4, 5])),
+        boundedCapture.snapshot().data == Data([1, 2, 3, 4]),
+        boundedCapture.snapshot().exceeded
+    else {
+        fputs("Çıktı sınırı testi başarısız\n", stderr)
         return 1
     }
 
