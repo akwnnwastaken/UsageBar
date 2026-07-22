@@ -95,6 +95,9 @@ struct UsageHistorySample: Codable, Equatable {
 enum UsageHistoryModel {
     static let retentionInterval: TimeInterval = 24 * 60 * 60
     static let minimumSampleInterval: TimeInterval = 60
+    static let maximumSamplesPerSeries = 24 * 60 + 1
+    static let maximumSeries = 16
+    static let maximumEncodedBytes = 1 * 1_024 * 1_024
 
     static func adding(
         remainingPercent: Int,
@@ -113,7 +116,7 @@ enum UsageHistoryModel {
         } else {
             samples.append(sample)
         }
-        return samples
+        return Array(samples.suffix(maximumSamplesPerSeries))
     }
 
     static func encode(_ history: [String: [UsageHistorySample]]) -> Data? {
@@ -121,8 +124,40 @@ enum UsageHistoryModel {
     }
 
     static func decode(_ data: Data?) -> [String: [UsageHistorySample]] {
-        guard let data else { return [:] }
+        guard let data, data.count <= maximumEncodedBytes else { return [:] }
         return (try? JSONDecoder().decode([String: [UsageHistorySample]].self, from: data)) ?? [:]
+    }
+
+    static func sanitized(
+        _ history: [String: [UsageHistorySample]],
+        now: Date
+    ) -> [String: [UsageHistorySample]] {
+        let cutoff = now.addingTimeInterval(-retentionInterval)
+        let latestAllowedDate = now.addingTimeInterval(minimumSampleInterval)
+        var result: [String: [UsageHistorySample]] = [:]
+
+        for key in history.keys.sorted().prefix(maximumSeries) where key.count <= 128 {
+            let candidates = (history[key] ?? [])
+                .filter { $0.recordedAt >= cutoff && $0.recordedAt <= latestAllowedDate }
+                .sorted { $0.recordedAt < $1.recordedAt }
+            var samples: [UsageHistorySample] = []
+            for candidate in candidates {
+                let normalized = UsageHistorySample(
+                    recordedAt: candidate.recordedAt,
+                    remainingPercent: min(100, max(0, candidate.remainingPercent))
+                )
+                if let last = samples.last,
+                   normalized.recordedAt.timeIntervalSince(last.recordedAt) < minimumSampleInterval {
+                    samples[samples.count - 1] = normalized
+                } else {
+                    samples.append(normalized)
+                }
+            }
+            if !samples.isEmpty {
+                result[key] = Array(samples.suffix(maximumSamplesPerSeries))
+            }
+        }
+        return result
     }
 }
 
@@ -410,6 +445,7 @@ struct UsageSummary {
     let providerName: String
     let remainingPercent: Int
     let resetsAt: Date?
+    let windowKind: UsageWindowKind
 }
 
 enum UsageSummaryCalculator {
@@ -428,7 +464,8 @@ enum UsageSummaryCalculator {
         return UsageSummary(
             providerName: providerName,
             remainingPercent: min(100, max(0, 100 - selectedWindow.usedPercent)),
-            resetsAt: selectedWindow.resetsAt
+            resetsAt: selectedWindow.resetsAt,
+            windowKind: selectedWindow.kind
         )
     }
 }
@@ -1224,7 +1261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let showResetInMenuBar = "status.reset.countdown.visible"
         static let autoRotateProviders = "status.providers.auto.rotate"
         static let usageHistoryEnabled = "usage.history.enabled"
-        static let usageHistoryData = "usage.history.samples.v1"
+        static let usageHistoryData = "usage.history.samples.v2"
+        static let legacyUsageHistoryData = "usage.history.samples.v1"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
     }
@@ -1345,9 +1383,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         migrateLegacyPreferences()
-        usageHistory = UsageHistoryModel.decode(
-            UserDefaults.standard.data(forKey: PreferenceKey.usageHistoryData)
+        let defaults = UserDefaults.standard
+        let storedHistory = defaults.data(forKey: PreferenceKey.usageHistoryData)
+            ?? defaults.data(forKey: PreferenceKey.legacyUsageHistoryData)
+        usageHistory = UsageHistoryModel.sanitized(
+            UsageHistoryModel.decode(storedHistory),
+            now: Date()
         )
+        persistUsageHistory()
         NSApp.setActivationPolicy(.accessory)
         menu.delegate = self
         statusItem.menu = menu
@@ -1464,21 +1507,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func recordUsageHistory(at date: Date) {
         guard usageHistoryEnabled else { return }
         for providerName in connectedProviderNames {
-            guard let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) else {
-                continue
+            guard let usage = usages[providerName], usage.error == nil else { continue }
+
+            if let legacySamples = usageHistory.removeValue(forKey: providerName),
+               let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) {
+                let migratedKey = historyKey(providerName: providerName, windowKind: summary.windowKind)
+                if usageHistory[migratedKey] == nil {
+                    usageHistory[migratedKey] = legacySamples
+                }
             }
-            usageHistory[providerName] = UsageHistoryModel.adding(
-                remainingPercent: summary.remainingPercent,
-                at: date,
-                to: usageHistory[providerName] ?? []
-            )
+
+            for window in usage.windows {
+                let key = historyKey(providerName: providerName, windowKind: window.kind)
+                usageHistory[key] = UsageHistoryModel.adding(
+                    remainingPercent: min(100, max(0, 100 - window.usedPercent)),
+                    at: date,
+                    to: usageHistory[key] ?? []
+                )
+            }
         }
+        usageHistory = UsageHistoryModel.sanitized(usageHistory, now: date)
         persistUsageHistory()
+    }
+
+    private func historyKey(providerName: String, windowKind: UsageWindowKind) -> String {
+        "\(providerName)|\(windowKind.historyKey)"
     }
 
     private func persistUsageHistory() {
         guard let data = UsageHistoryModel.encode(usageHistory) else { return }
         UserDefaults.standard.set(data, forKey: PreferenceKey.usageHistoryData)
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
     }
 
     private func migrateLegacyPreferences() {
@@ -1721,22 +1780,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func addProvider(_ usage: ProviderUsage) {
-        var rows: [NSAttributedString] = []
+        var rows: [(title: NSAttributedString, history: [UsageHistorySample])] = []
         for (position, window) in usage.windows.enumerated() {
-            rows.append(windowTitle(text.usageWindowLabel(window, position: position), window))
+            let samples = usageHistoryEnabled
+                ? usageHistory[historyKey(providerName: usage.name, windowKind: window.kind)] ?? []
+                : []
+            rows.append((windowTitle(text.usageWindowLabel(window, position: position), window), samples))
         }
         if let error = usage.error {
-            rows.append(errorTitle(error))
+            rows.append((errorTitle(error), []))
         }
-
-        let historySamples = usageHistoryEnabled ? (usageHistory[usage.name] ?? []) : []
-        let historyHeight: CGFloat = historySamples.isEmpty ? 0 : 58
 
         let width: CGFloat = 276
-        let rowHeights = rows.map { attributedTitle in
-            attributedTitle.string.contains("\n") ? CGFloat(40) : CGFloat(25)
+        let rowHeights = rows.map { row in
+            row.title.string.contains("\n") ? CGFloat(40) : CGFloat(25)
         }
-        let height = 46 + rowHeights.reduce(0, +) + historyHeight
+        let historyHeights = rows.map { $0.history.isEmpty ? CGFloat(0) : CGFloat(58) }
+        let height = 46 + rowHeights.reduce(0, +) + historyHeights.reduce(0, +)
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
         if let icon = providerIcon(for: usage.name, size: 18) {
@@ -1753,9 +1813,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         container.addSubview(title)
 
         var rowTop = height - 42
-        for (attributedTitle, rowHeight) in zip(rows, rowHeights) {
+        for (index, rowData) in rows.enumerated() {
+            let rowHeight = rowHeights[index]
             rowTop -= rowHeight
-            let row = NSTextField(labelWithAttributedString: attributedTitle)
+            let row = NSTextField(labelWithAttributedString: rowData.title)
             row.maximumNumberOfLines = 2
             row.lineBreakMode = .byWordWrapping
             row.frame = NSRect(
@@ -1765,28 +1826,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 height: rowHeight
             )
             container.addSubview(row)
-        }
 
-        if let latestSample = historySamples.last {
-            let historyModel = UsageHistoryChartModel(samples: historySamples)
+            guard let latestSample = rowData.history.last else { continue }
+            rowTop -= historyHeights[index]
+            let historyModel = UsageHistoryChartModel(samples: rowData.history)
             let historyRange = text.usageHistoryRange(historyModel.recordedDuration)
             let historySummary = text.usageHistorySummary(historyModel)
             let historyLabel = NSTextField(labelWithString: historyRange)
             historyLabel.font = .systemFont(ofSize: 10, weight: .medium)
             historyLabel.textColor = .secondaryLabelColor
-            historyLabel.frame = NSRect(x: 14, y: 43, width: width - 28, height: 13)
+            historyLabel.frame = NSRect(x: 14, y: rowTop + 43, width: width - 28, height: 13)
             container.addSubview(historyLabel)
 
             let summaryLabel = NSTextField(labelWithString: historySummary)
             summaryLabel.font = .systemFont(ofSize: 9.5, weight: .regular)
             summaryLabel.textColor = .secondaryLabelColor
             summaryLabel.lineBreakMode = .byTruncatingTail
-            summaryLabel.frame = NSRect(x: 14, y: 30, width: width - 28, height: 12)
+            summaryLabel.frame = NSRect(x: 14, y: rowTop + 30, width: width - 28, height: 12)
             container.addSubview(summaryLabel)
 
             let graph = UsageSparklineView(
-                frame: NSRect(x: 14, y: 6, width: width - 28, height: 22),
-                samples: historySamples,
+                frame: NSRect(x: 14, y: rowTop + 6, width: width - 28, height: 22),
+                samples: rowData.history,
                 lineColor: remainingColor(latestSample.remainingPercent)
             )
             graph.setAccessibilityLabel(historyRange)
@@ -1990,6 +2051,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func clearUsageHistory() {
         usageHistory.removeAll()
         UserDefaults.standard.removeObject(forKey: PreferenceKey.usageHistoryData)
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
         rebuildMenu()
     }
 
@@ -2101,6 +2163,13 @@ private func runSelfTest() -> Int32 {
     )
     let encodedHistory = UsageHistoryModel.encode(["Codex": replacedHistory])
     let decodedHistory = UsageHistoryModel.decode(encodedHistory)
+    let sanitizedHistory = UsageHistoryModel.sanitized([
+        "Codex|weekly": [
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(-120), remainingPercent: 140),
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(-90), remainingPercent: -20),
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(120), remainingPercent: 50)
+        ]
+    ], now: historyOrigin)
     let flatChart = UsageHistoryChartModel(samples: [
         UsageHistorySample(recordedAt: historyOrigin, remainingPercent: 33)
     ])
@@ -2124,6 +2193,8 @@ private func runSelfTest() -> Int32 {
         replacedHistory.count == 2,
         replacedHistory.last?.remainingPercent == 65,
         decodedHistory["Codex"] == replacedHistory,
+        sanitizedHistory["Codex|weekly"]?.count == 1,
+        sanitizedHistory["Codex|weekly"]?.first?.remainingPercent == 0,
         flatChart.lowerBound == 28,
         flatChart.upperBound == 38,
         changingChart.delta == -2,
