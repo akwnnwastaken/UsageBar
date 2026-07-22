@@ -7,14 +7,164 @@ struct UsageWindow {
     let durationMinutes: Int?
 }
 
+enum ProviderIssue {
+    case custom(String)
+    case refreshing
+    case noData
+    case codexUsageUnavailable
+    case codexLimitMissing
+    case codexNotFound
+    case codexTimedOut
+    case codexEmptyResponse
+    case codexLaunchFailed(String)
+    case claudeNotFound
+    case claudeNotLoggedIn
+    case claudeUsageUnreadable
+    case claudeLaunchFailed(String)
+}
+
 struct ProviderUsage {
     let name: String
     let session: UsageWindow?
     let weekly: UsageWindow?
-    let error: String?
+    let error: ProviderIssue?
 
-    static func unavailable(_ name: String, _ message: String) -> ProviderUsage {
-        ProviderUsage(name: name, session: nil, weekly: nil, error: message)
+    static func unavailable(_ name: String, _ issue: ProviderIssue) -> ProviderUsage {
+        ProviderUsage(name: name, session: nil, weekly: nil, error: issue)
+    }
+}
+
+enum AppLanguage: String {
+    case turkish
+    case english
+}
+
+struct Localizer {
+    let language: AppLanguage
+
+    private func pick(_ turkish: String, _ english: String) -> String {
+        language == .turkish ? turkish : english
+    }
+
+    var usageTooltip: String { pick("Codex ve Claude Code kullanımı", "Codex and Claude Code usage") }
+    var connectFirst: String { pick("Önce bir sağlayıcı bağlayın", "Connect a provider first") }
+    var refreshing: String { pick("Yenileniyor…", "Refreshing…") }
+    var noData: String { pick("Henüz veri yok", "No data yet") }
+    var connectCodex: String { pick("Codex'e bağlan", "Connect Codex") }
+    var connectClaude: String { pick("Claude Code'a bağlan", "Connect Claude Code") }
+    var refreshNow: String { pick("Şimdi yenile", "Refresh now") }
+    var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
+    var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
+    var languageTitle: String { pick("Dil", "Language") }
+    var fiveHours: String { pick("5 saat", "5 hours") }
+    var weekly: String { pick("Haftalık", "Weekly") }
+    var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
+    var codexNotFoundMessage: String {
+        pick(
+            "Önce ChatGPT veya Codex komut satırı uygulamasını kurup hesabınıza giriş yapın.",
+            "Install ChatGPT or the Codex CLI and sign in first."
+        )
+    }
+    var claudeNotFoundTitle: String { pick("Claude Code bulunamadı", "Claude Code not found") }
+    var claudeNotFoundMessage: String {
+        pick("Önce Claude Code'u kurup hesabınıza giriş yapın.", "Install Claude Code and sign in first.")
+    }
+    var connectClaudeTitle: String { pick("Claude Code'a bağlanılsın mı?", "Connect Claude Code?") }
+    var connectClaudeMessage: String {
+        pick(
+            "UsageBar yalnızca Claude Code'un mevcut giriş durumunu ve yapılandırılmış kullanım sınırlarını izole bir oturumda okuyacak. macOS, Claude Code kimliği için Anahtar Zinciri izni sorabilir. Bu pencerede bir kez 'Her Zaman İzin Ver' seçilebilir. Disk, ağ diski, ekran, erişilebilirlik veya otomasyon izni gerekmez.",
+            "UsageBar will read only Claude Code's current sign-in status and structured usage limits in an isolated session. macOS may request Keychain access for the Claude Code credential; you can choose 'Always Allow' once. Disk, network volume, screen recording, accessibility, and automation access are not required."
+        )
+    }
+    var connect: String { pick("Bağlan", "Connect") }
+    var cancel: String { pick("Vazgeç", "Cancel") }
+    var ok: String { pick("Tamam", "OK") }
+    var now: String { pick("şimdi", "now") }
+
+    func remaining(_ percent: Int) -> String {
+        pick("%\(percent) kaldı", "%\(percent) remaining")
+    }
+
+    func remainingTooltip(provider: String, percent: Int) -> String {
+        pick("\(provider): %\(percent) kaldı", "\(provider): %\(percent) remaining")
+    }
+
+    func waitingForUsage(provider: String) -> String {
+        pick("\(provider) kullanım bilgisi bekleniyor", "Waiting for \(provider) usage")
+    }
+
+    func resetIn(_ duration: String) -> String {
+        pick("Sıfırlama: \(duration)", "Resets in \(duration)")
+    }
+
+    func lastUpdated(_ time: String) -> String {
+        pick("Son güncelleme: \(time)", "Last updated: \(time)")
+    }
+
+    func relativeReset(_ date: Date, now: Date = Date()) -> String {
+        let interval = max(0, Int(date.timeIntervalSince(now)))
+        let days = interval / 86_400
+        let hours = (interval % 86_400) / 3_600
+        let minutes = (interval % 3_600) / 60
+        if language == .turkish {
+            if days > 0 { return "\(days)g \(hours)sa" }
+            if hours > 0 { return "\(hours)sa \(minutes)dk" }
+            if minutes > 0 { return "\(minutes)dk" }
+            return self.now
+        }
+
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m" }
+        return self.now
+    }
+
+    func issue(_ issue: ProviderIssue) -> String {
+        switch issue {
+        case .custom(let message): return message
+        case .refreshing: return refreshing
+        case .noData: return noData
+        case .codexUsageUnavailable:
+            return pick("Codex kullanım bilgisi alınamadı", "Could not retrieve Codex usage")
+        case .codexLimitMissing:
+            return pick("Codex kullanım sınırı bulunamadı", "Codex usage limit not found")
+        case .codexNotFound:
+            return codexNotFoundTitle
+        case .codexTimedOut:
+            return pick("Codex yanıtı zaman aşımına uğradı", "Codex response timed out")
+        case .codexEmptyResponse:
+            return pick("Codex kullanım yanıtı boş", "Codex returned an empty usage response")
+        case .codexLaunchFailed(let reason):
+            return pick("Codex başlatılamadı: \(reason)", "Could not start Codex: \(reason)")
+        case .claudeNotFound:
+            return claudeNotFoundTitle
+        case .claudeNotLoggedIn:
+            return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
+        case .claudeUsageUnreadable:
+            return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
+        case .claudeLaunchFailed(let reason):
+            return pick("Claude Code başlatılamadı: \(reason)", "Could not start Claude Code: \(reason)")
+        }
+    }
+}
+
+struct UsageSummary {
+    let providerName: String
+    let remainingPercent: Int
+}
+
+enum UsageSummaryCalculator {
+    static func summary(for providerName: String, in usages: [String: ProviderUsage]) -> UsageSummary? {
+        guard let usage = usages[providerName] else { return nil }
+        let usedPercent = [
+            usage.session?.usedPercent,
+            usage.weekly?.usedPercent
+        ].compactMap { $0 }.max()
+        guard let usedPercent else { return nil }
+        return UsageSummary(
+            providerName: providerName,
+            remainingPercent: min(100, max(0, 100 - usedPercent))
+        )
     }
 }
 
@@ -27,51 +177,135 @@ enum UsageParser {
         else { return nil }
 
         if let error = object["error"] as? [String: Any] {
-            let message = error["message"] as? String ?? "Kullanım bilgisi alınamadı"
-            return .unavailable("Codex", message)
+            if let message = error["message"] as? String {
+                return .unavailable("Codex", .custom(message))
+            }
+            return .unavailable("Codex", .codexUsageUnavailable)
         }
 
         guard
             let result = object["result"] as? [String: Any],
             let limits = result["rateLimits"] as? [String: Any]
         else {
-            return .unavailable("Codex", "Codex kullanım sınırı bulunamadı")
+            return .unavailable("Codex", .codexLimitMissing)
         }
 
-        return ProviderUsage(
-            name: "Codex",
-            session: rateWindow(limits["primary"]),
-            weekly: rateWindow(limits["secondary"]),
-            error: nil
-        )
+        let primary = rateWindow(limits["primary"])
+        let secondary = rateWindow(limits["secondary"])
+        let windows = [primary, secondary].compactMap { $0 }
+
+        // `primary` and `secondary` describe ordering, not duration. Some
+        // accounts expose a five-hour primary window, while others expose only
+        // a weekly primary window. Classify using the duration returned by the
+        // API instead of assigning fixed labels by position.
+        var session = windows.first(where: { window in
+            guard let minutes = window.durationMinutes else { return false }
+            return minutes <= 24 * 60
+        })
+        var weekly = windows.first(where: { window in
+            guard let minutes = window.durationMinutes else { return false }
+            return minutes >= 6 * 24 * 60 && minutes <= 8 * 24 * 60
+        })
+
+        // Older Codex versions may omit windowDurationMins. Preserve their
+        // positional behavior only when no duration can be classified.
+        if session == nil && weekly == nil {
+            session = primary
+            weekly = secondary
+        }
+
+        return ProviderUsage(name: "Codex", session: session, weekly: weekly, error: nil)
     }
 
     static func claudeScreen(_ raw: String) -> ProviderUsage {
         let cleaned = stripTerminalCodes(raw)
         let session = percentage(afterAny: ["Current session", "Current Session"], in: cleaned)
+        let sessionReset = resetDate(
+            afterAny: ["Current session", "Current Session"],
+            in: cleaned
+        )
         let weekly = percentage(afterAny: [
+            "Current week (all models)",
+            "Current week",
+            "Current Week"
+        ], in: cleaned)
+        let weeklyReset = resetDate(afterAny: [
             "Current week (all models)",
             "Current week",
             "Current Week"
         ], in: cleaned)
 
         if session == nil && weekly == nil {
-            let message: String
+            let issue: ProviderIssue
             if cleaned.localizedCaseInsensitiveContains("login") ||
                 cleaned.localizedCaseInsensitiveContains("sign in") {
-                message = "Claude Code'a giriş yapılmamış"
+                issue = .claudeNotLoggedIn
             } else {
-                message = "Claude /usage yüzdesi okunamadı"
+                issue = .claudeUsageUnreadable
             }
-            return .unavailable("Claude Code", message)
+            return .unavailable("Claude Code", issue)
         }
 
         return ProviderUsage(
             name: "Claude Code",
-            session: session.map { UsageWindow(usedPercent: $0, resetsAt: nil, durationMinutes: 300) },
-            weekly: weekly.map { UsageWindow(usedPercent: $0, resetsAt: nil, durationMinutes: 10_080) },
+            session: session.map {
+                UsageWindow(usedPercent: $0, resetsAt: sessionReset, durationMinutes: 300)
+            },
+            weekly: weekly.map {
+                UsageWindow(usedPercent: $0, resetsAt: weeklyReset, durationMinutes: 10_080)
+            },
             error: nil
         )
+    }
+
+    static func claudeStatusLine(_ raw: String) -> ProviderUsage? {
+        let cleaned = stripTerminalCodes(raw)
+        guard let markerRange = cleaned.range(of: "USAGEBAR_LIMITS:") else { return nil }
+        let statusOutput = String(cleaned[markerRange.lowerBound...])
+        // Claude redraws its status line incrementally. The initial frame can
+        // contain `USAGEBAR_LIMITS:|||`, followed later by only the changed
+        // numeric suffix at another cursor position. Parse the first complete
+        // numeric tuple after our unique marker rather than requiring one
+        // contiguous rendered line.
+        let pattern = "([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)\\|([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(statusOutput.startIndex..<statusOutput.endIndex, in: statusOutput)
+        var result: ProviderUsage?
+
+        for match in regex.matches(in: statusOutput, range: range) {
+            guard match.numberOfRanges == 5 else { continue }
+            let values: [String] = (1...4).compactMap { index in
+                guard let valueRange = Range(match.range(at: index), in: statusOutput) else { return nil }
+                return String(statusOutput[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard values.count == 4 else { continue }
+
+            let fiveHourUsed = Double(values[0])
+            let fiveHourReset = Double(values[1])
+            let sevenDayUsed = Double(values[2])
+            let sevenDayReset = Double(values[3])
+            guard fiveHourUsed != nil || sevenDayUsed != nil else { continue }
+
+            result = ProviderUsage(
+                name: "Claude Code",
+                session: fiveHourUsed.map {
+                    UsageWindow(
+                        usedPercent: min(100, max(0, Int($0.rounded()))),
+                        resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
+                        durationMinutes: 300
+                    )
+                },
+                weekly: sevenDayUsed.map {
+                    UsageWindow(
+                        usedPercent: min(100, max(0, Int($0.rounded()))),
+                        resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
+                        durationMinutes: 10_080
+                    )
+                },
+                error: nil
+            )
+        }
+        return result
     }
 
     private static func rateWindow(_ value: Any?) -> UsageWindow? {
@@ -113,8 +347,105 @@ enum UsageParser {
         return values.last
     }
 
+    private static func resetDate(afterAny labels: [String], in text: String) -> Date? {
+        var dates: [Date] = []
+        for label in labels {
+            let escaped = NSRegularExpression.escapedPattern(for: label)
+            let pattern = "(?is)\(escaped)(?:(?!Current\\s+(?:session|week)).){0,1200}?Resets?\\s+([^\\n]{1,120})"
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            for match in regex.matches(in: text, range: range) {
+                guard
+                    match.numberOfRanges > 1,
+                    let valueRange = Range(match.range(at: 1), in: text)
+                else { continue }
+                var value = String(text[valueRange])
+                    .replacingOccurrences(of: "[│┃].*$", with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                value = value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                if let date = parseClaudeReset(value) {
+                    dates.append(date)
+                }
+            }
+        }
+        return dates.last
+    }
+
+    private static func parseClaudeReset(_ raw: String, now: Date = Date()) -> Date? {
+        let value = raw
+            .replacingOccurrences(of: "^(?:at|by)\\s+", with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if value.range(of: "^in\\s+", options: [.regularExpression, .caseInsensitive]) != nil {
+            let componentPatterns: [(String, TimeInterval)] = [
+                ("(\\d+)\\s*(?:days?|d)\\b", 86_400),
+                ("(\\d+)\\s*(?:hours?|hrs?|h)\\b", 3_600),
+                ("(\\d+)\\s*(?:minutes?|mins?|m)\\b", 60)
+            ]
+            var interval: TimeInterval = 0
+            for (pattern, multiplier) in componentPatterns {
+                guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+                    continue
+                }
+                let range = NSRange(value.startIndex..<value.endIndex, in: value)
+                if let match = regex.firstMatch(in: value, range: range),
+                   let numberRange = Range(match.range(at: 1), in: value),
+                   let number = Double(value[numberRange]) {
+                    interval += number * multiplier
+                }
+            }
+            if interval > 0 { return now.addingTimeInterval(interval) }
+        }
+
+        var dateText = value
+        var timeZone = TimeZone.current
+        if let zoneRegex = try? NSRegularExpression(pattern: "\\(([^()]+)\\)\\s*$"),
+           let match = zoneRegex.firstMatch(
+               in: dateText,
+               range: NSRange(dateText.startIndex..<dateText.endIndex, in: dateText)
+           ),
+           let zoneRange = Range(match.range(at: 1), in: dateText) {
+            if let parsedZone = TimeZone(identifier: String(dateText[zoneRange])) {
+                timeZone = parsedZone
+            }
+            if let fullRange = Range(match.range(at: 0), in: dateText) {
+                dateText.removeSubrange(fullRange)
+                dateText = dateText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        let formats = [
+            "MMM d, yyyy, h:mma", "MMM d, yyyy, h:mm a",
+            "MMM d, yyyy 'at' h:mma", "MMM d, yyyy 'at' h:mm a",
+            "MMM d, h:mma", "MMM d, h:mm a",
+            "MMM d 'at' h:mma", "MMM d 'at' h:mm a",
+            "EEE, MMM d, h:mma", "EEE, MMM d, h:mm a",
+            "EEE, MMM d 'at' h:mma", "EEE, MMM d 'at' h:mm a",
+            "h:mma", "h:mm a"
+        ]
+        for format in formats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.timeZone = timeZone
+            formatter.defaultDate = now
+            formatter.dateFormat = format
+            guard var parsed = formatter.date(from: dateText) else { continue }
+
+            if !format.contains("MMM"), parsed <= now,
+               let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: parsed) {
+                parsed = nextDay
+            } else if format.contains("MMM"), !format.contains("yyyy"), parsed < now,
+                      let nextYear = Calendar.current.date(byAdding: .year, value: 1, to: parsed) {
+                parsed = nextYear
+            }
+            return parsed
+        }
+        return nil
+    }
+
     private static func stripTerminalCodes(_ text: String) -> String {
-        let ansi = "\\u{001B}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u{0007}]*(?:\\u{0007}|\\u{001B}\\\\))"
+        let ansi = "\u{001B}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\u{0007}]*(?:\u{0007}|\u{001B}\\\\)|[()][0-2A-Z]|[@-_])"
         let withoutANSI = text.replacingOccurrences(
             of: ansi,
             with: "",
@@ -151,11 +482,57 @@ enum ExecutableLocator {
     }
 }
 
+/// Keeps provider CLIs away from the folder that UsageBar was launched from.
+/// In particular, Claude Code normally discovers project files, hooks, MCP
+/// servers and integrations from its current directory. That discovery can
+/// make macOS attribute unrelated Desktop/Documents/network-volume access to
+/// UsageBar. Quota checks only need the user's local login, so they run from a
+/// private temporary directory with a deliberately small environment.
+private enum ProviderProcessContext {
+    static let workingDirectory: URL = {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("local.codex.usagebar", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            return directory
+        } catch {
+            return FileManager.default.temporaryDirectory
+        }
+    }()
+
+    static let environment: [String: String] = {
+        let inherited = ProcessInfo.processInfo.environment
+        var value: [String: String] = [
+            "HOME": NSHomeDirectory(),
+            "PATH": [
+                "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+                "/usr/sbin", "/sbin"
+            ].joined(separator: ":"),
+            "TERM": "xterm-256color",
+            "TMPDIR": FileManager.default.temporaryDirectory.path
+        ]
+        for key in ["USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE"] {
+            if let inheritedValue = inherited[key] {
+                value[key] = inheritedValue
+            }
+        }
+        return value
+    }()
+
+    static func apply(to process: Process) {
+        process.currentDirectoryURL = workingDirectory
+        process.environment = environment
+    }
+}
+
 final class CodexUsageFetcher {
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
             guard let executable = ExecutableLocator.codex() else {
-                completion(.unavailable("Codex", "Codex bulunamadı"))
+                completion(.unavailable("Codex", .codexNotFound))
                 return
             }
 
@@ -177,7 +554,7 @@ final class CodexUsageFetcher {
             process.standardInput = input
             process.standardOutput = output
             process.standardError = errors
-            process.environment = Self.environment()
+            ProviderProcessContext.apply(to: process)
 
             let semaphore = DispatchSemaphore(value: 0)
             let lock = NSLock()
@@ -220,37 +597,45 @@ final class CodexUsageFetcher {
                 if let final {
                     completion(final)
                 } else if waitResult == .timedOut {
-                    completion(.unavailable("Codex", "Codex yanıtı zaman aşımına uğradı"))
+                    completion(.unavailable("Codex", .codexTimedOut))
                 } else {
-                    completion(.unavailable("Codex", "Codex kullanım yanıtı boş"))
+                    completion(.unavailable("Codex", .codexEmptyResponse))
                 }
             } catch {
                 output.fileHandleForReading.readabilityHandler = nil
-                completion(.unavailable("Codex", "Codex başlatılamadı: \(error.localizedDescription)"))
+                completion(.unavailable("Codex", .codexLaunchFailed(error.localizedDescription)))
             }
         }
     }
 
-    private static func environment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = [
-            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"
-        ].joined(separator: ":")
-        environment["TERM"] = "xterm-256color"
-        return environment
-    }
 }
 
 final class ClaudeUsageFetcher {
+    private static let statusLineSettings: String = {
+        let command = #"/usr/bin/jq -r '"USAGEBAR_LIMITS:" + ((.rate_limits.five_hour.used_percentage // "")|tostring) + "|" + ((.rate_limits.five_hour.resets_at // "")|tostring) + "|" + ((.rate_limits.seven_day.used_percentage // "")|tostring) + "|" + ((.rate_limits.seven_day.resets_at // "")|tostring)'"#
+        let settings: [String: Any] = [
+            "statusLine": [
+                "type": "command",
+                "command": command,
+                "padding": 0
+            ]
+        ]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: settings),
+            let json = String(data: data, encoding: .utf8)
+        else { return "{}" }
+        return json
+    }()
+
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
             guard let executable = ExecutableLocator.claude() else {
-                completion(.unavailable("Claude Code", "Claude Code bulunamadı"))
+                completion(.unavailable("Claude Code", .claudeNotFound))
                 return
             }
 
             guard Self.isLoggedIn(executable) else {
-                completion(.unavailable("Claude Code", "Claude Code'a giriş yapılmamış"))
+                completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 return
             }
 
@@ -258,11 +643,22 @@ final class ClaudeUsageFetcher {
             let input = Pipe()
             let output = Pipe()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
-            process.arguments = ["-q", "/dev/null", executable, "--allowed-tools", ""]
+            // Ignore user/project/local settings and inject only a tiny status
+            // line that exposes Claude's official structured quota fields.
+            // This avoids project files, hooks, plugins, MCP and Chrome while
+            // keeping normal local authentication available.
+            process.arguments = [
+                "-q", "/dev/null", executable,
+                "--setting-sources", "",
+                "--settings", Self.statusLineSettings,
+                "--no-chrome",
+                "--strict-mcp-config",
+                "--tools", ""
+            ]
             process.standardInput = input
             process.standardOutput = output
             process.standardError = output
-            process.environment = CodexUsageFetcherEnvironment.value
+            ProviderProcessContext.apply(to: process)
 
             let lock = NSLock()
             var captured = Data()
@@ -279,6 +675,8 @@ final class ClaudeUsageFetcher {
                 Thread.sleep(forTimeInterval: 1.5)
                 input.fileHandleForWriting.write(Data("/usage\r".utf8))
                 Thread.sleep(forTimeInterval: 5.0)
+                input.fileHandleForWriting.write(Data([0x1B]))
+                Thread.sleep(forTimeInterval: 0.5)
                 input.fileHandleForWriting.write(Data("/exit\r".utf8))
                 Thread.sleep(forTimeInterval: 1.0)
                 output.fileHandleForReading.readabilityHandler = nil
@@ -288,10 +686,13 @@ final class ClaudeUsageFetcher {
                 let data = captured
                 lock.unlock()
                 let screen = String(decoding: data, as: UTF8.self)
-                completion(UsageParser.claudeScreen(screen))
+                completion(
+                    UsageParser.claudeStatusLine(screen)
+                        ?? UsageParser.claudeScreen(screen)
+                )
             } catch {
                 output.fileHandleForReading.readabilityHandler = nil
-                completion(.unavailable("Claude Code", "Claude Code başlatılamadı: \(error.localizedDescription)"))
+                completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
     }
@@ -303,7 +704,7 @@ final class ClaudeUsageFetcher {
         process.arguments = ["auth", "status"]
         process.standardOutput = output
         process.standardError = Pipe()
-        process.environment = CodexUsageFetcherEnvironment.value
+        ProviderProcessContext.apply(to: process)
         do {
             try process.run()
             process.waitUntilExit()
@@ -317,23 +718,17 @@ final class ClaudeUsageFetcher {
             return false
         }
     }
-}
 
-private enum CodexUsageFetcherEnvironment {
-    static let value: [String: String] = {
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = [
-            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"
-        ].joined(separator: ":")
-        environment["TERM"] = "xterm-256color"
-        return environment
-    }()
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private enum PreferenceKey {
-        static let codexEnabled = "provider.codex.enabled"
-        static let claudeEnabled = "provider.claude.enabled"
+        static let codexConnected = "provider.codex.connected"
+        static let claudeConnected = "provider.claude.connected"
+        static let selectedProvider = "status.selected.provider"
+        static let language = "app.language"
+        static let legacyCodexEnabled = "provider.codex.enabled"
+        static let legacyClaudeEnabled = "provider.claude.enabled"
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -345,25 +740,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var isRefreshing = false
     private var refreshTimer: Timer?
 
-    private var codexEnabled: Bool {
+    private var language: AppLanguage {
         get {
-            if UserDefaults.standard.object(forKey: PreferenceKey.codexEnabled) == nil { return true }
-            return UserDefaults.standard.bool(forKey: PreferenceKey.codexEnabled)
+            guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.language) else {
+                return .turkish
+            }
+            return AppLanguage(rawValue: raw) ?? .turkish
         }
-        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.codexEnabled) }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.language) }
     }
 
-    private var claudeEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: PreferenceKey.claudeEnabled) }
-        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeEnabled) }
+    private var text: Localizer { Localizer(language: language) }
+
+    private var codexConnected: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.codexConnected) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.codexConnected) }
+    }
+
+    private var claudeConnected: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.claudeConnected) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeConnected) }
+    }
+
+    private var connectedProviderNames: [String] {
+        var names: [String] = []
+        if codexConnected { names.append("Codex") }
+        if claudeConnected { names.append("Claude Code") }
+        return names
+    }
+
+    private var selectedProviderName: String? {
+        get {
+            let saved = UserDefaults.standard.string(forKey: PreferenceKey.selectedProvider)
+            if let saved, connectedProviderNames.contains(saved) { return saved }
+            return connectedProviderNames.first
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: PreferenceKey.selectedProvider)
+            } else {
+                UserDefaults.standard.removeObject(forKey: PreferenceKey.selectedProvider)
+            }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        migrateLegacyPreferences()
         NSApp.setActivationPolicy(.accessory)
         menu.delegate = self
         statusItem.menu = menu
         statusItem.button?.title = "%—"
-        statusItem.button?.toolTip = "Codex ve Claude Code kullanımı"
+        statusItem.button?.toolTip = text.usageTooltip
         rebuildMenu()
         refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
@@ -383,7 +810,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
 
         let group = DispatchGroup()
-        if codexEnabled {
+        if codexConnected {
             group.enter()
             codexFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
@@ -395,7 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             usages.removeValue(forKey: "Codex")
         }
 
-        if claudeEnabled {
+        if claudeConnected {
             group.enter()
             claudeFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
@@ -417,141 +844,398 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateStatusTitle() {
-        let percentages = usages.values.compactMap { $0.session?.usedPercent }
-        if let highest = percentages.max() {
-            statusItem.button?.title = "%\(highest)"
-            statusItem.button?.toolTip = "En yüksek 5 saatlik kullanım: %\(highest)"
+        if let selectedProviderName,
+           let summary = UsageSummaryCalculator.summary(for: selectedProviderName, in: usages) {
+            statusItem.button?.title = "%\(summary.remainingPercent)"
+            statusItem.button?.image = providerIcon(for: summary.providerName, size: 16)
+            statusItem.button?.imagePosition = .imageLeading
+            statusItem.button?.imageScaling = .scaleProportionallyDown
+            statusItem.button?.toolTip = text.remainingTooltip(
+                provider: summary.providerName,
+                percent: summary.remainingPercent
+            )
         } else {
             statusItem.button?.title = "%—"
-            statusItem.button?.toolTip = "Kullanım bilgisi bekleniyor"
+            statusItem.button?.image = selectedProviderName.flatMap { providerIcon(for: $0, size: 16) }
+            statusItem.button?.toolTip = selectedProviderName.map { text.waitingForUsage(provider: $0) }
+                ?? text.connectFirst
+        }
+    }
+
+    private func migrateLegacyPreferences() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: PreferenceKey.codexConnected) == nil {
+            let legacy = defaults.object(forKey: PreferenceKey.legacyCodexEnabled) != nil
+                && defaults.bool(forKey: PreferenceKey.legacyCodexEnabled)
+            defaults.set(legacy, forKey: PreferenceKey.codexConnected)
+        }
+        if defaults.object(forKey: PreferenceKey.claudeConnected) == nil {
+            let legacy = defaults.object(forKey: PreferenceKey.legacyClaudeEnabled) != nil
+                && defaults.bool(forKey: PreferenceKey.legacyClaudeEnabled)
+            defaults.set(legacy, forKey: PreferenceKey.claudeConnected)
+        }
+        if defaults.string(forKey: PreferenceKey.selectedProvider) == nil {
+            selectedProviderName = connectedProviderNames.first
         }
     }
 
     private func rebuildMenu() {
         menu.removeAllItems()
-        let codexFallback = codexEnabled
-            ? (isRefreshing ? "Yenileniyor…" : "Henüz veri yok")
-            : "Takip kapalı"
-        addProvider(usages["Codex"] ?? .unavailable("Codex", codexFallback))
-        menu.addItem(.separator())
-        let claudeFallback = claudeEnabled
-            ? (isRefreshing ? "Yenileniyor…" : "Henüz veri yok")
-            : "Takip kapalı · etkinleştirince anahtar zinciri kullanılabilir"
-        addProvider(usages["Claude Code"] ?? .unavailable("Claude Code", claudeFallback))
-        menu.addItem(.separator())
+        let connectedNames = connectedProviderNames
+        for (index, providerName) in connectedNames.enumerated() {
+            if index > 0 { menu.addItem(.separator()) }
+            let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
+            addProvider(usages[providerName] ?? .unavailable(providerName, fallback))
+        }
 
-        let codexToggle = NSMenuItem(title: "Codex takibi", action: #selector(toggleCodex), keyEquivalent: "")
-        codexToggle.target = self
-        codexToggle.state = codexEnabled ? .on : .off
-        menu.addItem(codexToggle)
+        if !connectedNames.isEmpty {
+            menu.addItem(.separator())
+            addProviderSelector()
+        }
 
-        let claudeToggle = NSMenuItem(title: "Claude Code takibi", action: #selector(toggleClaude), keyEquivalent: "")
-        claudeToggle.target = self
-        claudeToggle.state = claudeEnabled ? .on : .off
-        menu.addItem(claudeToggle)
+        if !codexConnected || !claudeConnected {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            if !codexConnected {
+                addConnectionItem(
+                    title: text.connectCodex,
+                    providerName: "Codex",
+                    action: #selector(connectCodex)
+                )
+            }
+            if !claudeConnected {
+                addConnectionItem(
+                    title: text.connectClaude,
+                    providerName: "Claude Code",
+                    action: #selector(connectClaude)
+                )
+            }
+        }
+
+        menu.addItem(.separator())
+        addLanguageSelector()
         menu.addItem(.separator())
 
         if let lastUpdated {
-            let item = NSMenuItem(title: "Son güncelleme: \(Self.timeFormatter.string(from: lastUpdated))", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(
+                title: text.lastUpdated(formattedTime(lastUpdated)),
+                action: nil,
+                keyEquivalent: ""
+            )
             item.isEnabled = false
             menu.addItem(item)
         }
 
-        let refreshItem = NSMenuItem(title: isRefreshing ? "Yenileniyor…" : "Şimdi yenile", action: #selector(refresh), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(
+            title: isRefreshing ? text.refreshing : text.refreshNow,
+            action: #selector(refresh),
+            keyEquivalent: ""
+        )
         refreshItem.target = self
-        refreshItem.isEnabled = !isRefreshing
+        refreshItem.isEnabled = !isRefreshing && !connectedNames.isEmpty
         menu.addItem(refreshItem)
 
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "UsageBar'dan çık", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
     }
 
-    private func addProvider(_ usage: ProviderUsage) {
-        let header = NSMenuItem(title: usage.name, action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
+    private func addProviderSelector() {
+        let providerNames = connectedProviderNames
+        let labels = providerNames.map { $0 == "Claude Code" ? "Claude" : $0 }
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 58))
 
+        let label = NSTextField(labelWithString: text.showInMenuBar)
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.frame = NSRect(x: 12, y: 37, width: 252, height: 16)
+        container.addSubview(label)
+
+        let selector = NSSegmentedControl(
+            labels: labels,
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(selectStatusProvider(_:))
+        )
+        selector.segmentStyle = .rounded
+        selector.frame = NSRect(x: 12, y: 7, width: 252, height: 28)
+        selector.selectedSegment = providerNames.firstIndex(of: selectedProviderName ?? "") ?? 0
+        container.addSubview(selector)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    private func addLanguageSelector() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 58))
+
+        let label = NSTextField(labelWithString: text.languageTitle)
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.frame = NSRect(x: 12, y: 37, width: 252, height: 16)
+        container.addSubview(label)
+
+        let selector = NSSegmentedControl(
+            labels: ["Türkçe", "English"],
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(selectLanguage(_:))
+        )
+        selector.segmentStyle = .rounded
+        selector.frame = NSRect(x: 12, y: 7, width: 252, height: 28)
+        selector.selectedSegment = language == .turkish ? 0 : 1
+        container.addSubview(selector)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    private func addConnectionItem(title: String, providerName: String, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.image = providerIcon(for: providerName, size: 16)
+        menu.addItem(item)
+    }
+
+    private func addProvider(_ usage: ProviderUsage) {
+        var rows: [NSAttributedString] = []
         if let session = usage.session {
-            menu.addItem(disabledItem(windowTitle("5 saat", session)))
+            rows.append(windowTitle(text.fiveHours, session))
         }
         if let weekly = usage.weekly {
-            menu.addItem(disabledItem(windowTitle("Haftalık", weekly)))
+            rows.append(windowTitle(text.weekly, weekly))
         }
         if let error = usage.error {
-            menu.addItem(disabledItem("  \(error)"))
+            rows.append(errorTitle(error))
         }
+
+        let width: CGFloat = 276
+        let rowHeights = rows.map { attributedTitle in
+            attributedTitle.string.contains("\n") ? CGFloat(40) : CGFloat(25)
+        }
+        let height = 46 + rowHeights.reduce(0, +)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+
+        if let icon = providerIcon(for: usage.name, size: 18) {
+            let imageView = NSImageView(frame: NSRect(x: 12, y: height - 31, width: 18, height: 18))
+            imageView.image = icon
+            imageView.imageScaling = .scaleProportionallyDown
+            container.addSubview(imageView)
+        }
+
+        let title = NSTextField(labelWithString: usage.name)
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.textColor = .labelColor
+        title.frame = NSRect(x: 38, y: height - 34, width: width - 50, height: 23)
+        container.addSubview(title)
+
+        var rowTop = height - 42
+        for (attributedTitle, rowHeight) in zip(rows, rowHeights) {
+            rowTop -= rowHeight
+            let row = NSTextField(labelWithAttributedString: attributedTitle)
+            row.maximumNumberOfLines = 2
+            row.lineBreakMode = .byWordWrapping
+            row.frame = NSRect(
+                x: 14,
+                y: rowTop,
+                width: width - 28,
+                height: rowHeight
+            )
+            container.addSubview(row)
+        }
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
     }
 
-    private func windowTitle(_ label: String, _ window: UsageWindow) -> String {
-        var text = "  \(label): %\(window.usedPercent) kullanıldı"
+    private func windowTitle(_ label: String, _ window: UsageWindow) -> NSAttributedString {
+        let remainingPercent = min(100, max(0, 100 - window.usedPercent))
+        let prefix = "\(label): "
+        let remaining = text.remaining(remainingPercent)
+        var displayText = prefix + remaining
         if let resetsAt = window.resetsAt {
-            text += " · \(Self.relativeReset(resetsAt))"
+            displayText += "\n\(text.resetIn(text.relativeReset(resetsAt)))"
         }
-        return text
+        let attributed = NSMutableAttributedString(
+            string: displayText,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 13),
+                .foregroundColor: NSColor.labelColor
+            ]
+        )
+        attributed.addAttributes(
+            [
+                .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: remainingColor(remainingPercent)
+            ],
+            range: NSRange(location: prefix.utf16.count, length: remaining.utf16.count)
+        )
+        if let lineBreak = displayText.firstIndex(of: "\n") {
+            let resetStart = displayText.index(after: lineBreak)
+            attributed.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 12),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ],
+                range: NSRange(resetStart..<displayText.endIndex, in: displayText)
+            )
+        }
+        return attributed
     }
 
-    private func disabledItem(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
+    private func errorTitle(_ issue: ProviderIssue) -> NSAttributedString {
+        let informational: Bool
+        switch issue {
+        case .refreshing, .noData: informational = true
+        default: informational = false
+        }
+        return NSAttributedString(
+            string: text.issue(issue),
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 13),
+                .foregroundColor: informational ? NSColor.secondaryLabelColor : NSColor.systemRed
+            ]
+        )
+    }
+
+    private func remainingColor(_ percent: Int) -> NSColor {
+        if percent <= 20 { return .systemRed }
+        if percent <= 40 { return .systemOrange }
+        return .systemGreen
+    }
+
+    private func providerIcon(for providerName: String, size: CGFloat) -> NSImage? {
+        let appPaths: [String]
+        let fallbackSymbol: String
+        switch providerName {
+        case "Codex":
+            appPaths = ["/Applications/Codex.app", "/Applications/ChatGPT.app"]
+            fallbackSymbol = "ellipsis.curlybraces"
+        case "Claude Code":
+            appPaths = ["/Applications/Claude.app"]
+            fallbackSymbol = "sparkles"
+        default:
+            appPaths = []
+            fallbackSymbol = "gauge.with.dots.needle.33percent"
+        }
+
+        if let appPath = appPaths.first(where: { FileManager.default.fileExists(atPath: $0) }),
+           let icon = NSWorkspace.shared.icon(forFile: appPath).copy() as? NSImage {
+            icon.size = NSSize(width: size, height: size)
+            return icon
+        }
+
+        let symbol = NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: providerName)
+        symbol?.size = NSSize(width: size, height: size)
+        symbol?.isTemplate = true
+        return symbol
     }
 
     @objc private func quit() {
         NSApp.terminate(nil)
     }
 
-    @objc private func toggleCodex() {
-        codexEnabled.toggle()
-        if !codexEnabled { usages.removeValue(forKey: "Codex") }
-        updateStatusTitle()
-        rebuildMenu()
-        if codexEnabled { refresh() }
-    }
-
-    @objc private func toggleClaude() {
-        if claudeEnabled {
-            claudeEnabled = false
-            usages.removeValue(forKey: "Claude Code")
-            updateStatusTitle()
-            rebuildMenu()
+    @objc private func connectCodex() {
+        guard ExecutableLocator.codex() != nil else {
+            showConnectionError(
+                title: text.codexNotFoundTitle,
+                message: text.codexNotFoundMessage
+            )
             return
         }
-
-        let alert = NSAlert()
-        alert.messageText = "Claude Code takibi etkinleştirilsin mi?"
-        alert.informativeText = "UsageBar yalnızca Claude Code'un mevcut giriş durumunu ve /usage ekranını okuyacak. macOS, Claude Code kimliği için Anahtar Zinciri izni sorabilir. Disk, ekran, erişilebilirlik veya otomasyon izni gerekmez."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Etkinleştir")
-        alert.addButton(withTitle: "Vazgeç")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        claudeEnabled = true
+        let wasEmpty = connectedProviderNames.isEmpty
+        codexConnected = true
+        if wasEmpty { selectedProviderName = "Codex" }
+        updateStatusTitle()
         rebuildMenu()
         refresh()
     }
 
-    private static func relativeReset(_ date: Date) -> String {
-        let interval = max(0, Int(date.timeIntervalSinceNow))
-        let days = interval / 86_400
-        let hours = (interval % 86_400) / 3_600
-        let minutes = (interval % 3_600) / 60
-        if days > 0 { return "\(days)g \(hours)sa sonra sıfırlanır" }
-        if hours > 0 { return "\(hours)sa \(minutes)dk sonra sıfırlanır" }
-        return "\(minutes)dk sonra sıfırlanır"
+    @objc private func connectClaude() {
+        guard ExecutableLocator.claude() != nil else {
+            showConnectionError(
+                title: text.claudeNotFoundTitle,
+                message: text.claudeNotFoundMessage
+            )
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = text.connectClaudeTitle
+        alert.informativeText = text.connectClaudeMessage
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: text.connect)
+        alert.addButton(withTitle: text.cancel)
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let wasEmpty = connectedProviderNames.isEmpty
+        claudeConnected = true
+        if wasEmpty { selectedProviderName = "Claude Code" }
+        updateStatusTitle()
+        rebuildMenu()
+        refresh()
     }
 
-    private static let timeFormatter: DateFormatter = {
+    @objc private func selectStatusProvider(_ sender: NSSegmentedControl) {
+        let providerNames = connectedProviderNames
+        guard providerNames.indices.contains(sender.selectedSegment) else { return }
+        selectedProviderName = providerNames[sender.selectedSegment]
+        updateStatusTitle()
+    }
+
+    @objc private func selectLanguage(_ sender: NSSegmentedControl) {
+        let selectedLanguage: AppLanguage = sender.selectedSegment == 1 ? .english : .turkish
+        guard selectedLanguage != language else { return }
+        language = selectedLanguage
+        updateStatusTitle()
+        menu.cancelTracking()
+        rebuildMenu()
+    }
+
+    private func showConnectionError(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: text.ok)
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func formattedTime(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
+        formatter.locale = Locale(identifier: language == .turkish ? "tr_TR" : "en_US")
+        formatter.dateFormat = language == .turkish ? "HH:mm" : "h:mm a"
+        return formatter.string(from: date)
+    }
 }
 
 private func runSelfTest() -> Int32 {
+    let turkish = Localizer(language: .turkish)
+    let english = Localizer(language: .english)
+    let durationOrigin = Date(timeIntervalSince1970: 1_000_000)
+    guard
+        turkish.remaining(59) == "%59 kaldı",
+        english.remaining(59) == "%59 remaining",
+        turkish.issue(.claudeNotLoggedIn) == "Claude Code'a giriş yapılmamış",
+        english.issue(.claudeNotLoggedIn) == "Claude Code is not signed in",
+        english.relativeReset(
+            durationOrigin.addingTimeInterval(3_600 + 15 * 60),
+            now: durationOrigin
+        ) == "1h 15m",
+        english.relativeReset(
+            durationOrigin.addingTimeInterval(6 * 86_400 + 21 * 3_600),
+            now: durationOrigin
+        ) == "6d 21h"
+    else {
+        fputs("Dil testi başarısız\n", stderr)
+        return 1
+    }
+
     let codex = """
     {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":35,"windowDurationMins":300,"resetsAt":1784740000},"secondary":{"usedPercent":12.4,"windowDurationMins":10080,"resetsAt":1785000000}}}}
     """
@@ -564,10 +1248,55 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
-    let claude = "Current session     41% used\nCurrent week (all models)     18% used"
+    let claude = """
+    Current session     41% used
+    Resets in 2 hours 15 minutes
+    Current week (all models)     18% used
+    Resets Jul 29, 11:59pm (Europe/Istanbul)
+    """
     let parsedClaude = UsageParser.claudeScreen(claude)
-    guard parsedClaude.session?.usedPercent == 41, parsedClaude.weekly?.usedPercent == 18 else {
+    guard
+        parsedClaude.session?.usedPercent == 41,
+        parsedClaude.weekly?.usedPercent == 18,
+        parsedClaude.session?.resetsAt != nil,
+        parsedClaude.weekly?.resetsAt != nil
+    else {
         fputs("Claude parser testi başarısız\n", stderr)
+        return 1
+    }
+
+    let structuredClaude = UsageParser.claudeStatusLine("""
+    \u{001B}[2CUSAGEBAR_LIMITS:|||\r
+    \u{001B}[18C101|1784740200|25|1785092400\r
+    """)
+    guard
+        structuredClaude?.session?.usedPercent == 100,
+        structuredClaude?.weekly?.usedPercent == 25,
+        structuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200,
+        structuredClaude?.weekly?.resetsAt?.timeIntervalSince1970 == 1_785_092_400
+    else {
+        fputs("Claude yapılandırılmış limit testi başarısız\n", stderr)
+        return 1
+    }
+
+    let summary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
+        "Codex": parsedCodex,
+        "Claude Code": parsedClaude
+    ])
+    guard summary?.providerName == "Claude Code", summary?.remainingPercent == 59 else {
+        fputs("Kalan kullanım özeti testi başarısız\n", stderr)
+        return 1
+    }
+
+    let weeklyOnlyCodex = """
+    {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":13,"windowDurationMins":10080,"resetsAt":1785340800},"secondary":null}}}
+    """
+    guard
+        let parsedWeeklyOnly = UsageParser.codexResponse(from: Data(weeklyOnlyCodex.utf8)),
+        parsedWeeklyOnly.session == nil,
+        parsedWeeklyOnly.weekly?.usedPercent == 13
+    else {
+        fputs("Codex haftalık-only parser testi başarısız\n", stderr)
         return 1
     }
 
@@ -575,50 +1304,8 @@ private func runSelfTest() -> Int32 {
     return 0
 }
 
-private func runProbe() -> Int32 {
-    let group = DispatchGroup()
-    let lock = NSLock()
-    var results: [ProviderUsage] = []
-
-    group.enter()
-    CodexUsageFetcher().fetch { usage in
-        lock.lock()
-        results.append(usage)
-        lock.unlock()
-        group.leave()
-    }
-
-    group.enter()
-    ClaudeUsageFetcher().fetch { usage in
-        lock.lock()
-        results.append(usage)
-        lock.unlock()
-        group.leave()
-    }
-
-    guard group.wait(timeout: .now() + 20) == .success else {
-        fputs("Probe zaman aşımına uğradı\n", stderr)
-        return 1
-    }
-
-    for usage in results.sorted(by: { $0.name < $1.name }) {
-        let session = usage.session.map { "%\($0.usedPercent)" } ?? "—"
-        let weekly = usage.weekly.map { "%\($0.usedPercent)" } ?? "—"
-        if let error = usage.error {
-            print("\(usage.name): \(error)")
-        } else {
-            print("\(usage.name): 5 saat \(session), haftalık \(weekly)")
-        }
-    }
-    return results.contains(where: { $0.session != nil }) ? 0 : 1
-}
-
 if CommandLine.arguments.contains("--self-test") {
     exit(runSelfTest())
-}
-
-if CommandLine.arguments.contains("--probe") {
-    exit(runProbe())
 }
 
 let application = NSApplication.shared
