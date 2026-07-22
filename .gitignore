@@ -11,3 +11,16 @@ DerivedData/
 # Packaged artifacts
 *.app
 *.zip
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p8
+*.p12
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
