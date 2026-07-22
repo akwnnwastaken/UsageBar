@@ -18,9 +18,8 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - Menü çubuğundaki yüzdeyi kritik seviyelerde turuncu veya kırmızı gösterir; renkler kapatılabilir ve üç farklı eşik profili seçilebilir.
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
-- İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 10 saniyede bir geçiş yapar.
+- İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
 - Her sağlayıcının son 24 saatlik kalan yüzde geçmişini yerel bir mini grafikte gösterir; grafik kapatılabilir ve geçmiş temizlenebilir.
-- İsteğe bağlı olarak GitHub Releases üzerinden yeni sürüm kontrolü yapar.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
@@ -83,8 +82,6 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
 
 Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
-
-Otomatik güncelleme kontrolü varsayılan olarak kapalıdır. Açılırsa UsageBar en fazla 24 saatte bir `api.github.com` üzerindeki herkese açık Release listesini okur; API anahtarı, GitHub hesabı veya telemetri kullanılmaz.
 
 ### Gizlilik ve macOS izinleri
 
@@ -161,9 +158,8 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Colors the menu-bar percentage orange or red at critical levels; colors can be disabled and three threshold profiles are available.
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
-- Rotates between Codex and Claude every ten seconds when `Auto` is selected and both providers are connected.
+- Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
 - Shows each provider's remaining-percentage history for the last 24 hours in a local mini chart; the chart can be disabled and its history cleared.
-- Optionally checks GitHub Releases for a newer version.
 - Can launch automatically at login through macOS Login Items.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.
@@ -226,8 +222,6 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
 
 When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
-
-Automatic update checks are disabled by default. When enabled, UsageBar reads the public Release list from `api.github.com` at most once every 24 hours; it uses no API key, GitHub account, or telemetry.
 
 ### Privacy and macOS permissions
 
