@@ -63,11 +63,9 @@ enum ProviderIssue {
     case claudeNotFound
     case claudeUntrustedExecutable
     case claudeNotLoggedIn
-    case claudeAuthFailed
-    case claudeAuthInvalidResponse
     case claudeUsageUnreadable
+    case claudeUsageTimedOut
     case claudeLaunchFailed(String)
-    case processTimedOut(String)
     case outputTooLarge(String)
 }
 
@@ -128,11 +126,9 @@ extension ProviderIssue {
         case .claudeNotFound: return "claude_not_found"
         case .claudeUntrustedExecutable: return "claude_untrusted_executable"
         case .claudeNotLoggedIn: return "claude_not_logged_in"
-        case .claudeAuthFailed: return "claude_auth_failed"
-        case .claudeAuthInvalidResponse: return "claude_auth_invalid_response"
         case .claudeUsageUnreadable: return "claude_usage_unreadable"
+        case .claudeUsageTimedOut: return "claude_usage_timed_out"
         case .claudeLaunchFailed: return "claude_launch_failed"
-        case .processTimedOut: return "process_timed_out"
         case .outputTooLarge: return "output_too_large"
         }
     }
@@ -519,16 +515,12 @@ struct Localizer {
             return claudeUntrustedTitle
         case .claudeNotLoggedIn:
             return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
-        case .claudeAuthFailed:
-            return pick("Claude Code giriş durumu kontrol edilemedi", "Could not check Claude Code sign-in status")
-        case .claudeAuthInvalidResponse:
-            return pick("Claude Code geçersiz giriş durumu döndürdü", "Claude Code returned an invalid sign-in status")
         case .claudeUsageUnreadable:
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
+        case .claudeUsageTimedOut:
+            return pick("Claude kullanım sorgusu zaman aşımına uğradı", "Claude usage query timed out")
         case .claudeLaunchFailed(let reason):
             return pick("Claude Code başlatılamadı: \(reason)", "Could not start Claude Code: \(reason)")
-        case .processTimedOut(let provider):
-            return pick("\(provider) işlemi zaman aşımına uğradı", "\(provider) process timed out")
         case .outputTooLarge(let provider):
             return pick("\(provider) çok fazla çıktı üretti", "\(provider) produced too much output")
         }
@@ -1006,7 +998,6 @@ private enum ProviderProcessLauncher {
 
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
-    static let authTimeout: DispatchTimeInterval = .seconds(5)
     private static let terminationGrace: TimeInterval = 1
 
     static func stop(_ process: Process) {
@@ -1232,29 +1223,6 @@ final class ClaudeUsageFetcher {
                 return
             }
 
-            switch Self.loginStatus(executable) {
-            case .loggedIn:
-                break
-            case .loggedOut:
-                completion(.unavailable("Claude Code", .claudeNotLoggedIn))
-                return
-            case .timedOut:
-                completion(.unavailable("Claude Code", .processTimedOut("Claude Code")))
-                return
-            case .outputTooLarge:
-                completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
-                return
-            case .launchFailed(let reason):
-                completion(.unavailable("Claude Code", .claudeLaunchFailed(reason)))
-                return
-            case .commandFailed:
-                completion(.unavailable("Claude Code", .claudeAuthFailed))
-                return
-            case .invalidResponse:
-                completion(.unavailable("Claude Code", .claudeAuthInvalidResponse))
-                return
-            }
-
             let process = Process()
             let input = Pipe()
             let output = Pipe()
@@ -1303,12 +1271,19 @@ final class ClaudeUsageFetcher {
                         parsedUsage = fallback
                         break
                     }
+                    if case .claudeNotLoggedIn? = fallback.error {
+                        parsedUsage = fallback
+                        break
+                    }
 
                     if sentUsageFallbackCount < Self.usageFallbackDelays.count,
                        Date().timeIntervalSince(startedAt)
                         >= Self.usageFallbackDelays[sentUsageFallbackCount],
                        process.isRunning {
-                        try? input.fileHandleForWriting.write(contentsOf: Data("/usage\r".utf8))
+                        // Claude Code 2.1.203's raw terminal input treats LF as
+                        // Enter in this PTY. CR only inserts the command without
+                        // submitting it, which leaves the fetch waiting forever.
+                        try? input.fileHandleForWriting.write(contentsOf: Data("/usage\n".utf8))
                         sentUsageFallbackCount += 1
                     }
 
@@ -1328,7 +1303,7 @@ final class ClaudeUsageFetcher {
                 if let parsedUsage {
                     completion(parsedUsage)
                 } else if Date() >= deadline {
-                    completion(.unavailable("Claude Code", .processTimedOut("Claude Code")))
+                    completion(.unavailable("Claude Code", .claudeUsageTimedOut))
                 } else {
                     completion(.unavailable("Claude Code", .claudeUsageUnreadable))
                 }
@@ -1336,60 +1311,6 @@ final class ClaudeUsageFetcher {
                 ProviderProcessLimits.stop(process)
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
-        }
-    }
-
-    private enum LoginStatus {
-        case loggedIn
-        case loggedOut
-        case timedOut
-        case outputTooLarge
-        case launchFailed(String)
-        case commandFailed
-        case invalidResponse
-    }
-
-    private static func loginStatus(_ executable: String) -> LoginStatus {
-        let process = Process()
-        let output = Pipe()
-        let errors = Pipe()
-        let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
-        let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
-        let terminated = DispatchSemaphore(value: 0)
-        ProviderProcessLauncher.configure(
-            process,
-            executable: executable,
-            arguments: ["auth", "status"]
-        )
-        process.standardOutput = output
-        process.standardError = errors
-        process.terminationHandler = { _ in terminated.signal() }
-        ProviderProcessContext.apply(to: process)
-
-        do {
-            try process.run()
-            let outputDrainer = PipeDrainer.start(output, capture: captured)
-            let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
-            let waitResult = terminated.wait(timeout: .now() + ProviderProcessLimits.authTimeout)
-            if waitResult == .timedOut {
-                ProviderProcessLimits.stop(process)
-            }
-            _ = outputDrainer.wait(timeout: .now() + .seconds(1))
-            _ = errorDrainer.wait(timeout: .now() + .seconds(1))
-
-            if waitResult == .timedOut { return .timedOut }
-            let snapshot = captured.snapshot()
-            if snapshot.exceeded || errorCapture.snapshot().exceeded { return .outputTooLarge }
-            guard
-                let object = try JSONSerialization.jsonObject(with: snapshot.data) as? [String: Any],
-                let loggedIn = object["loggedIn"] as? Bool
-            else {
-                return process.terminationStatus == 0 ? .invalidResponse : .commandFailed
-            }
-            return loggedIn ? .loggedIn : .loggedOut
-        } catch {
-            ProviderProcessLimits.stop(process)
-            return .launchFailed(error.localizedDescription)
         }
     }
 
