@@ -6,10 +6,30 @@ BUILD_DIR="$PROJECT_DIR/build"
 OUTPUT_APP_DIR="$BUILD_DIR/UsageBar.app"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/usagebar-build.XXXXXX")"
 APP_DIR="$STAGING_DIR/UsageBar.app"
-trap 'rm -rf "$STAGING_DIR"' EXIT
+mkdir -p "$BUILD_DIR/module-cache"
+PUBLISH_DIR="$(mktemp -d "$BUILD_DIR/.usagebar-publish.XXXXXX")"
+PUBLISH_APP_DIR="$PUBLISH_DIR/UsageBar.app"
+BACKUP_APP_DIR="$PUBLISH_DIR/Previous.app"
+
+cleanup() {
+  rm -rf "$STAGING_DIR" "$PUBLISH_DIR"
+}
+
+remove_signature_detritus() {
+  local bundle="$1"
+  xattr -cr "$bundle"
+  while IFS= read -r -d '' item; do
+    xattr -d com.apple.FinderInfo "$item" 2>/dev/null || true
+    xattr -d com.apple.ResourceFork "$item" 2>/dev/null || true
+  done < <(find "$bundle" -print0)
+  # Traversing a File Provider folder can recreate an empty FinderInfo on the
+  # bundle root, so clean that root once more immediately before verification.
+  xattr -d com.apple.FinderInfo "$bundle" 2>/dev/null || true
+  xattr -d com.apple.ResourceFork "$bundle" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-mkdir -p "$BUILD_DIR/module-cache"
 
 CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache" \
 SWIFT_MODULECACHE_PATH="$BUILD_DIR/module-cache" \
@@ -27,12 +47,31 @@ cp "$PROJECT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 xattr -cr "$APP_DIR"
 codesign --force --deep --sign - --identifier local.codex.usagebar "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
-ditto "$APP_DIR" "$OUTPUT_APP_DIR"
-while IFS= read -r -d '' item; do
-  for attribute in com.apple.FinderInfo com.apple.ResourceFork; do
-    if xattr -p "$attribute" "$item" >/dev/null 2>&1; then
-      xattr -d "$attribute" "$item"
-    fi
-  done
-done < <(find "$OUTPUT_APP_DIR" -print0)
+
+# Publish from a clean directory. Copying into an existing .app would preserve
+# stale files from an earlier build and invalidate the final code signature.
+ditto "$APP_DIR" "$PUBLISH_APP_DIR"
+remove_signature_detritus "$PUBLISH_APP_DIR"
+codesign --verify --deep --strict "$PUBLISH_APP_DIR"
+
+if [[ -e "$OUTPUT_APP_DIR" ]]; then
+  mv "$OUTPUT_APP_DIR" "$BACKUP_APP_DIR"
+fi
+
+if ! mv "$PUBLISH_APP_DIR" "$OUTPUT_APP_DIR"; then
+  if [[ -e "$BACKUP_APP_DIR" ]]; then
+    mv "$BACKUP_APP_DIR" "$OUTPUT_APP_DIR"
+  fi
+  exit 1
+fi
+
+remove_signature_detritus "$OUTPUT_APP_DIR"
+if ! codesign --verify --deep --strict "$OUTPUT_APP_DIR"; then
+  rm -rf "$OUTPUT_APP_DIR"
+  if [[ -e "$BACKUP_APP_DIR" ]]; then
+    mv "$BACKUP_APP_DIR" "$OUTPUT_APP_DIR"
+  fi
+  exit 1
+fi
+
 print "$OUTPUT_APP_DIR"

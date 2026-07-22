@@ -62,7 +62,7 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.4.2-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.4.3-macOS-arm64.zip
 ```
 
 Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yapamadığı bir uygulamayı açma](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
@@ -193,7 +193,7 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.4.2-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.4.3-macOS-arm64.zip
 ```
 
 Apple's official instructions: [Open an app Apple cannot check for malicious software](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
