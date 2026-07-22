@@ -31,6 +31,15 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 
 Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 
+## İndir ve kur
+
+1. [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından en güncel `macOS-arm64.zip` dosyasını indirin.
+2. ZIP dosyasını açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
+3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
+
+> [!NOTE]
+> İlk Beta sürümü Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. macOS ilk açılışta uyarı gösterirse Finder'da uygulamaya sağ tıklayıp **Aç** seçeneğini kullanın.
+
 ## Kullanım
 
 1. UsageBar'ı açın.
