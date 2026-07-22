@@ -132,6 +132,64 @@ enum UsageHistoryModel {
     }
 }
 
+struct UsageHistoryChartModel {
+    static let resetJumpThreshold = 20
+    static let minimumVerticalSpan = 10.0
+
+    let samples: [UsageHistorySample]
+    let lowerBound: Double
+    let upperBound: Double
+    let resetIndices: [Int]
+
+    init(samples: [UsageHistorySample]) {
+        let sortedSamples = samples.sorted { $0.recordedAt < $1.recordedAt }
+        self.samples = sortedSamples
+        let values = sortedSamples.map { Double(min(100, max(0, $0.remainingPercent))) }
+        let minimum = values.min() ?? 0
+        let maximum = values.max() ?? 100
+        let rawSpan = maximum - minimum
+        let padding = max(2, rawSpan * 0.15)
+        let desiredSpan = max(Self.minimumVerticalSpan, rawSpan + padding * 2)
+        var lower = floor((minimum + maximum - desiredSpan) / 2)
+        var upper = ceil((minimum + maximum + desiredSpan) / 2)
+
+        if lower < 0 {
+            upper = min(100, upper - lower)
+            lower = 0
+        }
+        if upper > 100 {
+            lower = max(0, lower - (upper - 100))
+            upper = 100
+        }
+        if upper <= lower {
+            lower = 0
+            upper = 100
+        }
+
+        lowerBound = lower
+        upperBound = upper
+        resetIndices = sortedSamples.indices.dropFirst().filter { index in
+            sortedSamples[index].remainingPercent - sortedSamples[index - 1].remainingPercent
+                >= Self.resetJumpThreshold
+        }
+    }
+
+    var recordedDuration: TimeInterval {
+        guard let first = samples.first, let last = samples.last else { return 0 }
+        return max(0, last.recordedAt.timeIntervalSince(first.recordedAt))
+    }
+
+    var delta: Int? {
+        guard let first = samples.first, let last = samples.last, samples.count > 1 else { return nil }
+        return last.remainingPercent - first.remainingPercent
+    }
+
+    func normalizedY(for remainingPercent: Int) -> CGFloat {
+        let clamped = Double(min(100, max(0, remainingPercent)))
+        return CGFloat((clamped - lowerBound) / (upperBound - lowerBound))
+    }
+}
+
 struct Localizer {
     let language: AppLanguage
 
@@ -157,12 +215,60 @@ struct Localizer {
     var usageHistoryTitle: String { pick("Kullanım geçmişi", "Usage history") }
     var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
     var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
-    var last24Hours: String { pick("Son 24 saat", "Last 24 hours") }
     var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
     var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
     var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
+
+    func usageHistoryRange(_ duration: TimeInterval) -> String {
+        if duration < 60 {
+            return pick("İlk kayıt", "First sample")
+        }
+
+        let totalMinutes = Int(duration) / 60
+        if totalMinutes < 60 {
+            return pick("Son \(totalMinutes) dk", "Last \(totalMinutes)m")
+        }
+
+        let totalHours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if totalHours < 24 {
+            let suffix = minutes > 0 ? pick(" \(minutes) dk", " \(minutes)m") : ""
+            return pick("Son \(totalHours) sa", "Last \(totalHours)h") + suffix
+        }
+
+        let days = totalHours / 24
+        let hours = totalHours % 24
+        let suffix = hours > 0 ? pick(" \(hours) sa", " \(hours)h") : ""
+        return pick("Son \(days) gün", "Last \(days)d") + suffix
+    }
+
+    func usageHistorySummary(_ model: UsageHistoryChartModel) -> String {
+        guard let first = model.samples.first, let last = model.samples.last else { return noData }
+        let firstPercent = language == .turkish
+            ? "%\(first.remainingPercent)"
+            : "\(first.remainingPercent)%"
+        guard let delta = model.delta else {
+            return pick("Başlangıç: \(firstPercent)", "Start: \(firstPercent)")
+        }
+
+        let lastPercent = language == .turkish
+            ? "%\(last.remainingPercent)"
+            : "\(last.remainingPercent)%"
+        let signedDelta = delta > 0 ? "+\(delta)" : "\(delta)"
+        var result = pick(
+            "\(firstPercent) → \(lastPercent) · değişim \(signedDelta)",
+            "\(firstPercent) → \(lastPercent) · change \(signedDelta)"
+        )
+        if !model.resetIndices.isEmpty {
+            result += pick(
+                " · \(model.resetIndices.count) sıfırlama",
+                " · \(model.resetIndices.count) reset"
+            )
+        }
+        return result
+    }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
     var codexNotFoundMessage: String {
         pick(
@@ -974,11 +1080,11 @@ final class ClaudeUsageFetcher {
 }
 
 final class UsageSparklineView: NSView {
-    private let samples: [UsageHistorySample]
+    private let model: UsageHistoryChartModel
     private let lineColor: NSColor
 
     init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor) {
-        self.samples = samples.sorted { $0.recordedAt < $1.recordedAt }
+        model = UsageHistoryChartModel(samples: samples)
         self.lineColor = lineColor
         super.init(frame: frameRect)
         setAccessibilityElement(true)
@@ -995,19 +1101,42 @@ final class UsageSparklineView: NSView {
         let chartRect = bounds.insetBy(dx: 1, dy: 2)
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
         NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
-        guard let first = samples.first, let last = samples.last else { return }
+        guard let first = model.samples.first, let last = model.samples.last else { return }
 
         let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
-        let path = NSBezierPath()
-        for (index, sample) in samples.enumerated() {
+        let point: (Int, UsageHistorySample) -> NSPoint = { index, sample in
             let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
-            let x = samples.count == 1
-                ? chartRect.maxX
+            let x = self.model.samples.count == 1
+                ? chartRect.midX
                 : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
-            let y = chartRect.minY
-                + CGFloat(min(100, max(0, sample.remainingPercent))) / 100 * chartRect.height
-            let point = NSPoint(x: x, y: y)
-            if index == 0 { path.move(to: point) } else { path.line(to: point) }
+            let y = chartRect.minY + self.model.normalizedY(for: sample.remainingPercent) * chartRect.height
+            return NSPoint(x: x, y: y)
+        }
+
+        NSColor.secondaryLabelColor.withAlphaComponent(0.12).setStroke()
+        let guide = NSBezierPath()
+        guide.move(to: NSPoint(x: chartRect.minX, y: chartRect.midY))
+        guide.line(to: NSPoint(x: chartRect.maxX, y: chartRect.midY))
+        guide.lineWidth = 0.5
+        guide.stroke()
+
+        for index in model.resetIndices {
+            let resetPoint = point(index, model.samples[index])
+            let marker = NSBezierPath()
+            marker.move(to: NSPoint(x: resetPoint.x, y: chartRect.minY))
+            marker.line(to: NSPoint(x: resetPoint.x, y: chartRect.maxY))
+            lineColor.withAlphaComponent(0.35).setStroke()
+            marker.lineWidth = 1
+            marker.stroke()
+            lineColor.setStroke()
+            let ring = NSRect(x: resetPoint.x - 2.5, y: resetPoint.y - 2.5, width: 5, height: 5)
+            NSBezierPath(ovalIn: ring).stroke()
+        }
+
+        let path = NSBezierPath()
+        for (index, sample) in model.samples.enumerated() {
+            let samplePoint = point(index, sample)
+            if index == 0 { path.move(to: samplePoint) } else { path.line(to: samplePoint) }
         }
         lineColor.setStroke()
         path.lineWidth = 1.75
@@ -1015,9 +1144,8 @@ final class UsageSparklineView: NSView {
         path.lineCapStyle = .round
         path.stroke()
 
-        let latestPercent = min(100, max(0, last.remainingPercent))
-        let latestY = chartRect.minY + CGFloat(latestPercent) / 100 * chartRect.height
-        let dotRect = NSRect(x: chartRect.maxX - 2, y: latestY - 2, width: 4, height: 4)
+        let latestPoint = point(model.samples.count - 1, last)
+        let dotRect = NSRect(x: latestPoint.x - 2, y: latestPoint.y - 2, width: 4, height: 4)
         lineColor.setFill()
         NSBezierPath(ovalIn: dotRect).fill()
     }
@@ -1532,7 +1660,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let historySamples = usageHistoryEnabled ? (usageHistory[usage.name] ?? []) : []
-        let historyHeight: CGFloat = historySamples.isEmpty ? 0 : 44
+        let historyHeight: CGFloat = historySamples.isEmpty ? 0 : 58
 
         let width: CGFloat = 276
         let rowHeights = rows.map { attributedTitle in
@@ -1570,19 +1698,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         if let latestSample = historySamples.last {
-            let historyLabel = NSTextField(labelWithString: text.last24Hours)
+            let historyModel = UsageHistoryChartModel(samples: historySamples)
+            let historyRange = text.usageHistoryRange(historyModel.recordedDuration)
+            let historySummary = text.usageHistorySummary(historyModel)
+            let historyLabel = NSTextField(labelWithString: historyRange)
             historyLabel.font = .systemFont(ofSize: 10, weight: .medium)
             historyLabel.textColor = .secondaryLabelColor
-            historyLabel.frame = NSRect(x: 14, y: 29, width: width - 28, height: 13)
+            historyLabel.frame = NSRect(x: 14, y: 43, width: width - 28, height: 13)
             container.addSubview(historyLabel)
+
+            let summaryLabel = NSTextField(labelWithString: historySummary)
+            summaryLabel.font = .systemFont(ofSize: 9.5, weight: .regular)
+            summaryLabel.textColor = .secondaryLabelColor
+            summaryLabel.lineBreakMode = .byTruncatingTail
+            summaryLabel.frame = NSRect(x: 14, y: 30, width: width - 28, height: 12)
+            container.addSubview(summaryLabel)
 
             let graph = UsageSparklineView(
                 frame: NSRect(x: 14, y: 6, width: width - 28, height: 22),
                 samples: historySamples,
                 lineColor: remainingColor(latestSample.remainingPercent)
             )
-            graph.setAccessibilityLabel(text.last24Hours)
-            graph.setAccessibilityValue(text.remaining(latestSample.remainingPercent))
+            graph.setAccessibilityLabel(historyRange)
+            graph.setAccessibilityValue(historySummary)
             container.addSubview(graph)
         }
 
@@ -1889,11 +2027,30 @@ private func runSelfTest() -> Int32 {
     )
     let encodedHistory = UsageHistoryModel.encode(["Codex": replacedHistory])
     let decodedHistory = UsageHistoryModel.decode(encodedHistory)
+    let flatChart = UsageHistoryChartModel(samples: [
+        UsageHistorySample(recordedAt: historyOrigin, remainingPercent: 33)
+    ])
+    let changingChart = UsageHistoryChartModel(samples: [
+        UsageHistorySample(recordedAt: historyOrigin, remainingPercent: 33),
+        UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(35 * 60), remainingPercent: 31)
+    ])
+    let resetChart = UsageHistoryChartModel(samples: [
+        UsageHistorySample(recordedAt: historyOrigin, remainingPercent: 20),
+        UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(60), remainingPercent: 19),
+        UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(120), remainingPercent: 90)
+    ])
     guard
         prunedHistory.count == 2,
         replacedHistory.count == 2,
         replacedHistory.last?.remainingPercent == 65,
-        decodedHistory["Codex"] == replacedHistory
+        decodedHistory["Codex"] == replacedHistory,
+        flatChart.lowerBound == 28,
+        flatChart.upperBound == 38,
+        changingChart.delta == -2,
+        resetChart.resetIndices == [2],
+        turkish.usageHistoryRange(changingChart.recordedDuration) == "Son 35 dk",
+        english.usageHistoryRange(changingChart.recordedDuration) == "Last 35m",
+        english.usageHistorySummary(changingChart) == "33% → 31% · change -2"
     else {
         fputs("Yerel kullanım geçmişi testi başarısız\n", stderr)
         return 1

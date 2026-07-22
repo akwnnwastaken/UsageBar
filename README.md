@@ -22,7 +22,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
-- Her sağlayıcının son 24 saatlik kalan yüzde geçmişini yerel bir mini grafikte gösterir; grafik kapatılabilir ve geçmiş temizlenebilir.
+- Her sağlayıcının 24 saate kadar kalan yüzde geçmişini yerel bir mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
@@ -88,7 +88,7 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
 
-Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
+Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Başlangıçta grafik yalnızca gerçekten kaydedilmiş süreyi gösterir ve zamanla 24 saate ulaşır. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
 
 ### Gizlilik ve macOS izinleri
 
@@ -178,7 +178,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
-- Shows each provider's remaining-percentage history for the last 24 hours in a local mini chart; the chart can be disabled and its history cleared.
+- Shows up to 24 hours of each provider's remaining-percentage history in a local mini chart. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets.
 - Can launch automatically at login through macOS Login Items.
 - Includes Turkish and English interfaces and remembers the selected language.
 - Refreshes usage every five minutes and when the menu is reopened.
@@ -244,7 +244,7 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
 
-When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
+When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. The chart initially shows only the span actually recorded and grows toward 24 hours. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
 
 ### Privacy and macOS permissions
 
