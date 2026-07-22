@@ -4,14 +4,50 @@ import Foundation
 import ServiceManagement
 import UsageBarCore
 
+enum UsageWindowKind: Equatable {
+    case fiveHour
+    case weekly
+    case duration(minutes: Int)
+    case unknown(position: Int)
+
+    static func classified(durationMinutes: Int?, position: Int) -> UsageWindowKind {
+        guard let durationMinutes else { return .unknown(position: position) }
+        if (4 * 60)...(6 * 60) ~= durationMinutes { return .fiveHour }
+        if (6 * 24 * 60)...(8 * 24 * 60) ~= durationMinutes { return .weekly }
+        return .duration(minutes: durationMinutes)
+    }
+
+    var historyKey: String {
+        switch self {
+        case .fiveHour: return "five-hour"
+        case .weekly: return "weekly"
+        case .duration(let minutes): return "duration-\(minutes)"
+        case .unknown(let position): return "unknown-\(position)"
+        }
+    }
+}
+
 struct UsageWindow {
+    let kind: UsageWindowKind
     let usedPercent: Int
     let resetsAt: Date?
     let durationMinutes: Int?
+
+    init(
+        kind: UsageWindowKind? = nil,
+        usedPercent: Int,
+        resetsAt: Date?,
+        durationMinutes: Int?,
+        position: Int = 0
+    ) {
+        self.kind = kind ?? .classified(durationMinutes: durationMinutes, position: position)
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.durationMinutes = durationMinutes
+    }
 }
 
 enum ProviderIssue {
-    case custom(String)
     case refreshing
     case noData
     case codexUsageUnavailable
@@ -19,6 +55,8 @@ enum ProviderIssue {
     case codexNotFound
     case codexTimedOut
     case codexEmptyResponse
+    case codexIncompatible
+    case codexCommandFailed
     case codexLaunchFailed(String)
     case claudeNotFound
     case claudeNotLoggedIn
@@ -32,12 +70,14 @@ enum ProviderIssue {
 
 struct ProviderUsage {
     let name: String
-    let session: UsageWindow?
-    let weekly: UsageWindow?
+    let windows: [UsageWindow]
     let error: ProviderIssue?
 
+    var session: UsageWindow? { windows.first { $0.kind == .fiveHour } }
+    var weekly: UsageWindow? { windows.first { $0.kind == .weekly } }
+
     static func unavailable(_ name: String, _ issue: ProviderIssue) -> ProviderUsage {
-        ProviderUsage(name: name, session: nil, weekly: nil, error: issue)
+        ProviderUsage(name: name, windows: [], error: issue)
     }
 }
 
@@ -184,6 +224,26 @@ struct Localizer {
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
 
+    func usageWindowLabel(_ window: UsageWindow, position: Int) -> String {
+        switch window.kind {
+        case .fiveHour:
+            return fiveHours
+        case .weekly:
+            return weekly
+        case .duration(let minutes):
+            let days = minutes / (24 * 60)
+            let hours = (minutes % (24 * 60)) / 60
+            let remainingMinutes = minutes % 60
+            var parts: [String] = []
+            if days > 0 { parts.append(pick("\(days) gün", "\(days) days")) }
+            if hours > 0 { parts.append(pick("\(hours) saat", "\(hours) hours")) }
+            if remainingMinutes > 0 { parts.append(pick("\(remainingMinutes) dk", "\(remainingMinutes) min")) }
+            return parts.isEmpty ? pick("Kullanım penceresi", "Usage window") : parts.joined(separator: " ")
+        case .unknown:
+            return pick("Kullanım penceresi \(position + 1)", "Usage window \(position + 1)")
+        }
+    }
+
     func usageHistoryRange(_ duration: TimeInterval) -> String {
         if duration < 60 {
             return pick("İlk kayıt", "First sample")
@@ -308,7 +368,6 @@ struct Localizer {
 
     func issue(_ issue: ProviderIssue) -> String {
         switch issue {
-        case .custom(let message): return message
         case .refreshing: return refreshing
         case .noData: return noData
         case .codexUsageUnavailable:
@@ -321,6 +380,10 @@ struct Localizer {
             return pick("Codex yanıtı zaman aşımına uğradı", "Codex response timed out")
         case .codexEmptyResponse:
             return pick("Codex kullanım yanıtı boş", "Codex returned an empty usage response")
+        case .codexIncompatible:
+            return pick("Codex sürümü güvenli kullanım sorgusuyla uyumlu değil", "This Codex version is incompatible with the safe usage query")
+        case .codexCommandFailed:
+            return pick("Codex kullanım komutu başarısız oldu", "The Codex usage command failed")
         case .codexLaunchFailed(let reason):
             return pick("Codex başlatılamadı: \(reason)", "Could not start Codex: \(reason)")
         case .claudeNotFound:
@@ -358,8 +421,7 @@ enum UsageSummaryCalculator {
             // Fall back to weekly only when Claude does not return session data.
             selectedWindow = usage.session ?? usage.weekly
         } else {
-            selectedWindow = [usage.session, usage.weekly]
-                .compactMap { $0 }
+            selectedWindow = usage.windows
                 .max(by: { $0.usedPercent < $1.usedPercent })
         }
         guard let selectedWindow else { return nil }
@@ -380,9 +442,7 @@ enum UsageParser {
         else { return nil }
 
         if let error = object["error"] as? [String: Any] {
-            if let message = error["message"] as? String {
-                return .unavailable("Codex", .custom(message))
-            }
+            _ = error
             return .unavailable("Codex", .codexUsageUnavailable)
         }
 
@@ -393,31 +453,11 @@ enum UsageParser {
             return .unavailable("Codex", .codexLimitMissing)
         }
 
-        let primary = rateWindow(limits["primary"])
-        let secondary = rateWindow(limits["secondary"])
-        let windows = [primary, secondary].compactMap { $0 }
+        let windows = [limits["primary"], limits["secondary"]]
+            .enumerated()
+            .compactMap { rateWindow($0.element, position: $0.offset) }
 
-        // `primary` and `secondary` describe ordering, not duration. Some
-        // accounts expose a five-hour primary window, while others expose only
-        // a weekly primary window. Classify using the duration returned by the
-        // API instead of assigning fixed labels by position.
-        var session = windows.first(where: { window in
-            guard let minutes = window.durationMinutes else { return false }
-            return minutes <= 24 * 60
-        })
-        var weekly = windows.first(where: { window in
-            guard let minutes = window.durationMinutes else { return false }
-            return minutes >= 6 * 24 * 60 && minutes <= 8 * 24 * 60
-        })
-
-        // Older Codex versions may omit windowDurationMins. Preserve their
-        // positional behavior only when no duration can be classified.
-        if session == nil && weekly == nil {
-            session = primary
-            weekly = secondary
-        }
-
-        return ProviderUsage(name: "Codex", session: session, weekly: weekly, error: nil)
+        return ProviderUsage(name: "Codex", windows: windows, error: nil)
     }
 
     static func claudeScreen(_ raw: String) -> ProviderUsage {
@@ -451,12 +491,14 @@ enum UsageParser {
 
         return ProviderUsage(
             name: "Claude Code",
-            session: session.map {
-                UsageWindow(usedPercent: $0, resetsAt: sessionReset, durationMinutes: 300)
-            },
-            weekly: weekly.map {
-                UsageWindow(usedPercent: $0, resetsAt: weeklyReset, durationMinutes: 10_080)
-            },
+            windows: [
+                session.map {
+                    UsageWindow(kind: .fiveHour, usedPercent: $0, resetsAt: sessionReset, durationMinutes: 300)
+                },
+                weekly.map {
+                    UsageWindow(kind: .weekly, usedPercent: $0, resetsAt: weeklyReset, durationMinutes: 10_080)
+                }
+            ].compactMap { $0 },
             error: nil
         )
     }
@@ -491,27 +533,31 @@ enum UsageParser {
 
             result = ProviderUsage(
                 name: "Claude Code",
-                session: fiveHourUsed.map {
-                    UsageWindow(
-                        usedPercent: min(100, max(0, Int($0.rounded()))),
-                        resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
-                        durationMinutes: 300
-                    )
-                },
-                weekly: sevenDayUsed.map {
-                    UsageWindow(
-                        usedPercent: min(100, max(0, Int($0.rounded()))),
-                        resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
-                        durationMinutes: 10_080
-                    )
-                },
+                windows: [
+                    fiveHourUsed.map {
+                        UsageWindow(
+                            kind: .fiveHour,
+                            usedPercent: min(100, max(0, Int($0.rounded()))),
+                            resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
+                            durationMinutes: 300
+                        )
+                    },
+                    sevenDayUsed.map {
+                        UsageWindow(
+                            kind: .weekly,
+                            usedPercent: min(100, max(0, Int($0.rounded()))),
+                            resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
+                            durationMinutes: 10_080
+                        )
+                    }
+                ].compactMap { $0 },
                 error: nil
             )
         }
         return result
     }
 
-    private static func rateWindow(_ value: Any?) -> UsageWindow? {
+    private static func rateWindow(_ value: Any?, position: Int) -> UsageWindow? {
         guard let dictionary = value as? [String: Any] else { return nil }
         guard let used = number(dictionary["usedPercent"]) else { return nil }
         let resetSeconds = number(dictionary["resetsAt"])
@@ -519,7 +565,8 @@ enum UsageParser {
         return UsageWindow(
             usedPercent: min(100, max(0, Int(used.rounded()))),
             resetsAt: resetSeconds.map { Date(timeIntervalSince1970: $0) },
-            durationMinutes: duration.map { Int($0) }
+            durationMinutes: duration.map { Int($0) },
+            position: position
         )
     }
 
@@ -804,6 +851,8 @@ private enum PipeDrainer {
 }
 
 final class CodexUsageFetcher {
+    private static let responseTimeout: TimeInterval = 15
+
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
             guard let executable = ExecutableLocator.codex() else {
@@ -831,86 +880,75 @@ final class CodexUsageFetcher {
             process.standardError = errors
             ProviderProcessContext.apply(to: process)
 
-            let semaphore = DispatchSemaphore(value: 0)
-            let lock = NSLock()
-            var pending = Data()
-            var result: ProviderUsage?
-            var totalOutputBytes = 0
-            var outputExceeded = false
-            var didSignal = false
-
-            output.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                lock.lock()
-                defer { lock.unlock() }
-
-                guard !outputExceeded else { return }
-                let remaining = ProviderProcessLimits.maxOutputBytes - totalOutputBytes
-                guard chunk.count <= remaining else {
-                    outputExceeded = true
-                    pending.removeAll(keepingCapacity: false)
-                    if !didSignal {
-                        didSignal = true
-                        semaphore.signal()
-                    }
-                    return
-                }
-                totalOutputBytes += chunk.count
-                pending.append(chunk)
-                while let newline = pending.firstIndex(of: 0x0A) {
-                    let line = pending.prefix(upTo: newline)
-                    pending.removeSubrange(...newline)
-                    if let parsed = UsageParser.codexResponse(from: Data(line)) {
-                        result = parsed
-                        if !didSignal {
-                            didSignal = true
-                            semaphore.signal()
-                        }
-                        break
-                    }
-                }
-            }
-            errors.fileHandleForReading.readabilityHandler = { handle in
-                _ = handle.availableData
-            }
-
             do {
                 try process.run()
+                let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
+                let dataAvailable = DispatchSemaphore(value: 0)
+                let outputDrainer = PipeDrainer.start(
+                    output,
+                    capture: captured,
+                    dataAvailable: dataAvailable
+                )
+                let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
                 let messages = [
                     "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"\(AppMetadata.version)\"}}}",
                     "{\"method\":\"initialized\"}",
                     "{\"method\":\"account/rateLimits/read\",\"id\":2}"
                 ].joined(separator: "\n") + "\n"
-                input.fileHandleForWriting.write(Data(messages.utf8))
+                try? input.fileHandleForWriting.write(contentsOf: Data(messages.utf8))
 
-                let waitResult = semaphore.wait(timeout: .now() + 15)
+                let deadline = Date().addingTimeInterval(Self.responseTimeout)
+                var parsedUsage: ProviderUsage?
+                while Date() < deadline {
+                    let snapshot = captured.snapshot()
+                    if snapshot.exceeded { break }
+                    parsedUsage = Self.response(from: snapshot.data)
+                    if parsedUsage != nil || !process.isRunning { break }
+                    _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
+                }
+
                 input.fileHandleForWriting.closeFile()
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
-                errors.fileHandleForReading.readabilityHandler = nil
+                _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+                _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
-                lock.lock()
-                let final = result
-                let exceeded = outputExceeded
-                lock.unlock()
-
-                if exceeded {
+                let finalSnapshot = captured.snapshot()
+                let final = parsedUsage ?? Self.response(from: finalSnapshot.data)
+                if finalSnapshot.exceeded || errorCapture.snapshot().exceeded {
                     completion(.unavailable("Codex", .outputTooLarge("Codex")))
                 } else if let final {
                     completion(final)
-                } else if waitResult == .timedOut {
+                } else if Self.isIncompatible(errorCapture.snapshot().data) {
+                    completion(.unavailable("Codex", .codexIncompatible))
+                } else if process.terminationStatus != 0 {
+                    completion(.unavailable("Codex", .codexCommandFailed))
+                } else if Date() >= deadline {
                     completion(.unavailable("Codex", .codexTimedOut))
                 } else {
                     completion(.unavailable("Codex", .codexEmptyResponse))
                 }
             } catch {
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
-                errors.fileHandleForReading.readabilityHandler = nil
                 completion(.unavailable("Codex", .codexLaunchFailed(error.localizedDescription)))
             }
         }
+    }
+
+    private static func response(from data: Data) -> ProviderUsage? {
+        for line in data.split(separator: 0x0A) {
+            if let usage = UsageParser.codexResponse(from: Data(line)) { return usage }
+        }
+        return nil
+    }
+
+    private static func isIncompatible(_ errorData: Data) -> Bool {
+        let message = String(decoding: errorData, as: UTF8.self).lowercased()
+        let mentionsDisabledFlag = message.contains("--disable")
+        let signalsUnknownOption = message.contains("unexpected argument")
+            || message.contains("unknown option")
+            || message.contains("unrecognized option")
+        return mentionsDisabledFlag && signalsUnknownOption
     }
 
 }
@@ -1684,11 +1722,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addProvider(_ usage: ProviderUsage) {
         var rows: [NSAttributedString] = []
-        if let session = usage.session {
-            rows.append(windowTitle(text.fiveHours, session))
-        }
-        if let weekly = usage.weekly {
-            rows.append(windowTitle(text.weekly, weekly))
+        for (position, window) in usage.windows.enumerated() {
+            rows.append(windowTitle(text.usageWindowLabel(window, position: position), window))
         }
         if let error = usage.error {
             rows.append(errorTitle(error))
@@ -2157,12 +2192,15 @@ private func runSelfTest() -> Int32 {
 
     let claudeSessionFirst = ProviderUsage(
         name: "Claude Code",
-        session: UsageWindow(
-            usedPercent: 20,
-            resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
-            durationMinutes: 300
-        ),
-        weekly: UsageWindow(usedPercent: 95, resetsAt: nil, durationMinutes: 10_080),
+        windows: [
+            UsageWindow(
+                kind: .fiveHour,
+                usedPercent: 20,
+                resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
+                durationMinutes: 300
+            ),
+            UsageWindow(kind: .weekly, usedPercent: 95, resetsAt: nil, durationMinutes: 10_080)
+        ],
         error: nil
     )
     let sessionFirstSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
@@ -2188,8 +2226,9 @@ private func runSelfTest() -> Int32 {
 
     let claudeWeeklyFallback = ProviderUsage(
         name: "Claude Code",
-        session: nil,
-        weekly: UsageWindow(usedPercent: 26, resetsAt: nil, durationMinutes: 10_080),
+        windows: [
+            UsageWindow(kind: .weekly, usedPercent: 26, resetsAt: nil, durationMinutes: 10_080)
+        ],
         error: nil
     )
     let weeklyFallbackSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
@@ -2209,6 +2248,26 @@ private func runSelfTest() -> Int32 {
         parsedWeeklyOnly.weekly?.usedPercent == 13
     else {
         fputs("Codex haftalık-only parser testi başarısız\n", stderr)
+        return 1
+    }
+
+    let customWindowCodex = """
+    {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":13,"windowDurationMins":10080},"secondary":{"usedPercent":55,"windowDurationMins":4320}}}}
+    """
+    guard
+        let parsedCustomWindow = UsageParser.codexResponse(from: Data(customWindowCodex.utf8)),
+        parsedCustomWindow.windows.count == 2,
+        parsedCustomWindow.windows.contains(where: { $0.kind == .duration(minutes: 4_320) }),
+        UsageSummaryCalculator.summary(
+            for: "Codex",
+            in: ["Codex": parsedCustomWindow]
+        )?.remainingPercent == 45,
+        english.usageWindowLabel(
+            UsageWindow(usedPercent: 55, resetsAt: nil, durationMinutes: 4_320),
+            position: 1
+        ) == "3 days"
+    else {
+        fputs("Codex özel pencere testi başarısız\n", stderr)
         return 1
     }
 
