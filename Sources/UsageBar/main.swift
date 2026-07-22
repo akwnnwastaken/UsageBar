@@ -41,6 +41,16 @@ struct ProviderUsage {
 enum AppLanguage: String {
     case turkish
     case english
+
+    static func preferred(from preferredLanguages: [String]) -> AppLanguage {
+        preferredLanguages.first?.lowercased().hasPrefix("tr") == true ? .turkish : .english
+    }
+}
+
+enum AppMetadata {
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+    }
 }
 
 enum UsageAlertLevel: Equatable {
@@ -302,11 +312,11 @@ struct Localizer {
     var now: String { pick("şimdi", "now") }
 
     func remaining(_ percent: Int) -> String {
-        pick("%\(percent) kaldı", "%\(percent) remaining")
+        pick("%\(percent) kaldı", "\(percent)% remaining")
     }
 
     func remainingTooltip(provider: String, percent: Int) -> String {
-        pick("\(provider): %\(percent) kaldı", "\(provider): %\(percent) remaining")
+        pick("\(provider): %\(percent) kaldı", "\(provider): \(percent)% remaining")
     }
 
     func waitingForUsage(provider: String) -> String {
@@ -899,7 +909,7 @@ final class CodexUsageFetcher {
             do {
                 try process.run()
                 let messages = [
-                    "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"1.0.0\"}}}",
+                    "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"\(AppMetadata.version)\"}}}",
                     "{\"method\":\"initialized\"}",
                     "{\"method\":\"account/rateLimits/read\",\"id\":2}"
                 ].joined(separator: "\n") + "\n"
@@ -938,7 +948,9 @@ final class CodexUsageFetcher {
 
 final class ClaudeUsageFetcher {
     private static let statusLineSettings: String = {
-        let command = #"/usr/bin/jq -r '"USAGEBAR_LIMITS:" + ((.rate_limits.five_hour.used_percentage // "")|tostring) + "|" + ((.rate_limits.five_hour.resets_at // "")|tostring) + "|" + ((.rate_limits.seven_day.used_percentage // "")|tostring) + "|" + ((.rate_limits.seven_day.resets_at // "")|tostring)'"#
+        guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
+        let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let command = "\(quotedExecutable) --claude-status-filter"
         let settings: [String: Any] = [
             "statusLine": [
                 "type": "command",
@@ -1177,7 +1189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let menu = NSMenu()
+    private let menu: NSMenu = {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        return menu
+    }()
     private let codexFetcher = CodexUsageFetcher()
     private let claudeFetcher = ClaudeUsageFetcher()
     private var usages: [String: ProviderUsage] = [:]
@@ -1191,9 +1207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var language: AppLanguage {
         get {
             guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.language) else {
-                return .turkish
+                return AppLanguage.preferred(from: Locale.preferredLanguages)
             }
-            return AppLanguage(rawValue: raw) ?? .turkish
+            return AppLanguage(rawValue: raw)
+                ?? AppLanguage.preferred(from: Locale.preferredLanguages)
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.language) }
     }
@@ -1541,7 +1558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addMenuBarAppearanceSettings() {
         let rootItem = NSMenuItem(title: text.menuBarAppearance, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
         let resetItem = NSMenuItem(
             title: text.showResetInMenuBar,
             action: #selector(toggleResetInMenuBar),
@@ -1581,7 +1598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addUsageColorSettings() {
         let rootItem = NSMenuItem(title: text.usageColorsTitle, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
 
         let enabledItem = NSMenuItem(
             title: text.usageColorsEnabled,
@@ -1612,7 +1629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addUsageHistorySettings() {
         let rootItem = NSMenuItem(title: text.usageHistoryTitle, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
 
         let enabledItem = NSMenuItem(
             title: text.showUsageHistory,
@@ -1634,6 +1651,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         rootItem.submenu = submenu
         menu.addItem(rootItem)
+    }
+
+    private func manuallyEnabledMenu() -> NSMenu {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        return submenu
     }
 
     private func addLaunchAtLoginItem() {
@@ -1986,7 +2009,11 @@ private func runSelfTest() -> Int32 {
     let durationOrigin = Date(timeIntervalSince1970: 1_000_000)
     guard
         turkish.remaining(59) == "%59 kaldı",
-        english.remaining(59) == "%59 remaining",
+        english.remaining(59) == "59% remaining",
+        english.remainingTooltip(provider: "Codex", percent: 59) == "Codex: 59% remaining",
+        AppLanguage.preferred(from: ["tr-TR", "en-US"]) == .turkish,
+        AppLanguage.preferred(from: ["en-US", "tr-TR"]) == .english,
+        AppLanguage.preferred(from: []) == .english,
         turkish.issue(.claudeNotLoggedIn) == "Claude Code'a giriş yapılmamış",
         english.issue(.claudeNotLoggedIn) == "Claude Code is not signed in",
         english.relativeReset(
@@ -2197,8 +2224,48 @@ private func runSelfTest() -> Int32 {
     return 0
 }
 
+private func runClaudeStatusFilter() -> Int32 {
+    let maximumInputBytes = 64 * 1_024
+    var input = Data()
+
+    while true {
+        let chunk = FileHandle.standardInput.readData(ofLength: 4 * 1_024)
+        if chunk.isEmpty { break }
+        guard input.count + chunk.count <= maximumInputBytes else { return 1 }
+        input.append(chunk)
+    }
+
+    guard
+        let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
+        let limits = object["rate_limits"] as? [String: Any]
+    else { return 1 }
+
+    func field(_ window: String, _ key: String) -> String {
+        guard
+            let values = limits[window] as? [String: Any],
+            let value = values[key]
+        else { return "" }
+        if let number = value as? NSNumber { return number.stringValue }
+        if let string = value as? String, Double(string) != nil { return string }
+        return ""
+    }
+
+    let fields = [
+        field("five_hour", "used_percentage"),
+        field("five_hour", "resets_at"),
+        field("seven_day", "used_percentage"),
+        field("seven_day", "resets_at")
+    ]
+    print("USAGEBAR_LIMITS:" + fields.joined(separator: "|"))
+    return 0
+}
+
 if CommandLine.arguments.contains("--self-test") {
     exit(runSelfTest())
+}
+
+if CommandLine.arguments.contains("--claude-status-filter") {
+    exit(runClaudeStatusFilter())
 }
 
 let application = NSApplication.shared
