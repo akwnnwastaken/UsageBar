@@ -640,10 +640,12 @@ enum UsageParser {
         let statusOutput = String(cleaned[markerRange.lowerBound...])
         // Claude redraws its status line incrementally. The initial frame can
         // contain `USAGEBAR_LIMITS:|||`, followed later by only the changed
-        // numeric suffix at another cursor position. Parse the first complete
-        // numeric tuple after our unique marker rather than requiring one
-        // contiguous rendered line.
-        let pattern = "([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)\\|([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)"
+        // suffix at another cursor position. Individual quota/reset fields can
+        // also be absent, so accept partial tuples while still requiring at
+        // least one usage percentage before returning data.
+        let number = "[0-9]+(?:\\.[0-9]+)?"
+        let field = "((?:\(number))?)"
+        let pattern = "\(field)\\|\(field)\\|\(field)\\|\(field)"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(statusOutput.startIndex..<statusOutput.endIndex, in: statusOutput)
         var result: ProviderUsage?
@@ -1196,8 +1198,8 @@ final class CodexUsageFetcher {
 }
 
 final class ClaudeUsageFetcher {
-    private static let usageTimeout: TimeInterval = 10
-    private static let usageFallbackDelay: TimeInterval = 1
+    private static let usageTimeout: TimeInterval = 15
+    private static let usageFallbackDelays: [TimeInterval] = [1.5, 5]
     private static let statusLineSettings: String = {
         guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
         let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -1284,7 +1286,7 @@ final class ClaudeUsageFetcher {
                 )
                 let startedAt = Date()
                 let deadline = startedAt.addingTimeInterval(Self.usageTimeout)
-                var sentUsageFallback = false
+                var sentUsageFallbackCount = 0
                 var parsedUsage: ProviderUsage?
 
                 while Date() < deadline {
@@ -1302,11 +1304,12 @@ final class ClaudeUsageFetcher {
                         break
                     }
 
-                    if !sentUsageFallback,
-                       Date().timeIntervalSince(startedAt) >= Self.usageFallbackDelay,
+                    if sentUsageFallbackCount < Self.usageFallbackDelays.count,
+                       Date().timeIntervalSince(startedAt)
+                        >= Self.usageFallbackDelays[sentUsageFallbackCount],
                        process.isRunning {
                         try? input.fileHandleForWriting.write(contentsOf: Data("/usage\r".utf8))
-                        sentUsageFallback = true
+                        sentUsageFallbackCount += 1
                     }
 
                     if !process.isRunning { break }
@@ -2577,6 +2580,19 @@ private func runSelfTest() -> Int32 {
         structuredClaude?.weekly?.resetsAt?.timeIntervalSince1970 == 1_785_092_400
     else {
         fputs("Claude yapılandırılmış limit testi başarısız\n", stderr)
+        return 1
+    }
+
+    let partialStructuredClaude = UsageParser.claudeStatusLine("""
+    USAGEBAR_LIMITS:|||\r
+    33.4|1784740200||\r
+    """)
+    guard
+        partialStructuredClaude?.session?.usedPercent == 33,
+        partialStructuredClaude?.weekly == nil,
+        partialStructuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200
+    else {
+        fputs("Claude kısmi yapılandırılmış limit testi başarısız\n", stderr)
         return 1
     }
 
