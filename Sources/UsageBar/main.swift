@@ -75,18 +75,76 @@ struct ProviderUsage {
     let name: String
     let windows: [UsageWindow]
     let error: ProviderIssue?
+    let lastSuccessfulAt: Date?
+
+    init(
+        name: String,
+        windows: [UsageWindow],
+        error: ProviderIssue?,
+        lastSuccessfulAt: Date? = nil
+    ) {
+        self.name = name
+        self.windows = windows
+        self.error = error
+        self.lastSuccessfulAt = lastSuccessfulAt
+    }
 
     var session: UsageWindow? { windows.first { $0.kind == .fiveHour } }
     var weekly: UsageWindow? { windows.first { $0.kind == .weekly } }
+    var isStale: Bool { error != nil && !windows.isEmpty && lastSuccessfulAt != nil }
 
     static func unavailable(_ name: String, _ issue: ProviderIssue) -> ProviderUsage {
         ProviderUsage(name: name, windows: [], error: issue)
+    }
+
+    func markedSuccessful(at date: Date) -> ProviderUsage {
+        ProviderUsage(name: name, windows: windows, error: nil, lastSuccessfulAt: date)
+    }
+
+    static func stale(from previous: ProviderUsage, issue: ProviderIssue) -> ProviderUsage {
+        ProviderUsage(
+            name: previous.name,
+            windows: previous.windows,
+            error: issue,
+            lastSuccessfulAt: previous.lastSuccessfulAt
+        )
+    }
+}
+
+extension ProviderIssue {
+    var diagnosticCode: String {
+        switch self {
+        case .refreshing: return "refreshing"
+        case .noData: return "no_data"
+        case .codexUsageUnavailable: return "codex_usage_unavailable"
+        case .codexLimitMissing: return "codex_limit_missing"
+        case .codexNotFound: return "codex_not_found"
+        case .codexUntrustedExecutable: return "codex_untrusted_executable"
+        case .codexTimedOut: return "codex_timed_out"
+        case .codexEmptyResponse: return "codex_empty_response"
+        case .codexIncompatible: return "codex_incompatible"
+        case .codexCommandFailed: return "codex_command_failed"
+        case .codexLaunchFailed: return "codex_launch_failed"
+        case .claudeNotFound: return "claude_not_found"
+        case .claudeUntrustedExecutable: return "claude_untrusted_executable"
+        case .claudeNotLoggedIn: return "claude_not_logged_in"
+        case .claudeAuthFailed: return "claude_auth_failed"
+        case .claudeAuthInvalidResponse: return "claude_auth_invalid_response"
+        case .claudeUsageUnreadable: return "claude_usage_unreadable"
+        case .claudeLaunchFailed: return "claude_launch_failed"
+        case .processTimedOut: return "process_timed_out"
+        case .outputTooLarge: return "output_too_large"
+        }
     }
 }
 
 enum AppMetadata {
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+    }
+
+    static var build: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development"
     }
 }
 
@@ -256,6 +314,7 @@ struct Localizer {
     var usageHistoryTitle: String { pick("Kullanım geçmişi", "Usage history") }
     var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
     var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
+    var copyDiagnostics: String { pick("Tanılama özetini kopyala", "Copy diagnostics") }
     var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
     var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
     var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
@@ -398,6 +457,20 @@ struct Localizer {
 
     func lastUpdated(_ time: String) -> String {
         pick("Son güncelleme: \(time)", "Last updated: \(time)")
+    }
+
+    func staleData(lastSuccessfulTime: String, issue: ProviderIssue) -> String {
+        pick(
+            "Son iyi veri: \(lastSuccessfulTime)\n\(self.issue(issue))",
+            "Last good data: \(lastSuccessfulTime)\n\(self.issue(issue))"
+        )
+    }
+
+    func staleTooltip(provider: String, percent: Int) -> String {
+        pick(
+            "\(provider): %\(percent) kaldı (eski veri)",
+            "\(provider): \(percent)% remaining (stale)"
+        )
     }
 
     func relativeReset(_ date: Date, now: Date = Date()) -> String {
@@ -1561,7 +1634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             group.enter()
             codexFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
-                    self?.usages[usage.name] = usage
+                    self?.acceptFetchedUsage(usage)
                     group.leave()
                 }
             }
@@ -1573,7 +1646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             group.enter()
             claudeFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
-                    self?.usages[usage.name] = usage
+                    self?.acceptFetchedUsage(usage)
                     group.leave()
                 }
             }
@@ -1590,6 +1663,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.updateStatusTitle()
             self.rebuildMenu()
         }
+    }
+
+    private func acceptFetchedUsage(_ fetched: ProviderUsage, at date: Date = Date()) {
+        if fetched.error == nil, !fetched.windows.isEmpty {
+            usages[fetched.name] = fetched.markedSuccessful(at: date)
+            return
+        }
+        if let issue = fetched.error,
+           let previous = usages[fetched.name],
+           !previous.windows.isEmpty,
+           previous.lastSuccessfulAt != nil {
+            usages[fetched.name] = .stale(from: previous, issue: issue)
+            return
+        }
+        usages[fetched.name] = fetched
     }
 
     private func updateStatusTitle() {
@@ -1611,10 +1699,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.image = providerIcon(for: summary.providerName, size: 16)
             statusItem.button?.imagePosition = .imageLeading
             statusItem.button?.imageScaling = .scaleProportionallyDown
-            statusItem.button?.toolTip = text.remainingTooltip(
-                provider: summary.providerName,
-                percent: summary.remainingPercent
-            )
+            if usages[summary.providerName]?.isStale == true {
+                statusItem.button?.toolTip = text.staleTooltip(
+                    provider: summary.providerName,
+                    percent: summary.remainingPercent
+                )
+            } else {
+                statusItem.button?.toolTip = text.remainingTooltip(
+                    provider: summary.providerName,
+                    percent: summary.remainingPercent
+                )
+            }
         } else {
             statusItem.button?.attributedTitle = NSAttributedString(string: "")
             statusItem.button?.title = "%—"
@@ -1756,6 +1851,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshItem.target = self
         refreshItem.isEnabled = !isRefreshing && !connectedNames.isEmpty
         menu.addItem(refreshItem)
+
+        let diagnosticsItem = NSMenuItem(
+            title: text.copyDiagnostics,
+            action: #selector(copyDiagnostics),
+            keyEquivalent: ""
+        )
+        diagnosticsItem.target = self
+        menu.addItem(diagnosticsItem)
 
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
@@ -1929,7 +2032,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             rows.append((windowTitle(text.usageWindowLabel(window, position: position), window), samples))
         }
         if let error = usage.error {
-            rows.append((errorTitle(error), []))
+            if let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
+                rows.append((staleTitle(error, lastSuccessfulAt: lastSuccessfulAt), []))
+            } else {
+                rows.append((errorTitle(error), []))
+            }
         }
 
         let width: CGFloat = 276
@@ -2047,6 +2154,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             attributes: [
                 .font: NSFont.systemFont(ofSize: 13),
                 .foregroundColor: informational ? NSColor.secondaryLabelColor : NSColor.systemRed
+            ]
+        )
+    }
+
+    private func staleTitle(_ issue: ProviderIssue, lastSuccessfulAt: Date) -> NSAttributedString {
+        NSAttributedString(
+            string: text.staleData(
+                lastSuccessfulTime: formattedTime(lastSuccessfulAt),
+                issue: issue
+            ),
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.systemOrange
             ]
         )
     }
@@ -2212,6 +2332,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.removeObject(forKey: PreferenceKey.usageHistoryData)
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
         rebuildMenu()
+    }
+
+    @objc private func copyDiagnostics() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnosticsSummary(), forType: .string)
+    }
+
+    private func diagnosticsSummary() -> String {
+        let system = ProcessInfo.processInfo.operatingSystemVersion
+        let lastRefresh = lastUpdated.map { ISO8601DateFormatter().string(from: $0) } ?? "never"
+        var lines = [
+            "UsageBar \(AppMetadata.version) (\(AppMetadata.build))",
+            "macOS \(system.majorVersion).\(system.minorVersion).\(system.patchVersion)",
+            "language=\(language.rawValue)",
+            "last_refresh=\(lastRefresh)",
+            "history_enabled=\(usageHistoryEnabled)",
+            "history_series=\(usageHistory.count)",
+            "history_samples=\(usageHistory.values.reduce(0) { $0 + $1.count })"
+        ]
+
+        for providerName in ["Codex", "Claude Code"] {
+            let connected = providerName == "Codex" ? codexConnected : claudeConnected
+            let executableState: String
+            let lookup = providerName == "Codex"
+                ? ExecutableLocator.codex()
+                : ExecutableLocator.claude()
+            switch lookup {
+            case .found: executableState = "trusted"
+            case .untrusted: executableState = "untrusted"
+            case .missing: executableState = "missing"
+            }
+            let usage = usages[providerName]
+            let state: String
+            if usage?.isStale == true {
+                state = "stale"
+            } else if usage?.error != nil {
+                state = "error"
+            } else if usage?.windows.isEmpty == false {
+                state = "fresh"
+            } else {
+                state = "no_data"
+            }
+            let windowKinds = usage?.windows.map { $0.kind.historyKey }.joined(separator: ",") ?? "none"
+            let issue = usage?.error?.diagnosticCode ?? "none"
+            let key = providerName == "Codex" ? "codex" : "claude"
+            lines.append("\(key)=connected:\(connected),executable:\(executableState),state:\(state),windows:\(windowKinds),issue:\(issue)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -2466,6 +2635,21 @@ private func runSelfTest() -> Int32 {
     ])
     guard weeklyFallbackSummary?.remainingPercent == 74 else {
         fputs("Claude haftalık yedek pencere testi başarısız\n", stderr)
+        return 1
+    }
+
+    let successfulUsage = claudeSessionFirst.markedSuccessful(at: historyOrigin)
+    let staleUsage = ProviderUsage.stale(from: successfulUsage, issue: .claudeUsageUnreadable)
+    guard
+        staleUsage.isStale,
+        staleUsage.lastSuccessfulAt == historyOrigin,
+        staleUsage.error?.diagnosticCode == "claude_usage_unreadable",
+        UsageSummaryCalculator.summary(
+            for: "Claude Code",
+            in: ["Claude Code": staleUsage]
+        )?.remainingPercent == 80
+    else {
+        fputs("Eski veri durumu testi başarısız\n", stderr)
         return 1
     }
 
