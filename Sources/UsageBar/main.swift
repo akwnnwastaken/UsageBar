@@ -647,60 +647,64 @@ enum UsageParser {
         )
     }
 
-    static func claudeStatusLine(_ raw: String) -> ProviderUsage? {
-        let cleaned = stripTerminalCodes(raw)
-        guard let markerRange = cleaned.range(of: "USAGEBAR_LIMITS:") else { return nil }
-        let statusOutput = String(cleaned[markerRange.lowerBound...])
-        // Claude redraws its status line incrementally. The initial frame can
-        // contain `USAGEBAR_LIMITS:|||`, followed later by only the changed
-        // suffix at another cursor position. Individual quota/reset fields can
-        // also be absent, so accept partial tuples while still requiring at
-        // least one usage percentage before returning data.
-        let number = "[0-9]+(?:\\.[0-9]+)?"
-        let field = "((?:\(number))?)"
-        let pattern = "\(field)\\|\(field)\\|\(field)\\|\(field)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(statusOutput.startIndex..<statusOutput.endIndex, in: statusOutput)
-        var result: ProviderUsage?
+    /// Parses the plain-text output of `claude -p "/usage"`. Print mode prints
+    /// one line per window, e.g.
+    ///   Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+    ///   Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    /// There are no terminal cursor moves, so there is none of the space-collapse
+    /// or overlay-height fragility of the interactive `/usage` panel.
+    static func claudePrintUsage(_ raw: String, now: Date = Date()) -> ProviderUsage {
+        let session = printWindow("Current session", in: raw, now: now)
+        let weekly = printWindow("Current week[^:\\n]*", in: raw, now: now)
 
-        for match in regex.matches(in: statusOutput, range: range) {
-            guard match.numberOfRanges == 5 else { continue }
-            let values: [String] = (1...4).compactMap { index in
-                guard let valueRange = Range(match.range(at: index), in: statusOutput) else { return nil }
-                return String(statusOutput[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            guard values.count == 4 else { continue }
-
-            let fiveHourUsed = Double(values[0])
-            let fiveHourReset = Double(values[1])
-            let sevenDayUsed = Double(values[2])
-            let sevenDayReset = Double(values[3])
-            guard fiveHourUsed != nil || sevenDayUsed != nil else { continue }
-
-            result = ProviderUsage(
-                name: "Claude Code",
-                windows: [
-                    fiveHourUsed.map {
-                        UsageWindow(
-                            kind: .fiveHour,
-                            usedPercent: min(100, max(0, Int($0.rounded()))),
-                            resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
-                            durationMinutes: 300
-                        )
-                    },
-                    sevenDayUsed.map {
-                        UsageWindow(
-                            kind: .weekly,
-                            usedPercent: min(100, max(0, Int($0.rounded()))),
-                            resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
-                            durationMinutes: 10_080
-                        )
-                    }
-                ].compactMap { $0 },
-                error: nil
+        if session == nil && weekly == nil {
+            let lower = raw.lowercased()
+            let notLoggedIn = lower.contains("log in")
+                || lower.contains("login")
+                || lower.contains("sign in")
+                || lower.contains("not authenticated")
+                || lower.contains("authenticate")
+            return .unavailable(
+                "Claude Code",
+                notLoggedIn ? .claudeNotLoggedIn : .claudeUsageUnreadable
             )
         }
-        return result
+
+        return ProviderUsage(
+            name: "Claude Code",
+            windows: [
+                session.map {
+                    UsageWindow(kind: .fiveHour, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 300)
+                },
+                weekly.map {
+                    UsageWindow(kind: .weekly, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 10_080)
+                }
+            ].compactMap { $0 },
+            error: nil
+        )
+    }
+
+    private static func printWindow(
+        _ labelPattern: String,
+        in text: String,
+        now: Date
+    ) -> (percent: Int, reset: Date?)? {
+        let pattern = "(?is)\(labelPattern)\\s*:\\s*(\\d{1,3}(?:[.,]\\d+)?)\\s*%\\s*used(?:[^\\n]*?resets?\\s+([^\\n]+))?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard
+            let match = regex.firstMatch(in: text, range: range),
+            let percentRange = Range(match.range(at: 1), in: text)
+        else { return nil }
+        let normalized = text[percentRange].replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized) else { return nil }
+        let percent = min(100, max(0, Int(value.rounded())))
+        var reset: Date?
+        if match.numberOfRanges > 2, let resetRange = Range(match.range(at: 2), in: text) {
+            let resetText = String(text[resetRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            reset = parseClaudeReset(resetText, now: now)
+        }
+        return (percent, reset)
     }
 
     private static func rateWindow(_ value: Any?, position: Int) -> UsageWindow? {
@@ -1055,124 +1059,6 @@ private enum ProviderProcessLauncher {
     }
 }
 
-private final class ProviderPTYProcess {
-    let processIdentifier: pid_t
-    let masterFileDescriptor: Int32
-    private let stateLock = NSLock()
-    private var reaped = false
-
-    init(processIdentifier: pid_t, masterFileDescriptor: Int32) {
-        self.processIdentifier = processIdentifier
-        self.masterFileDescriptor = masterFileDescriptor
-    }
-
-    var isRunning: Bool {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !reaped else { return false }
-
-        var status: Int32 = 0
-        let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
-        if result == 0 { return true }
-        if result == processIdentifier || (result == -1 && errno == ECHILD) {
-            reaped = true
-        }
-        return false
-    }
-
-    func write(_ data: Data) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard var pointer = rawBuffer.baseAddress else { return }
-            var remaining = rawBuffer.count
-            while remaining > 0 {
-                let written = Darwin.write(masterFileDescriptor, pointer, remaining)
-                if written > 0 {
-                    pointer = pointer.advanced(by: written)
-                    remaining -= written
-                } else if written == -1 && errno == EINTR {
-                    continue
-                } else {
-                    throw NSError(
-                        domain: NSPOSIXErrorDomain,
-                        code: Int(errno),
-                        userInfo: nil
-                    )
-                }
-            }
-        }
-    }
-
-    func stop() {
-        ProviderProcessLimits.stop(processIdentifier: processIdentifier)
-        Darwin.close(masterFileDescriptor)
-
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !reaped else { return }
-        var status: Int32 = 0
-        while Darwin.waitpid(processIdentifier, &status, 0) == -1 && errno == EINTR {}
-        reaped = true
-    }
-}
-
-private enum ProviderPTYLauncher {
-    static func launch(
-        executable: String,
-        arguments: [String],
-        environment: [String: String],
-        workingDirectory: URL
-    ) throws -> ProviderPTYProcess {
-        let argvStrings = [executable] + arguments
-        let environmentStrings = environment
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-
-        return try withCStringArray(argvStrings) { argv in
-            try withCStringArray(environmentStrings) { envp in
-                var processIdentifier: pid_t = 0
-                var masterFileDescriptor: Int32 = -1
-                let result = executable.withCString { executablePointer in
-                    workingDirectory.path.withCString { directoryPointer in
-                        usagebar_spawn_in_pty(
-                            executablePointer,
-                            argv,
-                            envp,
-                            directoryPointer,
-                            &processIdentifier,
-                            &masterFileDescriptor
-                        )
-                    }
-                }
-                guard result == 0 else {
-                    throw NSError(
-                        domain: NSPOSIXErrorDomain,
-                        code: Int(result),
-                        userInfo: nil
-                    )
-                }
-                return ProviderPTYProcess(
-                    processIdentifier: processIdentifier,
-                    masterFileDescriptor: masterFileDescriptor
-                )
-            }
-        }
-    }
-
-    private static func withCStringArray<Result>(
-        _ strings: [String],
-        body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> Result
-    ) rethrows -> Result {
-        var pointers = strings.map { strdup($0) }
-        pointers.append(nil)
-        defer {
-            for pointer in pointers where pointer != nil { free(pointer) }
-        }
-        return try pointers.withUnsafeMutableBufferPointer { buffer in
-            try body(buffer.baseAddress!)
-        }
-    }
-}
-
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
     private static let terminationGrace: TimeInterval = 1
@@ -1268,35 +1154,6 @@ private enum PipeDrainer {
                     capture.append(chunk)
                     dataAvailable?.signal()
                 } catch {
-                    return
-                }
-            }
-        }
-        return group
-    }
-
-    static func start(
-        fileDescriptor: Int32,
-        capture: BoundedDataCapture,
-        dataAvailable: DispatchSemaphore? = nil
-    ) -> DispatchGroup {
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: .utility).async {
-            defer { group.leave() }
-            var buffer = [UInt8](repeating: 0, count: 16 * 1_024)
-            while true {
-                let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
-                if count > 0 {
-                    capture.append(Data(buffer.prefix(count)))
-                    dataAvailable?.signal()
-                } else if count == 0 {
-                    return
-                } else if errno == EINTR {
-                    continue
-                } else if errno == EAGAIN || errno == EWOULDBLOCK {
-                    Thread.sleep(forTimeInterval: 0.01)
-                } else {
                     return
                 }
             }
@@ -1416,24 +1273,6 @@ final class CodexUsageFetcher {
 
 final class ClaudeUsageFetcher {
     private static let usageTimeout: TimeInterval = 15
-    private static let usageFallbackDelays: [TimeInterval] = [1.5, 5]
-    private static let statusLineSettings: String = {
-        guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
-        let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        let command = "\(quotedExecutable) --claude-status-filter"
-        let settings: [String: Any] = [
-            "statusLine": [
-                "type": "command",
-                "command": command,
-                "padding": 0
-            ]
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: settings),
-            let json = String(data: data, encoding: .utf8)
-        else { return "{}" }
-        return json
-    }()
 
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
@@ -1449,100 +1288,65 @@ final class ClaudeUsageFetcher {
                 return
             }
 
-            // Ignore user/project/local settings and inject only a tiny status
-            // line that exposes Claude's official structured quota fields.
-            // This avoids project files, hooks, plugins, MCP and Chrome while
-            // keeping normal local authentication available.
-            let arguments = [
+            let process = Process()
+            let output = Pipe()
+            let errors = Pipe()
+            // Read usage non-interactively with `-p /usage`. Print mode prints
+            // the usage summary as plain text and exits; with
+            // --no-session-persistence it registers no session (so it leaves no
+            // Claude "Recents" entry) and writes no transcript. `/usage` is a
+            // local slash command, so it does not consume model quota. The
+            // isolation flags keep project settings, hooks, Chrome, MCP and
+            // tools out of the quota check while leaving local auth available.
+            ProviderProcessLauncher.configure(process, executable: executable, arguments: [
+                "-p", "/usage",
+                "--no-session-persistence",
                 "--setting-sources", "",
-                "--settings", Self.statusLineSettings,
                 "--no-chrome",
                 "--strict-mcp-config",
                 "--tools", ""
-            ]
-            var ptyProcess: ProviderPTYProcess?
+            ])
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = output
+            process.standardError = errors
+            ProviderProcessContext.apply(to: process)
 
             do {
-                let process = try ProviderPTYLauncher.launch(
-                    executable: executable,
-                    arguments: arguments,
-                    environment: ProviderProcessContext.environment,
-                    workingDirectory: ProviderProcessContext.workingDirectory
-                )
-                ptyProcess = process
+                try process.run()
                 let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
                 let dataAvailable = DispatchSemaphore(value: 0)
-                let drainer = PipeDrainer.start(
-                    fileDescriptor: process.masterFileDescriptor,
+                let outputDrainer = PipeDrainer.start(
+                    output,
                     capture: captured,
                     dataAvailable: dataAvailable
                 )
-                let startedAt = Date()
-                let deadline = startedAt.addingTimeInterval(Self.usageTimeout)
-                var sentUsageFallbackCount = 0
-                var parsedUsage: ProviderUsage?
+                let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
 
-                while Date() < deadline {
-                    let snapshot = captured.snapshot()
-                    if snapshot.exceeded { break }
-
-                    let screen = String(decoding: snapshot.data, as: UTF8.self)
-                    if let structured = UsageParser.claudeStatusLine(screen) {
-                        parsedUsage = structured
-                        break
-                    }
-                    let fallback = UsageParser.claudeScreen(screen)
-                    if fallback.session != nil || fallback.weekly != nil {
-                        parsedUsage = fallback
-                        break
-                    }
-                    // Do NOT treat a "login" mention as a verdict here: the
-                    // startup banner's "What's new" changelog can mention login
-                    // (e.g. "warning when your login is about to expire") before
-                    // the /usage panel is ever requested. Keep polling and let
-                    // the /usage attempts run; the not-logged-in case is decided
-                    // once, after the loop, from the final screen.
-
-                    if sentUsageFallbackCount < Self.usageFallbackDelays.count,
-                       Date().timeIntervalSince(startedAt)
-                        >= Self.usageFallbackDelays[sentUsageFallbackCount],
-                       process.isRunning {
-                        // Claude Code (2.1.x) submits input on CR once its TUI
-                        // puts the pty into raw mode; LF no longer counts as
-                        // Enter, so the command would sit unsubmitted. Send the
-                        // command and the CR separately so the input line is
-                        // fully rendered before Enter is delivered.
-                        try? process.write(Data("/usage".utf8))
-                        try? process.write(Data("\r".utf8))
-                        sentUsageFallbackCount += 1
-                    }
-
-                    if !process.isRunning { break }
+                // Print mode emits its whole output then exits, so wait for the
+                // process to finish (bounded by the deadline) and parse the
+                // complete text once. This avoids accepting a partially-written
+                // line that would drop the weekly window.
+                let deadline = Date().addingTimeInterval(Self.usageTimeout)
+                while process.isRunning && Date() < deadline {
+                    if captured.snapshot().exceeded { break }
                     _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
                 }
 
-                process.stop()
-                _ = drainer.wait(timeout: .now() + .seconds(1))
+                ProviderProcessLimits.stop(process)
+                _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+                _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
                 let snapshot = captured.snapshot()
                 guard !snapshot.exceeded else {
                     completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                     return
                 }
-                if let parsedUsage {
-                    completion(parsedUsage)
-                    return
-                }
-                // Re-evaluate the final screen. A genuine logged-out session
-                // cannot open the /usage panel, so the usage rows stay absent
-                // and the login prompt remains on screen. Only trust the
-                // not-logged-in verdict once every /usage attempt was sent.
-                let finalScreen = String(decoding: snapshot.data, as: UTF8.self)
-                let finalUsage = UsageParser.claudeScreen(finalScreen)
-                if finalUsage.session != nil || finalUsage.weekly != nil {
-                    completion(finalUsage)
-                } else if case .claudeNotLoggedIn? = finalUsage.error,
-                          sentUsageFallbackCount >= Self.usageFallbackDelays.count {
+                let finalText = String(decoding: snapshot.data, as: UTF8.self)
+                let final = UsageParser.claudePrintUsage(finalText)
+                if final.error == nil {
+                    completion(final)
+                } else if case .claudeNotLoggedIn? = final.error {
                     completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 } else if Date() >= deadline {
                     completion(.unavailable("Claude Code", .claudeUsageTimedOut))
@@ -1550,7 +1354,7 @@ final class ClaudeUsageFetcher {
                     completion(.unavailable("Claude Code", .claudeUsageUnreadable))
                 }
             } catch {
-                ptyProcess?.stop()
+                ProviderProcessLimits.stop(process)
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
@@ -2830,30 +2634,53 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
-    let structuredClaude = UsageParser.claudeStatusLine("""
-    \u{001B}[2CUSAGEBAR_LIMITS:|||\r
-    \u{001B}[18C101|1784740200|25|1785092400\r
+    // Print-mode `claude -p "/usage"` output: plain text, one line per window.
+    let printClaude = UsageParser.claudePrintUsage("""
+    You are currently using your subscription to power your Claude Code usage
+
+    Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+    Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+
+    Last 24h · 623 requests · 8 sessions
     """)
     guard
-        structuredClaude?.session?.usedPercent == 100,
-        structuredClaude?.weekly?.usedPercent == 25,
-        structuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200,
-        structuredClaude?.weekly?.resetsAt?.timeIntervalSince1970 == 1_785_092_400
+        printClaude.session?.usedPercent == 100,
+        printClaude.weekly?.usedPercent == 53,
+        printClaude.session?.kind == .fiveHour,
+        printClaude.weekly?.kind == .weekly,
+        printClaude.session?.resetsAt != nil,
+        printClaude.weekly?.resetsAt != nil, // minute-less "10pm" still parses
+        printClaude.error == nil
     else {
-        fputs("Claude yapılandırılmış limit testi başarısız\n", stderr)
+        fputs("Claude print-mode kullanım testi başarısız\n", stderr)
         return 1
     }
 
-    let partialStructuredClaude = UsageParser.claudeStatusLine("""
-    USAGEBAR_LIMITS:|||\r
-    33.4|1784740200||\r
+    // Fractional percentage rounds; the "Last 24h · N requests" line must not be
+    // misread as a usage window.
+    let printFractional = UsageParser.claudePrintUsage("""
+    Current session: 8.6% used · resets Jul 23 at 5pm (Europe/Istanbul)
+    Current week (all models): 47% used
+    Last 24h · 640 requests · 8 sessions
     """)
     guard
-        partialStructuredClaude?.session?.usedPercent == 33,
-        partialStructuredClaude?.weekly == nil,
-        partialStructuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200
+        printFractional.session?.usedPercent == 9,
+        printFractional.weekly?.usedPercent == 47,
+        printFractional.weekly?.resetsAt == nil,
+        printFractional.error == nil
     else {
-        fputs("Claude kısmi yapılandırılmış limit testi başarısız\n", stderr)
+        fputs("Claude print-mode kesirli/kısmi testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Logged out and unreadable verdicts.
+    guard
+        case .claudeNotLoggedIn? =
+            UsageParser.claudePrintUsage("Please run /login to authenticate").error,
+        case .claudeUsageUnreadable? =
+            UsageParser.claudePrintUsage("some unrelated output").error
+    else {
+        fputs("Claude print-mode oturum durumu testi başarısız\n", stderr)
         return 1
     }
 
@@ -3020,43 +2847,6 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
-    var ptySmokeProcess: ProviderPTYProcess?
-    do {
-        let process = try ProviderPTYLauncher.launch(
-            executable: "/bin/cat",
-            arguments: [],
-            environment: ProviderProcessContext.environment,
-            workingDirectory: ProviderProcessContext.workingDirectory
-        )
-        ptySmokeProcess = process
-        let capture = BoundedDataCapture(limit: 4 * 1_024)
-        let dataAvailable = DispatchSemaphore(value: 0)
-        let drainer = PipeDrainer.start(
-            fileDescriptor: process.masterFileDescriptor,
-            capture: capture,
-            dataAvailable: dataAvailable
-        )
-        try process.write(Data("USAGEBAR_PTY_PROBE\n".utf8))
-        let probe = Data("USAGEBAR_PTY_PROBE".utf8)
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline,
-              capture.snapshot().data.range(of: probe) == nil {
-            _ = dataAvailable.wait(timeout: .now() + .milliseconds(50))
-        }
-        let receivedProbe = capture.snapshot().data.range(of: probe) != nil
-        process.stop()
-        ptySmokeProcess = nil
-        _ = drainer.wait(timeout: .now() + .seconds(1))
-        guard receivedProbe else {
-            fputs("Yerel PTY veri yolu testi başarısız\n", stderr)
-            return 1
-        }
-    } catch {
-        ptySmokeProcess?.stop()
-        fputs("Yerel PTY başlatma testi başarısız\n", stderr)
-        return 1
-    }
-
     print("UsageBar öz testi başarılı")
     return 0
 }
@@ -3098,42 +2888,6 @@ private func runClaudeLiveDiagnostics() -> Int32 {
     return usage.error == nil ? 0 : 2
 }
 
-private func runClaudeStatusFilter() -> Int32 {
-    let maximumInputBytes = 64 * 1_024
-    var input = Data()
-
-    while true {
-        let chunk = FileHandle.standardInput.readData(ofLength: 4 * 1_024)
-        if chunk.isEmpty { break }
-        guard input.count + chunk.count <= maximumInputBytes else { return 1 }
-        input.append(chunk)
-    }
-
-    guard
-        let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
-        let limits = object["rate_limits"] as? [String: Any]
-    else { return 1 }
-
-    func field(_ window: String, _ key: String) -> String {
-        guard
-            let values = limits[window] as? [String: Any],
-            let value = values[key]
-        else { return "" }
-        if let number = value as? NSNumber { return number.stringValue }
-        if let string = value as? String, Double(string) != nil { return string }
-        return ""
-    }
-
-    let fields = [
-        field("five_hour", "used_percentage"),
-        field("five_hour", "resets_at"),
-        field("seven_day", "used_percentage"),
-        field("seven_day", "resets_at")
-    ]
-    print("USAGEBAR_LIMITS:" + fields.joined(separator: "|"))
-    return 0
-}
-
 private func runProcessGroupLauncher() -> Int32 {
     let argumentOffset: Int32 = 2
     guard CommandLine.argc > argumentOffset else { return Int32(EINVAL) }
@@ -3149,10 +2903,6 @@ if CommandLine.arguments.contains("--self-test") {
 
 if CommandLine.arguments.contains("--diagnose-claude-live") {
     exit(runClaudeLiveDiagnostics())
-}
-
-if CommandLine.arguments.contains("--claude-status-filter") {
-    exit(runClaudeStatusFilter())
 }
 
 if CommandLine.arguments.count > 2,
