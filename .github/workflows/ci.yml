@@ -9,10 +9,29 @@ permissions:
   contents: read
 
 jobs:
+  # Required status check on `main`. Keep this job name stable — branch
+  # protection references the `build-and-test` context.
   build-and-test:
     runs-on: macos-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests (XCTest)
+        run: swift test
+      - name: Security acceptance suite
+        run: ./tests/security_acceptance.sh
+      - name: Reject whitespace errors
+        run: git diff --check
+
+  # Same checks on a pinned macOS runner version so a macos-latest bump cannot
+  # silently change behavior. Not a required check; advisory coverage.
+  build-and-test-macos14:
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests (XCTest)
+        run: swift test
       - name: Security acceptance suite
         run: ./tests/security_acceptance.sh
       - name: Reject whitespace errors
