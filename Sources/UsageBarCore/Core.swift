@@ -96,6 +96,38 @@ public enum UsageDisplayNoiseFilter {
     }
 }
 
+/// Outcome of a Codex quota fetch, decided from pure inputs so the ordering is
+/// testable without spawning a process. The key rule: a fetch that ran out of
+/// time is a **timeout**, even though UsageBar's own SIGTERM/SIGKILL leaves the
+/// child with a non-zero termination status — that status must never be read as
+/// a command failure. `terminationStatus` is therefore only consulted after the
+/// timeout verdict, and only once the process has actually been reaped.
+public enum CodexFetchOutcome: Equatable {
+    case usage
+    case outputTooLarge
+    case incompatible
+    case timedOut
+    case commandFailed
+    case emptyResponse
+
+    public static func classify(
+        hasUsage: Bool,
+        outputExceeded: Bool,
+        incompatible: Bool,
+        didTimeout: Bool,
+        terminationStatus: Int32
+    ) -> CodexFetchOutcome {
+        if outputExceeded { return .outputTooLarge }
+        if hasUsage { return .usage }
+        // Timeout wins over a non-zero exit: the non-zero status is a side
+        // effect of the signal we sent to stop the timed-out process.
+        if didTimeout { return .timedOut }
+        if incompatible { return .incompatible }
+        if terminationStatus != 0 { return .commandFailed }
+        return .emptyResponse
+    }
+}
+
 public enum UsageRefreshInterval: String, CaseIterable {
     case oneMinute
     case twoMinutes
