@@ -30,8 +30,12 @@ int usagebar_spawn_in_pty(
     }
 
     int master_fd = -1;
+    // The Claude /usage panel renders as a full-screen overlay and only draws
+    // the rows that fit. At 24 rows the weekly "Resets" line falls below the
+    // fold and is never emitted, so the weekly reset countdown was missing.
+    // A taller virtual terminal lets the whole panel render.
     struct winsize terminal_size = {
-        .ws_row = 24,
+        .ws_row = 60,
         .ws_col = 120,
         .ws_xpixel = 0,
         .ws_ypixel = 0
