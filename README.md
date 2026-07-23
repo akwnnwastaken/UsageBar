@@ -9,7 +9,7 @@ Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren kü
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
 > [!NOTE]
-> `main` dalı yaklaşan **v1.5.0** sürümünün kaynak kodunu içerir. Şu an indirilebilen son paket **v1.4.4** sürümüdür; v1.5.0 yayımlanana kadar aşağıdaki yeni özellikleri denemek için kaynak koddan derleme yapabilirsiniz.
+> En güncel sürüm **v1.5.1**'dir ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm **Claude Code 2.1.x** uyumluluğunu getirir (Claude kullanım okuması onarıldı). `main` dalı bu sürümün kaynak kodunu içerir.
 
 ### Özellikler
 
@@ -55,7 +55,7 @@ Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
 
 > [!WARNING]
-> Mevcut Beta paketi Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
+> Bu paket Apple Silicon (`arm64`) Mac'ler içindir ve henüz Apple tarafından notarize edilmemiştir. Bu nedenle macOS ilk açılışta “Apple, UsageBar öğesinin Mac'inize zarar verecek kötü amaçlı yazılım içermediğini doğrulayamadı” uyarısını gösterebilir. Aşağıdaki adımlar yalnızca bu depodaki resmi Release dosyasını indirdiyseniz uygulanmalıdır.
 
 #### İlk açılışta macOS uyarısını onaylama
 
@@ -75,14 +75,14 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.4.4-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.5.1-macOS-arm64.zip
 ```
 
-v1.5.0 ve sonraki CI üretimi paketlerde GitHub build provenance kaydını da
+CI tarafından üretilen paketlerde GitHub build provenance kaydını da
 doğrulayabilirsiniz:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.5.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.5.1-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -196,7 +196,7 @@ UsageBar is a small, local macOS menu bar app that displays Codex and Claude Cod
 It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
 
 > [!NOTE]
-> The `main` branch contains the source for the upcoming **v1.5.0** release. The latest downloadable package is currently **v1.4.4**; build from source to try the new features below until v1.5.0 is published.
+> The latest release is **v1.5.1**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds **Claude Code 2.1.x** compatibility (fixes Claude usage reading). The `main` branch contains its source.
 
 ### Features
 
@@ -242,7 +242,7 @@ You only need to install the provider you want to track.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
 > [!WARNING]
-> The current Beta package supports Apple Silicon (`arm64`) Macs and has not yet been notarized by Apple. macOS may therefore report that Apple could not verify UsageBar is free of malware. Follow the steps below only if you downloaded the official Release file from this repository.
+> This package supports Apple Silicon (`arm64`) Macs and has not yet been notarized by Apple. macOS may therefore report that Apple could not verify UsageBar is free of malware. Follow the steps below only if you downloaded the official Release file from this repository.
 
 #### Approving the macOS warning on first launch
 
@@ -262,14 +262,14 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.4.4-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.5.1-macOS-arm64.zip
 ```
 
-For v1.5.0 and later CI-produced packages, you can also verify GitHub build
+For CI-produced packages, you can also verify GitHub build
 provenance:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.5.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.5.1-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
