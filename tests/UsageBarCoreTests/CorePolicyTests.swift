@@ -178,4 +178,200 @@ final class CorePolicyTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - Provider disconnect transition
+
+    func testDisconnectKeepsValidSelectionOtherwiseFallsBack() {
+        // Disconnecting the non-selected provider keeps the selection.
+        XCTAssertEqual(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Codex",
+                remaining: ["Claude Code"],
+                previousSelection: "Claude Code"
+            ),
+            "Claude Code"
+        )
+        // Disconnecting the selected provider falls back to what remains.
+        XCTAssertEqual(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Claude Code",
+                remaining: ["Codex"],
+                previousSelection: "Claude Code"
+            ),
+            "Codex"
+        )
+        // Nothing left -> no selection.
+        XCTAssertNil(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Codex",
+                remaining: [],
+                previousSelection: "Codex"
+            )
+        )
+    }
+
+    func testAutoRotateTurnsOffBelowTwoProviders() {
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 1, wasEnabled: true))
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 0, wasEnabled: true))
+        XCTAssertTrue(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 2, wasEnabled: true))
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 2, wasEnabled: false))
+    }
+
+    // MARK: - Codex parsing
+
+    func testCodexResponseParsesAndClassifiesWindows() {
+        let json = """
+        {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":35,"windowDurationMins":300,"resetsAt":1784740000},"secondary":{"usedPercent":12.4,"windowDurationMins":10080,"resetsAt":1785000000}}}}
+        """
+        let usage = UsageParser.codexResponse(from: Data(json.utf8))
+        XCTAssertEqual(usage?.session?.usedPercent, 35)
+        XCTAssertEqual(usage?.session?.kind, .fiveHour)
+        XCTAssertEqual(usage?.weekly?.usedPercent, 12) // 12.4 rounds down
+        XCTAssertEqual(usage?.weekly?.kind, .weekly)
+        XCTAssertNil(usage?.error)
+    }
+
+    func testCodexResponseMissingLimitsIsUnavailable() {
+        let usage = UsageParser.codexResponse(from: Data(#"{"id":2,"result":{}}"#.utf8))
+        XCTAssertEqual(usage?.error?.diagnosticCode, "codex_limit_missing")
+    }
+
+    // MARK: - Claude print-mode parsing
+
+    func testClaudePrintUsageParsesBothWindows() {
+        let usage = UsageParser.claudePrintUsage("""
+        Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+        Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+        Last 24h · 623 requests · 8 sessions
+        """)
+        XCTAssertEqual(usage.session?.usedPercent, 100)
+        XCTAssertEqual(usage.weekly?.usedPercent, 53)
+        XCTAssertNotNil(usage.session?.resetsAt)
+        XCTAssertNotNil(usage.weekly?.resetsAt) // minute-less "10pm" parses
+        XCTAssertNil(usage.error)
+    }
+
+    func testClaudePrintUsageLoginAndUnreadableVerdicts() {
+        if case .claudeNotLoggedIn? = UsageParser.claudePrintUsage("Please run /login").error {} else {
+            XCTFail("expected claudeNotLoggedIn")
+        }
+        if case .claudeUsageUnreadable? = UsageParser.claudePrintUsage("noise").error {} else {
+            XCTFail("expected claudeUsageUnreadable")
+        }
+    }
+
+    // MARK: - Reset time zone / DST
+
+    private func instant(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ mi: Int, _ zone: String) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: zone)!
+        var c = DateComponents()
+        c.year = y; c.month = mo; c.day = d; c.hour = h; c.minute = mi
+        return calendar.date(from: c)!
+    }
+
+    private func resetInstant(_ reset: String, now: Date) -> Date? {
+        UsageParser.claudePrintUsage("Current session: 10% used · resets \(reset)", now: now)
+            .session?.resetsAt
+    }
+
+    func testResetRollForwardUsesResetZoneAcrossDST() {
+        let ist = "Europe/Istanbul"
+        let ny = "America/New_York"
+        XCTAssertEqual(
+            resetInstant("Jul 26 at 10pm (Europe/Istanbul)", now: instant(2026, 7, 20, 12, 0, ist)),
+            instant(2026, 7, 26, 22, 0, ist)
+        )
+        XCTAssertEqual(
+            resetInstant("5pm (America/New_York)", now: instant(2026, 3, 10, 18, 0, ny)),
+            instant(2026, 3, 11, 17, 0, ny)
+        )
+        XCTAssertEqual(
+            resetInstant("4:59pm (America/New_York)", now: instant(2026, 3, 10, 12, 0, ny)),
+            instant(2026, 3, 10, 16, 59, ny)
+        )
+        XCTAssertEqual(
+            resetInstant("Jan 1 at 1am (America/New_York)", now: instant(2026, 12, 15, 12, 0, ny)),
+            instant(2027, 1, 1, 1, 0, ny)
+        )
+        // Spring-forward: rolling 1am a day preserves the wall clock in New York.
+        XCTAssertEqual(
+            resetInstant("1am (America/New_York)", now: instant(2026, 3, 8, 3, 0, ny)),
+            instant(2026, 3, 9, 1, 0, ny)
+        )
+    }
+
+    // MARK: - Usage summary selection
+
+    func testSummaryPrefersClaudeFiveHourThenWeekly() {
+        let both = ProviderUsage(name: "Claude Code", windows: [
+            UsageWindow(kind: .fiveHour, usedPercent: 41, resetsAt: nil, durationMinutes: 300),
+            UsageWindow(kind: .weekly, usedPercent: 74, resetsAt: nil, durationMinutes: 10_080)
+        ], error: nil)
+        XCTAssertEqual(
+            UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": both])?.remainingPercent,
+            59
+        )
+        let weeklyOnly = ProviderUsage(name: "Claude Code", windows: [
+            UsageWindow(kind: .weekly, usedPercent: 26, resetsAt: nil, durationMinutes: 10_080)
+        ], error: nil)
+        let s = UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": weeklyOnly])
+        XCTAssertEqual(s?.remainingPercent, 74)
+        XCTAssertEqual(s?.windowKind, .weekly)
+    }
+
+    func testSummaryPicksMostConstrainedCodexWindow() {
+        let usage = ProviderUsage(name: "Codex", windows: [
+            UsageWindow(kind: .fiveHour, usedPercent: 20, resetsAt: nil, durationMinutes: 300),
+            UsageWindow(kind: .weekly, usedPercent: 74, resetsAt: nil, durationMinutes: 10_080)
+        ], error: nil)
+        XCTAssertEqual(
+            UsageSummaryCalculator.summary(for: "Codex", in: ["Codex": usage])?.remainingPercent,
+            26 // 100 - 74, the highest used
+        )
+    }
+
+    // MARK: - Usage history
+
+    func testHistoryRetainsWindowAndEnforcesMinInterval() {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        var samples = UsageHistoryModel.adding(remainingPercent: 50, at: base, to: [])
+        // Within one minute: replaces the last sample rather than appending.
+        samples = UsageHistoryModel.adding(remainingPercent: 49, at: base.addingTimeInterval(30), to: samples)
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.last?.remainingPercent, 49)
+        // After a minute: appends.
+        samples = UsageHistoryModel.adding(remainingPercent: 48, at: base.addingTimeInterval(120), to: samples)
+        XCTAssertEqual(samples.count, 2)
+        // Older than 24h is dropped.
+        let far = base.addingTimeInterval(25 * 60 * 60)
+        samples = UsageHistoryModel.adding(remainingPercent: 40, at: far, to: samples)
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.last?.remainingPercent, 40)
+    }
+
+    func testHistoryDecodeRejectsOversizedData() {
+        let big = Data(count: UsageHistoryModel.maximumEncodedBytes + 1)
+        XCTAssertTrue(UsageHistoryModel.decode(big).isEmpty)
+        XCTAssertTrue(UsageHistoryModel.decode(Data("not json".utf8)).isEmpty)
+    }
+
+    func testChartSmoothsNoiseComputesDeltaAndResetMarkers() {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        func series(_ values: [Int]) -> [UsageHistorySample] {
+            values.enumerated().map {
+                UsageHistorySample(recordedAt: base.addingTimeInterval(Double($0.offset * 120)),
+                                   remainingPercent: $0.element)
+            }
+        }
+        // Isolated 33,34,33 one-point spike is smoothed to 33 for display only.
+        let noisy = UsageHistoryChartModel(samples: series([33, 34, 33]))
+        XCTAssertEqual(noisy.displaySamples.map(\.remainingPercent), [33, 33, 33])
+        XCTAssertEqual(noisy.samples.map(\.remainingPercent), [33, 34, 33]) // raw kept
+        // Delta is end minus start of raw samples.
+        XCTAssertEqual(UsageHistoryChartModel(samples: series([50, 45, 42])).delta, -8)
+        // A >=20 upward jump marks a reset.
+        let reset = UsageHistoryChartModel(samples: series([30, 12, 95]))
+        XCTAssertEqual(reset.resetIndices, [2])
+    }
 }
