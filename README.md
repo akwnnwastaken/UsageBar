@@ -27,7 +27,8 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - Sürüm, macOS, bağlantı durumu, pencere türleri ve güvenli hata kodlarından oluşan bir tanılama özetini panoya kopyalar. Ham CLI çıktısı, dosya yolu veya kimlik bilgisi eklemez.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
 - İlk açılışta macOS diline göre Türkçe veya İngilizce arayüz seçer; kullanıcı seçimini sonraki açılışlar için saklar.
-- Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
+- Kullanım verisini seçilebilir aralıklarla (1, 2 veya 5 dakika; varsayılan 5) ve
+  menü açıldığında veri 30 saniyeden eskiyse yeniler.
 - Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
 
 ### Yüzde nasıl hesaplanıyor?
@@ -99,7 +100,7 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 2. Menü çubuğundaki `%—` simgesine tıklayın.
 3. **Codex'e bağlan** veya **Claude Code'a bağlan** seçeneğini kullanın.
 4. İki sağlayıcı da bağlıysa `Otomatik | Codex | Claude` anahtarıyla sabit bir sağlayıcı seçin veya 30 saniyelik otomatik geçişi açın.
-5. `Üst çubuk görünümü`, `Kullanım renkleri` ve `Kullanım geçmişi` menülerinden görünümü isteğinize göre ayarlayın.
+5. `Üst çubuk görünümü`, `Kullanım renkleri`, `Kullanım geçmişi` ve `Yenileme aralığı` menülerinden görünümü ve tazeleme sıklığını isteğinize göre ayarlayın.
 6. Sorun bildirirken kişisel veri içermeyen özeti almak için **Tanılama özetini kopyala** seçeneğini kullanın.
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
@@ -213,7 +214,8 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Copies a diagnostic summary containing only version, macOS, connection state, window kinds, and safe error codes. It excludes raw CLI output, file paths, and credentials.
 - Can launch automatically at login through macOS Login Items.
 - Selects Turkish or English from the macOS language on first launch and remembers the user's selection.
-- Refreshes usage every five minutes and when the menu is reopened.
+- Refreshes usage on a selectable interval (1, 2, or 5 minutes; 5 by default) and
+  when the menu opens with data older than 30 seconds.
 - Runs only in the menu bar without a Dock icon or main window.
 
 ### How is the percentage calculated?
@@ -285,7 +287,7 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 2. Click the `%—` icon in the menu bar.
 3. Choose **Connect Codex** or **Connect Claude Code**.
 4. If both providers are connected, use `Auto | Codex | Claude` to pin one provider or enable 30-second automatic rotation.
-5. Customize the display through the `Menu bar appearance`, `Usage colors`, and `Usage history` menus.
+5. Customize the display and refresh frequency through the `Menu bar appearance`, `Usage colors`, `Usage history`, and `Refresh interval` menus.
 6. When reporting a problem, use **Copy diagnostics** to obtain a summary without personal data.
 
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.

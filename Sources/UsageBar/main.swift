@@ -447,6 +447,18 @@ struct Localizer {
         )
     }
 
+    var refreshIntervalTitle: String {
+        pick("Yenileme aralığı", "Refresh interval")
+    }
+
+    func refreshIntervalOption(_ interval: UsageRefreshInterval) -> String {
+        let minutes = interval.minutes
+        return pick(
+            "\(minutes) dakika",
+            minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        )
+    }
+
     func resetIn(_ duration: String) -> String {
         pick("Sıfırlama: \(duration)", "Resets in \(duration)")
     }
@@ -1619,6 +1631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let usageAlertPreset = "status.usage.alert.preset"
         static let showResetInMenuBar = "status.reset.countdown.visible"
         static let autoRotateProviders = "status.providers.auto.rotate"
+        static let refreshInterval = "status.refresh.interval"
         static let usageHistoryEnabled = "usage.history.enabled"
         static let usageHistoryData = "usage.history.samples.v2"
         static let legacyUsageHistoryData = "usage.history.samples.v1"
@@ -1673,6 +1686,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return UsageAlertPreset(rawValue: raw) ?? .balanced
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.usageAlertPreset) }
+    }
+
+    private var refreshInterval: UsageRefreshInterval {
+        get {
+            UsageRefreshInterval.resolved(
+                from: UserDefaults.standard.string(forKey: PreferenceKey.refreshInterval)
+            )
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.refreshInterval) }
     }
 
     private var usageAlertPolicy: UsageAlertPolicy {
@@ -1757,14 +1779,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.toolTip = text.usageTooltip
         rebuildMenu()
         refresh()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
+        configureRefreshTimer()
         configureStatusPresentationTimer()
     }
 
+    private func configureRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(
+            withTimeInterval: refreshInterval.seconds,
+            repeats: true
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
-        if let lastUpdated, Date().timeIntervalSince(lastUpdated) > 60 {
+        if UsageRefreshPolicy.shouldRefreshOnMenuOpen(lastUpdated: lastUpdated, now: Date()) {
             refresh()
         }
     }
@@ -1953,6 +1983,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addMenuBarAppearanceSettings()
             addUsageColorSettings()
             addUsageHistorySettings()
+            addRefreshIntervalSettings()
         }
 
         if !codexConnected || !claudeConnected {
@@ -2109,6 +2140,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.representedObject = preset.rawValue
             item.state = usageAlertPreset == preset ? .on : .off
             item.isEnabled = usageColorsEnabled
+            submenu.addItem(item)
+        }
+
+        rootItem.submenu = submenu
+        menu.addItem(rootItem)
+    }
+
+    private func addRefreshIntervalSettings() {
+        let rootItem = NSMenuItem(title: text.refreshIntervalTitle, action: nil, keyEquivalent: "")
+        let submenu = manuallyEnabledMenu()
+
+        for interval in UsageRefreshInterval.allCases {
+            let item = NSMenuItem(
+                title: text.refreshIntervalOption(interval),
+                action: #selector(selectRefreshInterval(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = interval.rawValue
+            item.state = refreshInterval == interval ? .on : .off
             submenu.addItem(item)
         }
 
@@ -2466,6 +2517,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
+    @objc private func selectRefreshInterval(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let interval = UsageRefreshInterval(rawValue: raw),
+            interval != refreshInterval
+        else { return }
+        refreshInterval = interval
+        configureRefreshTimer()
+        rebuildMenu()
+    }
+
     @objc private func toggleUsageHistory() {
         usageHistoryEnabled.toggle()
         if usageHistoryEnabled { recordUsageHistory(at: Date()) }
@@ -2778,6 +2840,35 @@ private func runSelfTest() -> Int32 {
         ProviderRotation.interval == 30
     else {
         fputs("Sağlayıcı dönüşüm testi başarısız\n", stderr)
+        return 1
+    }
+
+    let refreshOrigin = Date(timeIntervalSince1970: 1_800_000_000)
+    guard
+        UsageRefreshInterval.allCases.map(\.minutes) == [1, 2, 5],
+        UsageRefreshInterval.resolved(from: nil) == .fiveMinutes,
+        UsageRefreshInterval.resolved(from: "bilinmeyen") == .fiveMinutes,
+        UsageRefreshInterval.resolved(from: "oneMinute") == .oneMinute,
+        UsageRefreshInterval.oneMinute.seconds == 60,
+        UsageRefreshInterval.fiveMinutes.seconds == 300,
+        UsageRefreshPolicy.menuOpenStalenessThreshold == 30,
+        UsageRefreshPolicy.shouldRefreshOnMenuOpen(lastUpdated: nil, now: refreshOrigin) == false,
+        UsageRefreshPolicy.shouldRefreshOnMenuOpen(
+            lastUpdated: refreshOrigin.addingTimeInterval(-20),
+            now: refreshOrigin
+        ) == false,
+        UsageRefreshPolicy.shouldRefreshOnMenuOpen(
+            lastUpdated: refreshOrigin.addingTimeInterval(-45),
+            now: refreshOrigin
+        ),
+        turkish.refreshIntervalTitle == "Yenileme aralığı",
+        english.refreshIntervalTitle == "Refresh interval",
+        turkish.refreshIntervalOption(.oneMinute) == "1 dakika",
+        turkish.refreshIntervalOption(.fiveMinutes) == "5 dakika",
+        english.refreshIntervalOption(.oneMinute) == "1 minute",
+        english.refreshIntervalOption(.twoMinutes) == "2 minutes"
+    else {
+        fputs("Yenileme aralığı testi başarısız\n", stderr)
         return 1
     }
 
