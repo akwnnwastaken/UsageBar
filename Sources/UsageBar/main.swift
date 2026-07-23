@@ -789,6 +789,18 @@ enum UsageParser {
             }
         }
 
+        // Claude's /usage panel positions text with cursor moves rather than
+        // literal spaces, so stripping terminal codes can concatenate the reset
+        // date ("Jul 26 at 10pm" -> "Jul26at10pm"). Re-insert separators at
+        // letter/digit boundaries and reattach the am/pm suffix so the formats
+        // below can match. Short times like "5pm" are unaffected.
+        dateText = dateText
+            .replacingOccurrences(of: "([A-Za-z])([0-9])", with: "$1 $2", options: .regularExpression)
+            .replacingOccurrences(of: "([0-9])([A-Za-z])", with: "$1 $2", options: .regularExpression)
+            .replacingOccurrences(of: "([0-9])\\s+([AaPp][Mm])\\b", with: "$1$2", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
         let formats = [
             "MMM d, yyyy, h:mma", "MMM d, yyyy, h:mm a",
             "MMM d, yyyy 'at' h:mma", "MMM d, yyyy 'at' h:mm a",
@@ -796,7 +808,17 @@ enum UsageParser {
             "MMM d 'at' h:mma", "MMM d 'at' h:mm a",
             "EEE, MMM d, h:mma", "EEE, MMM d, h:mm a",
             "EEE, MMM d 'at' h:mma", "EEE, MMM d 'at' h:mm a",
-            "h:mma", "h:mm a"
+            "h:mma", "h:mm a",
+            // Whole-hour times with no minutes, e.g. "Resets 5pm" or
+            // "Resets Jul 26 at 10pm". Claude's /usage panel drops the minutes
+            // on the hour, so these must be tried only after the h:mm formats
+            // (otherwise "ha" would greedily parse the hour of a "4:59pm").
+            "MMM d, yyyy, ha", "MMM d, yyyy 'at' ha",
+            "MMM d, ha", "MMM d 'at' ha",
+            "EEE, MMM d, ha", "EEE, MMM d 'at' ha",
+            "ha", "h a",
+            // Date-only, e.g. "Resets Aug 1".
+            "MMM d, yyyy", "MMM d"
         ]
         for format in formats {
             let formatter = DateFormatter()
@@ -806,6 +828,22 @@ enum UsageParser {
             formatter.defaultDate = now
             formatter.dateFormat = format
             guard var parsed = formatter.date(from: dateText) else { continue }
+
+            // Minute-less formats ("5pm", "Jul 26 at 10pm") inherit the current
+            // minute from defaultDate; pin them to the top of the hour so the
+            // countdown is not offset by the current minute-of-hour.
+            if !format.contains("mm") {
+                var hourCalendar = Calendar(identifier: .gregorian)
+                hourCalendar.timeZone = timeZone
+                if let onHour = hourCalendar.date(
+                    bySettingHour: hourCalendar.component(.hour, from: parsed),
+                    minute: 0,
+                    second: 0,
+                    of: parsed
+                ) {
+                    parsed = onHour
+                }
+            }
 
             if !format.contains("MMM"), parsed <= now,
                let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: parsed) {
