@@ -9,6 +9,14 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-24
+
+### Added
+- Provider disconnect: each connected provider has a "Disconnect" menu item.
+  Disconnecting drops that provider's live usage and status selection, turns off
+  auto-rotate when fewer than two providers remain, and keeps the usage history
+  (use "Clear history" to remove it).
+
 ### Fixed
 - Codex quota checks no longer crash (SIGABRT / exit 134) when a fetch is
   stopped: the process is now reaped before its termination status is read.
@@ -17,6 +25,12 @@ Releases before v1.5.2 are listed on the
 - Claude reset countdowns roll forward in the reset's own time zone, fixing
   off-by-one-day/hour errors when the Mac's time zone differs or the roll crosses
   a daylight-saving boundary.
+
+### Internal
+- Extracted the usage models, history models, summary selection, and the whole
+  `UsageParser` into `UsageBarCore` (behavior-preserving); the XCTest suite grew
+  from 15 to 27 cases. Added a pinned `macos-14` CI job, an explicit `swift test`
+  step, and workflow timeouts.
 
 ## [1.6.0] - 2026-07-24
 
@@ -59,7 +73,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/akwnnwastaken/UsageBar/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/akwnnwastaken/UsageBar/releases/tag/v1.5.2

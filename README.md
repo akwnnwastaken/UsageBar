@@ -9,7 +9,7 @@ Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren kü
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
 > [!NOTE]
-> En güncel sürüm **v1.6.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürümde Claude kullanımı artık `claude -p "/usage"` ile okunur (Claude'un geçmişine oturum kaydı bırakmaz, model kotası tüketmez) ve kullanım verisinin yenileme aralığı seçilebilir (1, 2 veya 5 dakika). `main` dalı bu sürümün kaynak kodunu içerir.
+> En güncel sürüm **v1.7.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm sağlayıcı bağlantısını menüden kaldırma özelliğini ekler ve iki hatayı düzeltir (Codex zaman aşımı çökmesi; Claude sıfırlama sayacının zaman dilimi/DST hesabı). `main` dalı bu sürümün kaynak kodunu içerir.
 
 ### Özellikler
 
@@ -22,6 +22,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
+- Her bağlı sağlayıcıyı menüden bağlantıdan kaldırabilir; bu, kullanım geçmişini silmez.
 - Her kullanım penceresinin 24 saate kadar kalan yüzde geçmişini ayrı bir yerel mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Tek ölçümlük ±1 puan yuvarlama dalgalanmaları yalnızca gösterimde yumuşatılır: sağlayıcı yüzdeyi tam sayıya yuvarladığı için bir pencere içinde kalan oran 41 ↔ 42 gibi oynayabilir; menüdeki değer bu tek puanlık yükselişleri üç ölçüm boyunca sürmedikçe göstermez. Sıfırlamalar ve daha büyük değişimler anında yansır, kaydedilen geçmiş her zaman ham kalır.
 - Sağlayıcı geçici olarak yanıt vermezse son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder; eski ölçüm geçmişe yeniden yazılmaz.
 - Sürüm, macOS, bağlantı durumu, pencere türleri ve güvenli hata kodlarından oluşan bir tanılama özetini panoya kopyalar. Ham CLI çıktısı, dosya yolu veya kimlik bilgisi eklemez.
@@ -76,14 +77,14 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.6.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip
 ```
 
 CI tarafından üretilen paketlerde GitHub build provenance kaydını da
 doğrulayabilirsiniz:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.6.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -196,7 +197,7 @@ UsageBar is a small, local macOS menu bar app that displays Codex and Claude Cod
 It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
 
 > [!NOTE]
-> The latest release is **v1.6.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It reads Claude usage via `claude -p "/usage"` (leaving no session record in Claude's history and consuming no model quota) and adds a selectable refresh interval (1, 2, or 5 minutes). The `main` branch contains its source.
+> The latest release is **v1.7.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds disconnecting a provider from the menu and fixes two bugs (a Codex timeout crash; the Claude reset countdown's time-zone/DST math). The `main` branch contains its source.
 
 ### Features
 
@@ -209,6 +210,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
+- Can disconnect any connected provider from the menu; this does not delete the usage history.
 - Shows up to 24 hours of remaining-percentage history separately for every usage window. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Isolated ±1 point rounding fluctuations are smoothed in the presentation only: because the provider rounds the percentage to a whole number, remaining can flicker between 41 and 42 inside a window, so the menu withholds a one-point rise until it persists across three readings. Resets and larger changes appear immediately, and the recorded history always stays raw.
 - Keeps showing the last successful value with its timestamp and failure reason when a provider is temporarily unavailable; stale values are not recorded as new history samples.
 - Copies a diagnostic summary containing only version, macOS, connection state, window kinds, and safe error codes. It excludes raw CLI output, file paths, and credentials.
@@ -263,14 +265,14 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.6.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip
 ```
 
 For CI-produced packages, you can also verify GitHub build
 provenance:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.6.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
