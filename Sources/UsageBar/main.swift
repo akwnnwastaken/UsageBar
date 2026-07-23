@@ -707,62 +707,6 @@ enum UsageParser {
         return (percent, reset)
     }
 
-    static func claudeStatusLine(_ raw: String) -> ProviderUsage? {
-        let cleaned = stripTerminalCodes(raw)
-        guard let markerRange = cleaned.range(of: "USAGEBAR_LIMITS:") else { return nil }
-        let statusOutput = String(cleaned[markerRange.lowerBound...])
-        // Claude redraws its status line incrementally. The initial frame can
-        // contain `USAGEBAR_LIMITS:|||`, followed later by only the changed
-        // suffix at another cursor position. Individual quota/reset fields can
-        // also be absent, so accept partial tuples while still requiring at
-        // least one usage percentage before returning data.
-        let number = "[0-9]+(?:\\.[0-9]+)?"
-        let field = "((?:\(number))?)"
-        let pattern = "\(field)\\|\(field)\\|\(field)\\|\(field)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(statusOutput.startIndex..<statusOutput.endIndex, in: statusOutput)
-        var result: ProviderUsage?
-
-        for match in regex.matches(in: statusOutput, range: range) {
-            guard match.numberOfRanges == 5 else { continue }
-            let values: [String] = (1...4).compactMap { index in
-                guard let valueRange = Range(match.range(at: index), in: statusOutput) else { return nil }
-                return String(statusOutput[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            guard values.count == 4 else { continue }
-
-            let fiveHourUsed = Double(values[0])
-            let fiveHourReset = Double(values[1])
-            let sevenDayUsed = Double(values[2])
-            let sevenDayReset = Double(values[3])
-            guard fiveHourUsed != nil || sevenDayUsed != nil else { continue }
-
-            result = ProviderUsage(
-                name: "Claude Code",
-                windows: [
-                    fiveHourUsed.map {
-                        UsageWindow(
-                            kind: .fiveHour,
-                            usedPercent: min(100, max(0, Int($0.rounded()))),
-                            resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
-                            durationMinutes: 300
-                        )
-                    },
-                    sevenDayUsed.map {
-                        UsageWindow(
-                            kind: .weekly,
-                            usedPercent: min(100, max(0, Int($0.rounded()))),
-                            resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
-                            durationMinutes: 10_080
-                        )
-                    }
-                ].compactMap { $0 },
-                error: nil
-            )
-        }
-        return result
-    }
-
     private static func rateWindow(_ value: Any?, position: Int) -> UsageWindow? {
         guard let dictionary = value as? [String: Any] else { return nil }
         guard let used = number(dictionary["usedPercent"]) else { return nil }
@@ -1115,124 +1059,6 @@ private enum ProviderProcessLauncher {
     }
 }
 
-private final class ProviderPTYProcess {
-    let processIdentifier: pid_t
-    let masterFileDescriptor: Int32
-    private let stateLock = NSLock()
-    private var reaped = false
-
-    init(processIdentifier: pid_t, masterFileDescriptor: Int32) {
-        self.processIdentifier = processIdentifier
-        self.masterFileDescriptor = masterFileDescriptor
-    }
-
-    var isRunning: Bool {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !reaped else { return false }
-
-        var status: Int32 = 0
-        let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
-        if result == 0 { return true }
-        if result == processIdentifier || (result == -1 && errno == ECHILD) {
-            reaped = true
-        }
-        return false
-    }
-
-    func write(_ data: Data) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard var pointer = rawBuffer.baseAddress else { return }
-            var remaining = rawBuffer.count
-            while remaining > 0 {
-                let written = Darwin.write(masterFileDescriptor, pointer, remaining)
-                if written > 0 {
-                    pointer = pointer.advanced(by: written)
-                    remaining -= written
-                } else if written == -1 && errno == EINTR {
-                    continue
-                } else {
-                    throw NSError(
-                        domain: NSPOSIXErrorDomain,
-                        code: Int(errno),
-                        userInfo: nil
-                    )
-                }
-            }
-        }
-    }
-
-    func stop() {
-        ProviderProcessLimits.stop(processIdentifier: processIdentifier)
-        Darwin.close(masterFileDescriptor)
-
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard !reaped else { return }
-        var status: Int32 = 0
-        while Darwin.waitpid(processIdentifier, &status, 0) == -1 && errno == EINTR {}
-        reaped = true
-    }
-}
-
-private enum ProviderPTYLauncher {
-    static func launch(
-        executable: String,
-        arguments: [String],
-        environment: [String: String],
-        workingDirectory: URL
-    ) throws -> ProviderPTYProcess {
-        let argvStrings = [executable] + arguments
-        let environmentStrings = environment
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-
-        return try withCStringArray(argvStrings) { argv in
-            try withCStringArray(environmentStrings) { envp in
-                var processIdentifier: pid_t = 0
-                var masterFileDescriptor: Int32 = -1
-                let result = executable.withCString { executablePointer in
-                    workingDirectory.path.withCString { directoryPointer in
-                        usagebar_spawn_in_pty(
-                            executablePointer,
-                            argv,
-                            envp,
-                            directoryPointer,
-                            &processIdentifier,
-                            &masterFileDescriptor
-                        )
-                    }
-                }
-                guard result == 0 else {
-                    throw NSError(
-                        domain: NSPOSIXErrorDomain,
-                        code: Int(result),
-                        userInfo: nil
-                    )
-                }
-                return ProviderPTYProcess(
-                    processIdentifier: processIdentifier,
-                    masterFileDescriptor: masterFileDescriptor
-                )
-            }
-        }
-    }
-
-    private static func withCStringArray<Result>(
-        _ strings: [String],
-        body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> Result
-    ) rethrows -> Result {
-        var pointers = strings.map { strdup($0) }
-        pointers.append(nil)
-        defer {
-            for pointer in pointers where pointer != nil { free(pointer) }
-        }
-        return try pointers.withUnsafeMutableBufferPointer { buffer in
-            try body(buffer.baseAddress!)
-        }
-    }
-}
-
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
     private static let terminationGrace: TimeInterval = 1
@@ -1328,35 +1154,6 @@ private enum PipeDrainer {
                     capture.append(chunk)
                     dataAvailable?.signal()
                 } catch {
-                    return
-                }
-            }
-        }
-        return group
-    }
-
-    static func start(
-        fileDescriptor: Int32,
-        capture: BoundedDataCapture,
-        dataAvailable: DispatchSemaphore? = nil
-    ) -> DispatchGroup {
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: .utility).async {
-            defer { group.leave() }
-            var buffer = [UInt8](repeating: 0, count: 16 * 1_024)
-            while true {
-                let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
-                if count > 0 {
-                    capture.append(Data(buffer.prefix(count)))
-                    dataAvailable?.signal()
-                } else if count == 0 {
-                    return
-                } else if errno == EINTR {
-                    continue
-                } else if errno == EAGAIN || errno == EWOULDBLOCK {
-                    Thread.sleep(forTimeInterval: 0.01)
-                } else {
                     return
                 }
             }
@@ -2887,33 +2684,6 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
-    let structuredClaude = UsageParser.claudeStatusLine("""
-    \u{001B}[2CUSAGEBAR_LIMITS:|||\r
-    \u{001B}[18C101|1784740200|25|1785092400\r
-    """)
-    guard
-        structuredClaude?.session?.usedPercent == 100,
-        structuredClaude?.weekly?.usedPercent == 25,
-        structuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200,
-        structuredClaude?.weekly?.resetsAt?.timeIntervalSince1970 == 1_785_092_400
-    else {
-        fputs("Claude yapılandırılmış limit testi başarısız\n", stderr)
-        return 1
-    }
-
-    let partialStructuredClaude = UsageParser.claudeStatusLine("""
-    USAGEBAR_LIMITS:|||\r
-    33.4|1784740200||\r
-    """)
-    guard
-        partialStructuredClaude?.session?.usedPercent == 33,
-        partialStructuredClaude?.weekly == nil,
-        partialStructuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200
-    else {
-        fputs("Claude kısmi yapılandırılmış limit testi başarısız\n", stderr)
-        return 1
-    }
-
     let summary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
         "Codex": parsedCodex,
         "Claude Code": parsedClaude
@@ -3077,43 +2847,6 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
-    var ptySmokeProcess: ProviderPTYProcess?
-    do {
-        let process = try ProviderPTYLauncher.launch(
-            executable: "/bin/cat",
-            arguments: [],
-            environment: ProviderProcessContext.environment,
-            workingDirectory: ProviderProcessContext.workingDirectory
-        )
-        ptySmokeProcess = process
-        let capture = BoundedDataCapture(limit: 4 * 1_024)
-        let dataAvailable = DispatchSemaphore(value: 0)
-        let drainer = PipeDrainer.start(
-            fileDescriptor: process.masterFileDescriptor,
-            capture: capture,
-            dataAvailable: dataAvailable
-        )
-        try process.write(Data("USAGEBAR_PTY_PROBE\n".utf8))
-        let probe = Data("USAGEBAR_PTY_PROBE".utf8)
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline,
-              capture.snapshot().data.range(of: probe) == nil {
-            _ = dataAvailable.wait(timeout: .now() + .milliseconds(50))
-        }
-        let receivedProbe = capture.snapshot().data.range(of: probe) != nil
-        process.stop()
-        ptySmokeProcess = nil
-        _ = drainer.wait(timeout: .now() + .seconds(1))
-        guard receivedProbe else {
-            fputs("Yerel PTY veri yolu testi başarısız\n", stderr)
-            return 1
-        }
-    } catch {
-        ptySmokeProcess?.stop()
-        fputs("Yerel PTY başlatma testi başarısız\n", stderr)
-        return 1
-    }
-
     print("UsageBar öz testi başarılı")
     return 0
 }
@@ -3155,42 +2888,6 @@ private func runClaudeLiveDiagnostics() -> Int32 {
     return usage.error == nil ? 0 : 2
 }
 
-private func runClaudeStatusFilter() -> Int32 {
-    let maximumInputBytes = 64 * 1_024
-    var input = Data()
-
-    while true {
-        let chunk = FileHandle.standardInput.readData(ofLength: 4 * 1_024)
-        if chunk.isEmpty { break }
-        guard input.count + chunk.count <= maximumInputBytes else { return 1 }
-        input.append(chunk)
-    }
-
-    guard
-        let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
-        let limits = object["rate_limits"] as? [String: Any]
-    else { return 1 }
-
-    func field(_ window: String, _ key: String) -> String {
-        guard
-            let values = limits[window] as? [String: Any],
-            let value = values[key]
-        else { return "" }
-        if let number = value as? NSNumber { return number.stringValue }
-        if let string = value as? String, Double(string) != nil { return string }
-        return ""
-    }
-
-    let fields = [
-        field("five_hour", "used_percentage"),
-        field("five_hour", "resets_at"),
-        field("seven_day", "used_percentage"),
-        field("seven_day", "resets_at")
-    ]
-    print("USAGEBAR_LIMITS:" + fields.joined(separator: "|"))
-    return 0
-}
-
 private func runProcessGroupLauncher() -> Int32 {
     let argumentOffset: Int32 = 2
     guard CommandLine.argc > argumentOffset else { return Int32(EINVAL) }
@@ -3206,10 +2903,6 @@ if CommandLine.arguments.contains("--self-test") {
 
 if CommandLine.arguments.contains("--diagnose-claude-live") {
     exit(runClaudeLiveDiagnostics())
-}
-
-if CommandLine.arguments.contains("--claude-status-filter") {
-    exit(runClaudeStatusFilter())
 }
 
 if CommandLine.arguments.count > 2,
