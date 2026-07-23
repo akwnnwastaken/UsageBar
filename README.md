@@ -167,7 +167,6 @@ UsageBar/
 ├── tests/build_regression.sh                    # Temiz paketleme ve imza regresyonu
 ├── tests/security_acceptance.sh                 # CI güvenlik kabul kapısı
 ├── .github/workflows/ci.yml                     # Paket ve güvenlik testleri
-├── .github/workflows/codeql.yml                 # Manuel Swift CodeQL derlemesi
 ├── .github/workflows/release-candidate.yml      # İmzalı tag, SHA ve provenance üretimi
 ├── Package.swift                                # Kanonik SwiftPM derleme tanımı
 ├── Info.plist                     # macOS uygulama ve sürüm metadata'sı
@@ -354,7 +353,6 @@ UsageBar/
 ├── tests/build_regression.sh                    # Clean packaging and signature regression
 ├── tests/security_acceptance.sh                 # CI security acceptance gate
 ├── .github/workflows/ci.yml                     # Packaging and security checks
-├── .github/workflows/codeql.yml                 # Manual Swift CodeQL build
 ├── .github/workflows/release-candidate.yml      # Signed tag, SHA, and provenance build
 ├── Package.swift                                # Canonical SwiftPM build graph
 ├── Info.plist                     # macOS application and version metadata
