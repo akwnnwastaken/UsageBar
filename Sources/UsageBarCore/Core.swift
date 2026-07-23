@@ -55,6 +55,47 @@ public struct UsageAlertPolicy {
     }
 }
 
+/// Sağlayıcılar kalan yüzdeyi tam sayıya yuvarlayarak bildirir, bu yüzden gerçek
+/// değer bir yuvarlama sınırındayken ardışık iki ölçüm 41 ↔ 42 gibi oynayabilir.
+/// Bir pencere içinde kalan yüzde gerçekte artamayacağı için tek ölçümlük +1
+/// sıçramaları gösterimde bekletilir. Sıçrama ikinci ölçümde de sürüyorsa kabul
+/// edilir; böylece gecikme tek bir yenileme döngüsüyle sınırlı kalır ve gerçek
+/// bir artış kalıcı olarak gizlenmez. Kayıtlı geçmiş her zaman ham kalır.
+public enum UsageDisplayNoiseFilter {
+    /// +1'lik bir yükselişin gerçek kabul edilmesi için gereken üst üste ölçüm
+    /// sayısı. Gözlenen yuvarlama dalgalanmaları iki ölçüm sürebildiği için eşik
+    /// üçtür; böylece gösterim en fazla üç yenileme geriden gelir ve kalıcı
+    /// olarak yanlış kalmaz.
+    public static let risePersistenceThreshold = 3
+
+    public struct Decision: Equatable {
+        public let displayed: Int
+        public let pendingRise: Int?
+        public let pendingCount: Int
+
+        public init(displayed: Int, pendingRise: Int?, pendingCount: Int) {
+            self.displayed = displayed
+            self.pendingRise = pendingRise
+            self.pendingCount = pendingCount
+        }
+    }
+
+    public static func decide(
+        raw: Int,
+        previouslyDisplayed: Int?,
+        pendingRise: Int?,
+        pendingCount: Int
+    ) -> Decision {
+        let accepted = Decision(displayed: raw, pendingRise: nil, pendingCount: 0)
+        guard let previouslyDisplayed else { return accepted }
+        // Düşüşler ve +2 ve üzeri sıçramalar (sıfırlama, limit değişimi) gerçektir.
+        guard raw == previouslyDisplayed + 1 else { return accepted }
+        let count = (pendingRise == raw ? pendingCount : 0) + 1
+        guard count < risePersistenceThreshold else { return accepted }
+        return Decision(displayed: previouslyDisplayed, pendingRise: raw, pendingCount: count)
+    }
+}
+
 public enum UsageRefreshInterval: String, CaseIterable {
     case oneMinute
     case twoMinutes
