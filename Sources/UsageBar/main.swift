@@ -2840,6 +2840,33 @@ private func runSelfTest() -> Int32 {
     return 0
 }
 
+private func runClaudeLiveDiagnostics() -> Int32 {
+    let completed = DispatchSemaphore(value: 0)
+    let lock = NSLock()
+    var result: ProviderUsage?
+    ClaudeUsageFetcher().fetch { usage in
+        lock.lock()
+        result = usage
+        lock.unlock()
+        completed.signal()
+    }
+
+    guard completed.wait(timeout: .now() + .seconds(25)) == .success else {
+        print("claude_live=issue:diagnostic_wait_timed_out,windows:none")
+        return 2
+    }
+    lock.lock()
+    let usage = result
+    lock.unlock()
+    guard let usage else {
+        print("claude_live=issue:no_result,windows:none")
+        return 2
+    }
+    let windows = usage.windows.map { $0.kind.historyKey }.joined(separator: ",")
+    print("claude_live=issue:\(usage.error?.diagnosticCode ?? "none"),windows:\(windows.isEmpty ? "none" : windows)")
+    return usage.error == nil ? 0 : 2
+}
+
 private func runClaudeStatusFilter() -> Int32 {
     let maximumInputBytes = 64 * 1_024
     var input = Data()
@@ -2887,6 +2914,10 @@ private func runProcessGroupLauncher() -> Int32 {
 
 if CommandLine.arguments.contains("--self-test") {
     exit(runSelfTest())
+}
+
+if CommandLine.arguments.contains("--diagnose-claude-live") {
+    exit(runClaudeLiveDiagnostics())
 }
 
 if CommandLine.arguments.contains("--claude-status-filter") {

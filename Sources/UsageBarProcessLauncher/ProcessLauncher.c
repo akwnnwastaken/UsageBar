@@ -30,7 +30,13 @@ int usagebar_spawn_in_pty(
     }
 
     int master_fd = -1;
-    pid_t pid = forkpty(&master_fd, NULL, NULL, NULL);
+    struct winsize terminal_size = {
+        .ws_row = 24,
+        .ws_col = 120,
+        .ws_xpixel = 0,
+        .ws_ypixel = 0
+    };
+    pid_t pid = forkpty(&master_fd, NULL, NULL, &terminal_size);
     if (pid < 0) {
         return errno;
     }
