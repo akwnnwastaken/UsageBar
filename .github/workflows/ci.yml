@@ -13,5 +13,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build, self-test, and reject stale bundle files
-        run: ./tests/build_regression.sh
+      - name: Security acceptance suite
+        run: ./tests/security_acceptance.sh
+      - name: Reject whitespace errors
+        run: git diff --check

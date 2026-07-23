@@ -2,94 +2,145 @@ import AppKit
 import Darwin
 import Foundation
 import ServiceManagement
+import UsageBarCore
+import UsageBarProcessLauncher
+
+enum UsageWindowKind: Equatable {
+    case fiveHour
+    case weekly
+    case duration(minutes: Int)
+    case unknown(position: Int)
+
+    static func classified(durationMinutes: Int?, position: Int) -> UsageWindowKind {
+        guard let durationMinutes else { return .unknown(position: position) }
+        if (4 * 60)...(6 * 60) ~= durationMinutes { return .fiveHour }
+        if (6 * 24 * 60)...(8 * 24 * 60) ~= durationMinutes { return .weekly }
+        return .duration(minutes: durationMinutes)
+    }
+
+    var historyKey: String {
+        switch self {
+        case .fiveHour: return "five-hour"
+        case .weekly: return "weekly"
+        case .duration(let minutes): return "duration-\(minutes)"
+        case .unknown(let position): return "unknown-\(position)"
+        }
+    }
+}
 
 struct UsageWindow {
+    let kind: UsageWindowKind
     let usedPercent: Int
     let resetsAt: Date?
     let durationMinutes: Int?
+
+    init(
+        kind: UsageWindowKind? = nil,
+        usedPercent: Int,
+        resetsAt: Date?,
+        durationMinutes: Int?,
+        position: Int = 0
+    ) {
+        self.kind = kind ?? .classified(durationMinutes: durationMinutes, position: position)
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.durationMinutes = durationMinutes
+    }
 }
 
 enum ProviderIssue {
-    case custom(String)
     case refreshing
     case noData
     case codexUsageUnavailable
     case codexLimitMissing
     case codexNotFound
+    case codexUntrustedExecutable
     case codexTimedOut
     case codexEmptyResponse
+    case codexIncompatible
+    case codexCommandFailed
     case codexLaunchFailed(String)
     case claudeNotFound
+    case claudeUntrustedExecutable
     case claudeNotLoggedIn
     case claudeUsageUnreadable
+    case claudeUsageTimedOut
     case claudeLaunchFailed(String)
-    case processTimedOut(String)
     case outputTooLarge(String)
 }
 
 struct ProviderUsage {
     let name: String
-    let session: UsageWindow?
-    let weekly: UsageWindow?
+    let windows: [UsageWindow]
     let error: ProviderIssue?
+    let lastSuccessfulAt: Date?
+
+    init(
+        name: String,
+        windows: [UsageWindow],
+        error: ProviderIssue?,
+        lastSuccessfulAt: Date? = nil
+    ) {
+        self.name = name
+        self.windows = windows
+        self.error = error
+        self.lastSuccessfulAt = lastSuccessfulAt
+    }
+
+    var session: UsageWindow? { windows.first { $0.kind == .fiveHour } }
+    var weekly: UsageWindow? { windows.first { $0.kind == .weekly } }
+    var isStale: Bool { error != nil && !windows.isEmpty && lastSuccessfulAt != nil }
 
     static func unavailable(_ name: String, _ issue: ProviderIssue) -> ProviderUsage {
-        ProviderUsage(name: name, session: nil, weekly: nil, error: issue)
+        ProviderUsage(name: name, windows: [], error: issue)
+    }
+
+    func markedSuccessful(at date: Date) -> ProviderUsage {
+        ProviderUsage(name: name, windows: windows, error: nil, lastSuccessfulAt: date)
+    }
+
+    static func stale(from previous: ProviderUsage, issue: ProviderIssue) -> ProviderUsage {
+        ProviderUsage(
+            name: previous.name,
+            windows: previous.windows,
+            error: issue,
+            lastSuccessfulAt: previous.lastSuccessfulAt
+        )
     }
 }
 
-enum AppLanguage: String {
-    case turkish
-    case english
-}
-
-enum UsageAlertLevel: Equatable {
-    case normal
-    case warning
-    case critical
-}
-
-enum UsageAlertPreset: String, CaseIterable {
-    case late
-    case balanced
-    case early
-
-    var warningThreshold: Int {
+extension ProviderIssue {
+    var diagnosticCode: String {
         switch self {
-        case .late: return 10
-        case .balanced: return 20
-        case .early: return 30
+        case .refreshing: return "refreshing"
+        case .noData: return "no_data"
+        case .codexUsageUnavailable: return "codex_usage_unavailable"
+        case .codexLimitMissing: return "codex_limit_missing"
+        case .codexNotFound: return "codex_not_found"
+        case .codexUntrustedExecutable: return "codex_untrusted_executable"
+        case .codexTimedOut: return "codex_timed_out"
+        case .codexEmptyResponse: return "codex_empty_response"
+        case .codexIncompatible: return "codex_incompatible"
+        case .codexCommandFailed: return "codex_command_failed"
+        case .codexLaunchFailed: return "codex_launch_failed"
+        case .claudeNotFound: return "claude_not_found"
+        case .claudeUntrustedExecutable: return "claude_untrusted_executable"
+        case .claudeNotLoggedIn: return "claude_not_logged_in"
+        case .claudeUsageUnreadable: return "claude_usage_unreadable"
+        case .claudeUsageTimedOut: return "claude_usage_timed_out"
+        case .claudeLaunchFailed: return "claude_launch_failed"
+        case .outputTooLarge: return "output_too_large"
         }
     }
-
-    var criticalThreshold: Int {
-        switch self {
-        case .late: return 5
-        case .balanced: return 10
-        case .early: return 15
-        }
-    }
 }
 
-struct UsageAlertPolicy {
-    let isEnabled: Bool
-    let preset: UsageAlertPreset
-
-    func level(for remainingPercent: Int) -> UsageAlertLevel {
-        guard isEnabled else { return .normal }
-        let clamped = min(100, max(0, remainingPercent))
-        if clamped <= preset.criticalThreshold { return .critical }
-        if clamped <= preset.warningThreshold { return .warning }
-        return .normal
+enum AppMetadata {
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
     }
-}
 
-enum ProviderRotation {
-    static let interval: TimeInterval = 30
-
-    static func nextIndex(after currentIndex: Int, providerCount: Int) -> Int {
-        guard providerCount > 0 else { return 0 }
-        return (max(0, currentIndex) + 1) % providerCount
+    static var build: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development"
     }
 }
 
@@ -101,6 +152,9 @@ struct UsageHistorySample: Codable, Equatable {
 enum UsageHistoryModel {
     static let retentionInterval: TimeInterval = 24 * 60 * 60
     static let minimumSampleInterval: TimeInterval = 60
+    static let maximumSamplesPerSeries = 24 * 60 + 1
+    static let maximumSeries = 16
+    static let maximumEncodedBytes = 1 * 1_024 * 1_024
 
     static func adding(
         remainingPercent: Int,
@@ -119,7 +173,7 @@ enum UsageHistoryModel {
         } else {
             samples.append(sample)
         }
-        return samples
+        return Array(samples.suffix(maximumSamplesPerSeries))
     }
 
     static func encode(_ history: [String: [UsageHistorySample]]) -> Data? {
@@ -127,8 +181,40 @@ enum UsageHistoryModel {
     }
 
     static func decode(_ data: Data?) -> [String: [UsageHistorySample]] {
-        guard let data else { return [:] }
+        guard let data, data.count <= maximumEncodedBytes else { return [:] }
         return (try? JSONDecoder().decode([String: [UsageHistorySample]].self, from: data)) ?? [:]
+    }
+
+    static func sanitized(
+        _ history: [String: [UsageHistorySample]],
+        now: Date
+    ) -> [String: [UsageHistorySample]] {
+        let cutoff = now.addingTimeInterval(-retentionInterval)
+        let latestAllowedDate = now.addingTimeInterval(minimumSampleInterval)
+        var result: [String: [UsageHistorySample]] = [:]
+
+        for key in history.keys.sorted().prefix(maximumSeries) where key.count <= 128 {
+            let candidates = (history[key] ?? [])
+                .filter { $0.recordedAt >= cutoff && $0.recordedAt <= latestAllowedDate }
+                .sorted { $0.recordedAt < $1.recordedAt }
+            var samples: [UsageHistorySample] = []
+            for candidate in candidates {
+                let normalized = UsageHistorySample(
+                    recordedAt: candidate.recordedAt,
+                    remainingPercent: min(100, max(0, candidate.remainingPercent))
+                )
+                if let last = samples.last,
+                   normalized.recordedAt.timeIntervalSince(last.recordedAt) < minimumSampleInterval {
+                    samples[samples.count - 1] = normalized
+                } else {
+                    samples.append(normalized)
+                }
+            }
+            if !samples.isEmpty {
+                result[key] = Array(samples.suffix(maximumSamplesPerSeries))
+            }
+        }
+        return result
     }
 }
 
@@ -224,11 +310,32 @@ struct Localizer {
     var usageHistoryTitle: String { pick("Kullanım geçmişi", "Usage history") }
     var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
     var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
+    var copyDiagnostics: String { pick("Tanılama özetini kopyala", "Copy diagnostics") }
     var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
     var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
     var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
+
+    func usageWindowLabel(_ window: UsageWindow, position: Int) -> String {
+        switch window.kind {
+        case .fiveHour:
+            return fiveHours
+        case .weekly:
+            return weekly
+        case .duration(let minutes):
+            let days = minutes / (24 * 60)
+            let hours = (minutes % (24 * 60)) / 60
+            let remainingMinutes = minutes % 60
+            var parts: [String] = []
+            if days > 0 { parts.append(pick("\(days) gün", "\(days) days")) }
+            if hours > 0 { parts.append(pick("\(hours) saat", "\(hours) hours")) }
+            if remainingMinutes > 0 { parts.append(pick("\(remainingMinutes) dk", "\(remainingMinutes) min")) }
+            return parts.isEmpty ? pick("Kullanım penceresi", "Usage window") : parts.joined(separator: " ")
+        case .unknown:
+            return pick("Kullanım penceresi \(position + 1)", "Usage window \(position + 1)")
+        }
+    }
 
     func usageHistoryRange(_ duration: TimeInterval) -> String {
         if duration < 60 {
@@ -285,9 +392,23 @@ struct Localizer {
             "Install ChatGPT or the Codex CLI and sign in first."
         )
     }
+    var codexUntrustedTitle: String { pick("Codex güvenli değil", "Codex is not trusted") }
+    var codexUntrustedMessage: String {
+        pick(
+            "Codex çalıştırılabilir dosyasının sahibi, izinleri veya gerçek yolu güvenli bulunmadı. Codex'i resmi kaynaktan yeniden kurun.",
+            "The Codex executable has an unsafe owner, permissions, or resolved path. Reinstall Codex from an official source."
+        )
+    }
     var claudeNotFoundTitle: String { pick("Claude Code bulunamadı", "Claude Code not found") }
     var claudeNotFoundMessage: String {
         pick("Önce Claude Code'u kurup hesabınıza giriş yapın.", "Install Claude Code and sign in first.")
+    }
+    var claudeUntrustedTitle: String { pick("Claude Code güvenli değil", "Claude Code is not trusted") }
+    var claudeUntrustedMessage: String {
+        pick(
+            "Claude Code çalıştırılabilir dosyasının sahibi, izinleri veya gerçek yolu güvenli bulunmadı. Claude Code'u resmi kaynaktan yeniden kurun.",
+            "The Claude Code executable has an unsafe owner, permissions, or resolved path. Reinstall Claude Code from an official source."
+        )
     }
     var connectClaudeTitle: String { pick("Claude Code'a bağlanılsın mı?", "Connect Claude Code?") }
     var connectClaudeMessage: String {
@@ -302,11 +423,11 @@ struct Localizer {
     var now: String { pick("şimdi", "now") }
 
     func remaining(_ percent: Int) -> String {
-        pick("%\(percent) kaldı", "%\(percent) remaining")
+        pick("%\(percent) kaldı", "\(percent)% remaining")
     }
 
     func remainingTooltip(provider: String, percent: Int) -> String {
-        pick("\(provider): %\(percent) kaldı", "\(provider): %\(percent) remaining")
+        pick("\(provider): %\(percent) kaldı", "\(provider): \(percent)% remaining")
     }
 
     func waitingForUsage(provider: String) -> String {
@@ -334,6 +455,20 @@ struct Localizer {
         pick("Son güncelleme: \(time)", "Last updated: \(time)")
     }
 
+    func staleData(lastSuccessfulTime: String, issue: ProviderIssue) -> String {
+        pick(
+            "Son iyi veri: \(lastSuccessfulTime)\n\(self.issue(issue))",
+            "Last good data: \(lastSuccessfulTime)\n\(self.issue(issue))"
+        )
+    }
+
+    func staleTooltip(provider: String, percent: Int) -> String {
+        pick(
+            "\(provider): %\(percent) kaldı (eski veri)",
+            "\(provider): \(percent)% remaining (stale)"
+        )
+    }
+
     func relativeReset(_ date: Date, now: Date = Date()) -> String {
         let interval = max(0, Int(date.timeIntervalSince(now)))
         let days = interval / 86_400
@@ -354,7 +489,6 @@ struct Localizer {
 
     func issue(_ issue: ProviderIssue) -> String {
         switch issue {
-        case .custom(let message): return message
         case .refreshing: return refreshing
         case .noData: return noData
         case .codexUsageUnavailable:
@@ -363,22 +497,30 @@ struct Localizer {
             return pick("Codex kullanım sınırı bulunamadı", "Codex usage limit not found")
         case .codexNotFound:
             return codexNotFoundTitle
+        case .codexUntrustedExecutable:
+            return codexUntrustedTitle
         case .codexTimedOut:
             return pick("Codex yanıtı zaman aşımına uğradı", "Codex response timed out")
         case .codexEmptyResponse:
             return pick("Codex kullanım yanıtı boş", "Codex returned an empty usage response")
+        case .codexIncompatible:
+            return pick("Codex sürümü güvenli kullanım sorgusuyla uyumlu değil", "This Codex version is incompatible with the safe usage query")
+        case .codexCommandFailed:
+            return pick("Codex kullanım komutu başarısız oldu", "The Codex usage command failed")
         case .codexLaunchFailed(let reason):
             return pick("Codex başlatılamadı: \(reason)", "Could not start Codex: \(reason)")
         case .claudeNotFound:
             return claudeNotFoundTitle
+        case .claudeUntrustedExecutable:
+            return claudeUntrustedTitle
         case .claudeNotLoggedIn:
             return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
         case .claudeUsageUnreadable:
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
+        case .claudeUsageTimedOut:
+            return pick("Claude kullanım sorgusu zaman aşımına uğradı", "Claude usage query timed out")
         case .claudeLaunchFailed(let reason):
             return pick("Claude Code başlatılamadı: \(reason)", "Could not start Claude Code: \(reason)")
-        case .processTimedOut(let provider):
-            return pick("\(provider) işlemi zaman aşımına uğradı", "\(provider) process timed out")
         case .outputTooLarge(let provider):
             return pick("\(provider) çok fazla çıktı üretti", "\(provider) produced too much output")
         }
@@ -389,6 +531,7 @@ struct UsageSummary {
     let providerName: String
     let remainingPercent: Int
     let resetsAt: Date?
+    let windowKind: UsageWindowKind
 }
 
 enum UsageSummaryCalculator {
@@ -400,15 +543,15 @@ enum UsageSummaryCalculator {
             // Fall back to weekly only when Claude does not return session data.
             selectedWindow = usage.session ?? usage.weekly
         } else {
-            selectedWindow = [usage.session, usage.weekly]
-                .compactMap { $0 }
+            selectedWindow = usage.windows
                 .max(by: { $0.usedPercent < $1.usedPercent })
         }
         guard let selectedWindow else { return nil }
         return UsageSummary(
             providerName: providerName,
             remainingPercent: min(100, max(0, 100 - selectedWindow.usedPercent)),
-            resetsAt: selectedWindow.resetsAt
+            resetsAt: selectedWindow.resetsAt,
+            windowKind: selectedWindow.kind
         )
     }
 }
@@ -422,9 +565,7 @@ enum UsageParser {
         else { return nil }
 
         if let error = object["error"] as? [String: Any] {
-            if let message = error["message"] as? String {
-                return .unavailable("Codex", .custom(message))
-            }
+            _ = error
             return .unavailable("Codex", .codexUsageUnavailable)
         }
 
@@ -435,31 +576,11 @@ enum UsageParser {
             return .unavailable("Codex", .codexLimitMissing)
         }
 
-        let primary = rateWindow(limits["primary"])
-        let secondary = rateWindow(limits["secondary"])
-        let windows = [primary, secondary].compactMap { $0 }
+        let windows = [limits["primary"], limits["secondary"]]
+            .enumerated()
+            .compactMap { rateWindow($0.element, position: $0.offset) }
 
-        // `primary` and `secondary` describe ordering, not duration. Some
-        // accounts expose a five-hour primary window, while others expose only
-        // a weekly primary window. Classify using the duration returned by the
-        // API instead of assigning fixed labels by position.
-        var session = windows.first(where: { window in
-            guard let minutes = window.durationMinutes else { return false }
-            return minutes <= 24 * 60
-        })
-        var weekly = windows.first(where: { window in
-            guard let minutes = window.durationMinutes else { return false }
-            return minutes >= 6 * 24 * 60 && minutes <= 8 * 24 * 60
-        })
-
-        // Older Codex versions may omit windowDurationMins. Preserve their
-        // positional behavior only when no duration can be classified.
-        if session == nil && weekly == nil {
-            session = primary
-            weekly = secondary
-        }
-
-        return ProviderUsage(name: "Codex", session: session, weekly: weekly, error: nil)
+        return ProviderUsage(name: "Codex", windows: windows, error: nil)
     }
 
     static func claudeScreen(_ raw: String) -> ProviderUsage {
@@ -493,12 +614,14 @@ enum UsageParser {
 
         return ProviderUsage(
             name: "Claude Code",
-            session: session.map {
-                UsageWindow(usedPercent: $0, resetsAt: sessionReset, durationMinutes: 300)
-            },
-            weekly: weekly.map {
-                UsageWindow(usedPercent: $0, resetsAt: weeklyReset, durationMinutes: 10_080)
-            },
+            windows: [
+                session.map {
+                    UsageWindow(kind: .fiveHour, usedPercent: $0, resetsAt: sessionReset, durationMinutes: 300)
+                },
+                weekly.map {
+                    UsageWindow(kind: .weekly, usedPercent: $0, resetsAt: weeklyReset, durationMinutes: 10_080)
+                }
+            ].compactMap { $0 },
             error: nil
         )
     }
@@ -509,10 +632,12 @@ enum UsageParser {
         let statusOutput = String(cleaned[markerRange.lowerBound...])
         // Claude redraws its status line incrementally. The initial frame can
         // contain `USAGEBAR_LIMITS:|||`, followed later by only the changed
-        // numeric suffix at another cursor position. Parse the first complete
-        // numeric tuple after our unique marker rather than requiring one
-        // contiguous rendered line.
-        let pattern = "([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)\\|([0-9]{1,4}(?:\\.[0-9]+)?)\\|([0-9]{9,}(?:\\.[0-9]+)?)"
+        // suffix at another cursor position. Individual quota/reset fields can
+        // also be absent, so accept partial tuples while still requiring at
+        // least one usage percentage before returning data.
+        let number = "[0-9]+(?:\\.[0-9]+)?"
+        let field = "((?:\(number))?)"
+        let pattern = "\(field)\\|\(field)\\|\(field)\\|\(field)"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(statusOutput.startIndex..<statusOutput.endIndex, in: statusOutput)
         var result: ProviderUsage?
@@ -533,27 +658,31 @@ enum UsageParser {
 
             result = ProviderUsage(
                 name: "Claude Code",
-                session: fiveHourUsed.map {
-                    UsageWindow(
-                        usedPercent: min(100, max(0, Int($0.rounded()))),
-                        resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
-                        durationMinutes: 300
-                    )
-                },
-                weekly: sevenDayUsed.map {
-                    UsageWindow(
-                        usedPercent: min(100, max(0, Int($0.rounded()))),
-                        resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
-                        durationMinutes: 10_080
-                    )
-                },
+                windows: [
+                    fiveHourUsed.map {
+                        UsageWindow(
+                            kind: .fiveHour,
+                            usedPercent: min(100, max(0, Int($0.rounded()))),
+                            resetsAt: fiveHourReset.map { Date(timeIntervalSince1970: $0) },
+                            durationMinutes: 300
+                        )
+                    },
+                    sevenDayUsed.map {
+                        UsageWindow(
+                            kind: .weekly,
+                            usedPercent: min(100, max(0, Int($0.rounded()))),
+                            resetsAt: sevenDayReset.map { Date(timeIntervalSince1970: $0) },
+                            durationMinutes: 10_080
+                        )
+                    }
+                ].compactMap { $0 },
                 error: nil
             )
         }
         return result
     }
 
-    private static func rateWindow(_ value: Any?) -> UsageWindow? {
+    private static func rateWindow(_ value: Any?, position: Int) -> UsageWindow? {
         guard let dictionary = value as? [String: Any] else { return nil }
         guard let used = number(dictionary["usedPercent"]) else { return nil }
         let resetSeconds = number(dictionary["resetsAt"])
@@ -561,7 +690,8 @@ enum UsageParser {
         return UsageWindow(
             usedPercent: min(100, max(0, Int(used.rounded()))),
             resetsAt: resetSeconds.map { Date(timeIntervalSince1970: $0) },
-            durationMinutes: duration.map { Int($0) }
+            durationMinutes: duration.map { Int($0) },
+            position: position
         )
     }
 
@@ -702,28 +832,108 @@ enum UsageParser {
     }
 }
 
+enum ExecutableLookup {
+    case found(String)
+    case untrusted
+    case missing
+
+    var path: String? {
+        guard case .found(let path) = self else { return nil }
+        return path
+    }
+}
+
 enum ExecutableLocator {
-    static func codex() -> String? {
-        firstExecutable([
-            "/Applications/ChatGPT.app/Contents/Resources/codex",
-            "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
-            NSString(string: "~/.local/bin/codex").expandingTildeInPath
+    private struct Candidate {
+        let path: String
+        let allowedRoot: String
+    }
+
+    static func codex() -> ExecutableLookup {
+        firstTrusted([
+            Candidate(
+                path: "/Applications/ChatGPT.app/Contents/Resources/codex",
+                allowedRoot: "/Applications/ChatGPT.app"
+            ),
+            Candidate(path: "/opt/homebrew/bin/codex", allowedRoot: "/opt/homebrew"),
+            Candidate(path: "/usr/local/bin/codex", allowedRoot: "/usr/local"),
+            Candidate(
+                path: NSString(string: "~/.local/bin/codex").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.local").expandingTildeInPath
+            )
         ])
     }
 
-    static func claude() -> String? {
-        firstExecutable([
-            "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
-            NSString(string: "~/.claude/bin/claude").expandingTildeInPath,
-            NSString(string: "~/.claude/local/claude").expandingTildeInPath,
-            NSString(string: "~/.local/bin/claude").expandingTildeInPath
+    static func claude() -> ExecutableLookup {
+        firstTrusted([
+            Candidate(path: "/opt/homebrew/bin/claude", allowedRoot: "/opt/homebrew"),
+            Candidate(path: "/usr/local/bin/claude", allowedRoot: "/usr/local"),
+            Candidate(
+                path: NSString(string: "~/.claude/bin/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.claude").expandingTildeInPath
+            ),
+            Candidate(
+                path: NSString(string: "~/.claude/local/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.claude").expandingTildeInPath
+            ),
+            Candidate(
+                path: NSString(string: "~/.local/bin/claude").expandingTildeInPath,
+                allowedRoot: NSString(string: "~/.local").expandingTildeInPath
+            )
         ])
     }
 
-    private static func firstExecutable(_ candidates: [String]) -> String? {
-        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    private static func firstTrusted(_ candidates: [Candidate]) -> ExecutableLookup {
+        var rejectedCandidate = false
+        for candidate in candidates where FileManager.default.fileExists(atPath: candidate.path) {
+            if let trustedPath = trustedExecutable(
+                at: candidate.path,
+                allowedRoot: candidate.allowedRoot
+            ) {
+                return .found(trustedPath)
+            }
+            rejectedCandidate = true
+        }
+        return rejectedCandidate ? .untrusted : .missing
+    }
+
+    static func trustedExecutable(at path: String, allowedRoot: String) -> String? {
+        let fileManager = FileManager.default
+        let resolvedPath = URL(fileURLWithPath: path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let resolvedRoot = URL(fileURLWithPath: allowedRoot)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        guard resolvedPath == resolvedRoot || resolvedPath.hasPrefix(resolvedRoot + "/") else {
+            return nil
+        }
+        guard fileManager.isExecutableFile(atPath: resolvedPath) else { return nil }
+        guard
+            let attributes = try? fileManager.attributesOfItem(atPath: resolvedPath),
+            attributes[.type] as? FileAttributeType == .typeRegular,
+            let owner = attributes[.ownerAccountID] as? NSNumber,
+            owner.int32Value == 0 || owner.int32Value == getuid(),
+            let permissions = attributes[.posixPermissions] as? NSNumber,
+            permissions.intValue & 0o022 == 0
+        else { return nil }
+
+        var directory = URL(fileURLWithPath: resolvedPath).deletingLastPathComponent()
+        let rootURL = URL(fileURLWithPath: resolvedRoot)
+        while directory.path.hasPrefix(resolvedRoot) {
+            guard
+                let directoryAttributes = try? fileManager.attributesOfItem(atPath: directory.path),
+                let directoryPermissions = directoryAttributes[.posixPermissions] as? NSNumber,
+                directoryPermissions.intValue & 0o002 == 0
+            else { return nil }
+            if directory.path == rootURL.path { break }
+            let parent = directory.deletingLastPathComponent()
+            guard parent.path != directory.path else { return nil }
+            directory = parent
+        }
+        return resolvedPath
     }
 }
 
@@ -773,21 +983,165 @@ private enum ProviderProcessContext {
     }
 }
 
+private enum ProviderProcessLauncher {
+    static func configure(
+        _ process: Process,
+        executable: String,
+        arguments: [String]
+    ) {
+        let launcher = Bundle.main.executableURL?.path
+            ?? ProcessInfo.processInfo.arguments[0]
+        process.executableURL = URL(fileURLWithPath: launcher)
+        process.arguments = ["--process-group-launcher", executable] + arguments
+    }
+}
+
+private final class ProviderPTYProcess {
+    let processIdentifier: pid_t
+    let masterFileDescriptor: Int32
+    private let stateLock = NSLock()
+    private var reaped = false
+
+    init(processIdentifier: pid_t, masterFileDescriptor: Int32) {
+        self.processIdentifier = processIdentifier
+        self.masterFileDescriptor = masterFileDescriptor
+    }
+
+    var isRunning: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !reaped else { return false }
+
+        var status: Int32 = 0
+        let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
+        if result == 0 { return true }
+        if result == processIdentifier || (result == -1 && errno == ECHILD) {
+            reaped = true
+        }
+        return false
+    }
+
+    func write(_ data: Data) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard var pointer = rawBuffer.baseAddress else { return }
+            var remaining = rawBuffer.count
+            while remaining > 0 {
+                let written = Darwin.write(masterFileDescriptor, pointer, remaining)
+                if written > 0 {
+                    pointer = pointer.advanced(by: written)
+                    remaining -= written
+                } else if written == -1 && errno == EINTR {
+                    continue
+                } else {
+                    throw NSError(
+                        domain: NSPOSIXErrorDomain,
+                        code: Int(errno),
+                        userInfo: nil
+                    )
+                }
+            }
+        }
+    }
+
+    func stop() {
+        ProviderProcessLimits.stop(processIdentifier: processIdentifier)
+        Darwin.close(masterFileDescriptor)
+
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !reaped else { return }
+        var status: Int32 = 0
+        while Darwin.waitpid(processIdentifier, &status, 0) == -1 && errno == EINTR {}
+        reaped = true
+    }
+}
+
+private enum ProviderPTYLauncher {
+    static func launch(
+        executable: String,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: URL
+    ) throws -> ProviderPTYProcess {
+        let argvStrings = [executable] + arguments
+        let environmentStrings = environment
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+
+        return try withCStringArray(argvStrings) { argv in
+            try withCStringArray(environmentStrings) { envp in
+                var processIdentifier: pid_t = 0
+                var masterFileDescriptor: Int32 = -1
+                let result = executable.withCString { executablePointer in
+                    workingDirectory.path.withCString { directoryPointer in
+                        usagebar_spawn_in_pty(
+                            executablePointer,
+                            argv,
+                            envp,
+                            directoryPointer,
+                            &processIdentifier,
+                            &masterFileDescriptor
+                        )
+                    }
+                }
+                guard result == 0 else {
+                    throw NSError(
+                        domain: NSPOSIXErrorDomain,
+                        code: Int(result),
+                        userInfo: nil
+                    )
+                }
+                return ProviderPTYProcess(
+                    processIdentifier: processIdentifier,
+                    masterFileDescriptor: masterFileDescriptor
+                )
+            }
+        }
+    }
+
+    private static func withCStringArray<Result>(
+        _ strings: [String],
+        body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> Result
+    ) rethrows -> Result {
+        var pointers = strings.map { strdup($0) }
+        pointers.append(nil)
+        defer {
+            for pointer in pointers where pointer != nil { free(pointer) }
+        }
+        return try pointers.withUnsafeMutableBufferPointer { buffer in
+            try body(buffer.baseAddress!)
+        }
+    }
+}
+
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
-    static let authTimeout: DispatchTimeInterval = .seconds(5)
     private static let terminationGrace: TimeInterval = 1
 
     static func stop(_ process: Process) {
-        guard process.isRunning else { return }
-        process.terminate()
+        let processIdentifier = process.processIdentifier
+        guard processIdentifier > 0 else { return }
+        stop(processIdentifier: processIdentifier)
+        if process.isRunning {
+            Darwin.kill(processIdentifier, SIGKILL)
+        }
+    }
+
+    static func stop(processIdentifier: pid_t) {
+        guard processIdentifier > 0 else { return }
+        Darwin.kill(-processIdentifier, SIGTERM)
         let deadline = Date().addingTimeInterval(terminationGrace)
-        while process.isRunning, Date() < deadline {
+        while processGroupExists(processIdentifier), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
-        if process.isRunning {
-            Darwin.kill(process.processIdentifier, SIGKILL)
+        if processGroupExists(processIdentifier) {
+            Darwin.kill(-processIdentifier, SIGKILL)
         }
+    }
+
+    private static func processGroupExists(_ processIdentifier: pid_t) -> Bool {
+        if Darwin.kill(-processIdentifier, 0) == 0 { return true }
+        return errno != ESRCH
     }
 }
 
@@ -824,10 +1178,87 @@ private final class BoundedDataCapture {
     }
 }
 
+private enum PipeDrainer {
+    static func start(
+        _ pipe: Pipe,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
+        start(
+            pipe.fileHandleForReading,
+            capture: capture,
+            dataAvailable: dataAvailable
+        )
+    }
+
+    static func start(
+        _ fileHandle: FileHandle,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            while true {
+                do {
+                    guard
+                        let chunk = try fileHandle.read(upToCount: 16 * 1_024),
+                        !chunk.isEmpty
+                    else { return }
+                    capture.append(chunk)
+                    dataAvailable?.signal()
+                } catch {
+                    return
+                }
+            }
+        }
+        return group
+    }
+
+    static func start(
+        fileDescriptor: Int32,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            var buffer = [UInt8](repeating: 0, count: 16 * 1_024)
+            while true {
+                let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
+                if count > 0 {
+                    capture.append(Data(buffer.prefix(count)))
+                    dataAvailable?.signal()
+                } else if count == 0 {
+                    return
+                } else if errno == EINTR {
+                    continue
+                } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                    Thread.sleep(forTimeInterval: 0.01)
+                } else {
+                    return
+                }
+            }
+        }
+        return group
+    }
+}
+
 final class CodexUsageFetcher {
+    private static let responseTimeout: TimeInterval = 15
+
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            guard let executable = ExecutableLocator.codex() else {
+            let executable: String
+            switch ExecutableLocator.codex() {
+            case .found(let path):
+                executable = path
+            case .untrusted:
+                completion(.unavailable("Codex", .codexUntrustedExecutable))
+                return
+            case .missing:
                 completion(.unavailable("Codex", .codexNotFound))
                 return
             }
@@ -836,109 +1267,101 @@ final class CodexUsageFetcher {
             let input = Pipe()
             let output = Pipe()
             let errors = Pipe()
-            process.executableURL = URL(fileURLWithPath: executable)
             // UsageBar only needs the account quota RPC. Disabling unrelated
             // app/plugin features avoids background catalog scans and their
             // associated file/network access.
-            process.arguments = [
+            ProviderProcessLauncher.configure(process, executable: executable, arguments: [
                 "app-server", "--stdio",
                 "--disable", "apps",
                 "--disable", "plugins",
                 "--disable", "remote_plugin",
                 "--disable", "plugin_sharing"
-            ]
+            ])
             process.standardInput = input
             process.standardOutput = output
             process.standardError = errors
             ProviderProcessContext.apply(to: process)
 
-            let semaphore = DispatchSemaphore(value: 0)
-            let lock = NSLock()
-            var pending = Data()
-            var result: ProviderUsage?
-            var totalOutputBytes = 0
-            var outputExceeded = false
-            var didSignal = false
-
-            output.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                lock.lock()
-                defer { lock.unlock() }
-
-                guard !outputExceeded else { return }
-                let remaining = ProviderProcessLimits.maxOutputBytes - totalOutputBytes
-                guard chunk.count <= remaining else {
-                    outputExceeded = true
-                    pending.removeAll(keepingCapacity: false)
-                    if !didSignal {
-                        didSignal = true
-                        semaphore.signal()
-                    }
-                    return
-                }
-                totalOutputBytes += chunk.count
-                pending.append(chunk)
-                while let newline = pending.firstIndex(of: 0x0A) {
-                    let line = pending.prefix(upTo: newline)
-                    pending.removeSubrange(...newline)
-                    if let parsed = UsageParser.codexResponse(from: Data(line)) {
-                        result = parsed
-                        if !didSignal {
-                            didSignal = true
-                            semaphore.signal()
-                        }
-                        break
-                    }
-                }
-            }
-            errors.fileHandleForReading.readabilityHandler = { handle in
-                _ = handle.availableData
-            }
-
             do {
                 try process.run()
+                let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
+                let dataAvailable = DispatchSemaphore(value: 0)
+                let outputDrainer = PipeDrainer.start(
+                    output,
+                    capture: captured,
+                    dataAvailable: dataAvailable
+                )
+                let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
                 let messages = [
-                    "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"1.0.0\"}}}",
+                    "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"\(AppMetadata.version)\"}}}",
                     "{\"method\":\"initialized\"}",
                     "{\"method\":\"account/rateLimits/read\",\"id\":2}"
                 ].joined(separator: "\n") + "\n"
-                input.fileHandleForWriting.write(Data(messages.utf8))
+                try? input.fileHandleForWriting.write(contentsOf: Data(messages.utf8))
 
-                let waitResult = semaphore.wait(timeout: .now() + 15)
+                let deadline = Date().addingTimeInterval(Self.responseTimeout)
+                var parsedUsage: ProviderUsage?
+                while Date() < deadline {
+                    let snapshot = captured.snapshot()
+                    if snapshot.exceeded { break }
+                    parsedUsage = Self.response(from: snapshot.data)
+                    if parsedUsage != nil || !process.isRunning { break }
+                    _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
+                }
+
                 input.fileHandleForWriting.closeFile()
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
-                errors.fileHandleForReading.readabilityHandler = nil
+                _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+                _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
-                lock.lock()
-                let final = result
-                let exceeded = outputExceeded
-                lock.unlock()
-
-                if exceeded {
+                let finalSnapshot = captured.snapshot()
+                let final = parsedUsage ?? Self.response(from: finalSnapshot.data)
+                if finalSnapshot.exceeded || errorCapture.snapshot().exceeded {
                     completion(.unavailable("Codex", .outputTooLarge("Codex")))
                 } else if let final {
                     completion(final)
-                } else if waitResult == .timedOut {
+                } else if Self.isIncompatible(errorCapture.snapshot().data) {
+                    completion(.unavailable("Codex", .codexIncompatible))
+                } else if process.terminationStatus != 0 {
+                    completion(.unavailable("Codex", .codexCommandFailed))
+                } else if Date() >= deadline {
                     completion(.unavailable("Codex", .codexTimedOut))
                 } else {
                     completion(.unavailable("Codex", .codexEmptyResponse))
                 }
             } catch {
                 ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
-                errors.fileHandleForReading.readabilityHandler = nil
                 completion(.unavailable("Codex", .codexLaunchFailed(error.localizedDescription)))
             }
         }
     }
 
+    private static func response(from data: Data) -> ProviderUsage? {
+        for line in data.split(separator: 0x0A) {
+            if let usage = UsageParser.codexResponse(from: Data(line)) { return usage }
+        }
+        return nil
+    }
+
+    private static func isIncompatible(_ errorData: Data) -> Bool {
+        let message = String(decoding: errorData, as: UTF8.self).lowercased()
+        let mentionsDisabledFlag = message.contains("--disable")
+        let signalsUnknownOption = message.contains("unexpected argument")
+            || message.contains("unknown option")
+            || message.contains("unrecognized option")
+        return mentionsDisabledFlag && signalsUnknownOption
+    }
+
 }
 
 final class ClaudeUsageFetcher {
+    private static let usageTimeout: TimeInterval = 15
+    private static let usageFallbackDelays: [TimeInterval] = [1.5, 5]
     private static let statusLineSettings: String = {
-        let command = #"/usr/bin/jq -r '"USAGEBAR_LIMITS:" + ((.rate_limits.five_hour.used_percentage // "")|tostring) + "|" + ((.rate_limits.five_hour.resets_at // "")|tostring) + "|" + ((.rate_limits.seven_day.used_percentage // "")|tostring) + "|" + ((.rate_limits.seven_day.resets_at // "")|tostring)'"#
+        guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
+        let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let command = "\(quotedExecutable) --claude-status-filter"
         let settings: [String: Any] = [
             "statusLine": [
                 "type": "command",
@@ -955,134 +1378,122 @@ final class ClaudeUsageFetcher {
 
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            guard let executable = ExecutableLocator.claude() else {
+            let executable: String
+            switch ExecutableLocator.claude() {
+            case .found(let path):
+                executable = path
+            case .untrusted:
+                completion(.unavailable("Claude Code", .claudeUntrustedExecutable))
+                return
+            case .missing:
                 completion(.unavailable("Claude Code", .claudeNotFound))
                 return
             }
 
-            switch Self.loginStatus(executable) {
-            case .loggedIn:
-                break
-            case .loggedOut:
-                completion(.unavailable("Claude Code", .claudeNotLoggedIn))
-                return
-            case .timedOut:
-                completion(.unavailable("Claude Code", .processTimedOut("Claude Code")))
-                return
-            case .outputTooLarge:
-                completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
-                return
-            }
-
-            let process = Process()
-            let input = Pipe()
-            let output = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
             // Ignore user/project/local settings and inject only a tiny status
             // line that exposes Claude's official structured quota fields.
             // This avoids project files, hooks, plugins, MCP and Chrome while
             // keeping normal local authentication available.
-            process.arguments = [
-                "-q", "/dev/null", executable,
+            let arguments = [
                 "--setting-sources", "",
                 "--settings", Self.statusLineSettings,
                 "--no-chrome",
                 "--strict-mcp-config",
                 "--tools", ""
             ]
-            process.standardInput = input
-            process.standardOutput = output
-            process.standardError = output
-            ProviderProcessContext.apply(to: process)
-
-            let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
-            output.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-                captured.append(chunk)
-            }
+            var ptyProcess: ProviderPTYProcess?
 
             do {
-                try process.run()
-                Thread.sleep(forTimeInterval: 1.5)
-                input.fileHandleForWriting.write(Data("/usage\r".utf8))
-                Thread.sleep(forTimeInterval: 5.0)
-                input.fileHandleForWriting.write(Data([0x1B]))
-                Thread.sleep(forTimeInterval: 0.5)
-                input.fileHandleForWriting.write(Data("/exit\r".utf8))
-                Thread.sleep(forTimeInterval: 1.0)
-                input.fileHandleForWriting.closeFile()
-                ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
+                let process = try ProviderPTYLauncher.launch(
+                    executable: executable,
+                    arguments: arguments,
+                    environment: ProviderProcessContext.environment,
+                    workingDirectory: ProviderProcessContext.workingDirectory
+                )
+                ptyProcess = process
+                let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let dataAvailable = DispatchSemaphore(value: 0)
+                let drainer = PipeDrainer.start(
+                    fileDescriptor: process.masterFileDescriptor,
+                    capture: captured,
+                    dataAvailable: dataAvailable
+                )
+                let startedAt = Date()
+                let deadline = startedAt.addingTimeInterval(Self.usageTimeout)
+                var sentUsageFallbackCount = 0
+                var parsedUsage: ProviderUsage?
+
+                while Date() < deadline {
+                    let snapshot = captured.snapshot()
+                    if snapshot.exceeded { break }
+
+                    let screen = String(decoding: snapshot.data, as: UTF8.self)
+                    if let structured = UsageParser.claudeStatusLine(screen) {
+                        parsedUsage = structured
+                        break
+                    }
+                    let fallback = UsageParser.claudeScreen(screen)
+                    if fallback.session != nil || fallback.weekly != nil {
+                        parsedUsage = fallback
+                        break
+                    }
+                    // Do NOT treat a "login" mention as a verdict here: the
+                    // startup banner's "What's new" changelog can mention login
+                    // (e.g. "warning when your login is about to expire") before
+                    // the /usage panel is ever requested. Keep polling and let
+                    // the /usage attempts run; the not-logged-in case is decided
+                    // once, after the loop, from the final screen.
+
+                    if sentUsageFallbackCount < Self.usageFallbackDelays.count,
+                       Date().timeIntervalSince(startedAt)
+                        >= Self.usageFallbackDelays[sentUsageFallbackCount],
+                       process.isRunning {
+                        // Claude Code (2.1.x) submits input on CR once its TUI
+                        // puts the pty into raw mode; LF no longer counts as
+                        // Enter, so the command would sit unsubmitted. Send the
+                        // command and the CR separately so the input line is
+                        // fully rendered before Enter is delivered.
+                        try? process.write(Data("/usage".utf8))
+                        try? process.write(Data("\r".utf8))
+                        sentUsageFallbackCount += 1
+                    }
+
+                    if !process.isRunning { break }
+                    _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
+                }
+
+                process.stop()
+                _ = drainer.wait(timeout: .now() + .seconds(1))
 
                 let snapshot = captured.snapshot()
                 guard !snapshot.exceeded else {
                     completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                     return
                 }
-                let screen = String(decoding: snapshot.data, as: UTF8.self)
-                completion(
-                    UsageParser.claudeStatusLine(screen)
-                        ?? UsageParser.claudeScreen(screen)
-                )
+                if let parsedUsage {
+                    completion(parsedUsage)
+                    return
+                }
+                // Re-evaluate the final screen. A genuine logged-out session
+                // cannot open the /usage panel, so the usage rows stay absent
+                // and the login prompt remains on screen. Only trust the
+                // not-logged-in verdict once every /usage attempt was sent.
+                let finalScreen = String(decoding: snapshot.data, as: UTF8.self)
+                let finalUsage = UsageParser.claudeScreen(finalScreen)
+                if finalUsage.session != nil || finalUsage.weekly != nil {
+                    completion(finalUsage)
+                } else if case .claudeNotLoggedIn? = finalUsage.error,
+                          sentUsageFallbackCount >= Self.usageFallbackDelays.count {
+                    completion(.unavailable("Claude Code", .claudeNotLoggedIn))
+                } else if Date() >= deadline {
+                    completion(.unavailable("Claude Code", .claudeUsageTimedOut))
+                } else {
+                    completion(.unavailable("Claude Code", .claudeUsageUnreadable))
+                }
             } catch {
-                ProviderProcessLimits.stop(process)
-                output.fileHandleForReading.readabilityHandler = nil
+                ptyProcess?.stop()
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
-        }
-    }
-
-    private enum LoginStatus {
-        case loggedIn
-        case loggedOut
-        case timedOut
-        case outputTooLarge
-    }
-
-    private static func loginStatus(_ executable: String) -> LoginStatus {
-        let process = Process()
-        let output = Pipe()
-        let errors = Pipe()
-        let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
-        let terminated = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["auth", "status"]
-        process.standardOutput = output
-        process.standardError = errors
-        process.terminationHandler = { _ in terminated.signal() }
-        ProviderProcessContext.apply(to: process)
-
-        output.fileHandleForReading.readabilityHandler = { handle in
-            captured.append(handle.availableData)
-        }
-        errors.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
-        }
-
-        do {
-            try process.run()
-            let waitResult = terminated.wait(timeout: .now() + ProviderProcessLimits.authTimeout)
-            if waitResult == .timedOut {
-                ProviderProcessLimits.stop(process)
-            }
-            output.fileHandleForReading.readabilityHandler = nil
-            errors.fileHandleForReading.readabilityHandler = nil
-            captured.append(output.fileHandleForReading.readDataToEndOfFile())
-
-            if waitResult == .timedOut { return .timedOut }
-            let snapshot = captured.snapshot()
-            if snapshot.exceeded { return .outputTooLarge }
-            guard
-                let object = try JSONSerialization.jsonObject(with: snapshot.data) as? [String: Any],
-                let loggedIn = object["loggedIn"] as? Bool
-            else { return .loggedOut }
-            return loggedIn ? .loggedIn : .loggedOut
-        } catch {
-            ProviderProcessLimits.stop(process)
-            output.fileHandleForReading.readabilityHandler = nil
-            errors.fileHandleForReading.readabilityHandler = nil
-            return .loggedOut
         }
     }
 
@@ -1171,13 +1582,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let showResetInMenuBar = "status.reset.countdown.visible"
         static let autoRotateProviders = "status.providers.auto.rotate"
         static let usageHistoryEnabled = "usage.history.enabled"
-        static let usageHistoryData = "usage.history.samples.v1"
+        static let usageHistoryData = "usage.history.samples.v2"
+        static let legacyUsageHistoryData = "usage.history.samples.v1"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let menu = NSMenu()
+    private let menu: NSMenu = {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        return menu
+    }()
     private let codexFetcher = CodexUsageFetcher()
     private let claudeFetcher = ClaudeUsageFetcher()
     private var usages: [String: ProviderUsage] = [:]
@@ -1191,9 +1607,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var language: AppLanguage {
         get {
             guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.language) else {
-                return .turkish
+                return AppLanguage.preferred(from: Locale.preferredLanguages)
             }
-            return AppLanguage(rawValue: raw) ?? .turkish
+            return AppLanguage(rawValue: raw)
+                ?? AppLanguage.preferred(from: Locale.preferredLanguages)
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: PreferenceKey.language) }
     }
@@ -1287,9 +1704,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         migrateLegacyPreferences()
-        usageHistory = UsageHistoryModel.decode(
-            UserDefaults.standard.data(forKey: PreferenceKey.usageHistoryData)
+        let defaults = UserDefaults.standard
+        let storedHistory = defaults.data(forKey: PreferenceKey.usageHistoryData)
+            ?? defaults.data(forKey: PreferenceKey.legacyUsageHistoryData)
+        usageHistory = UsageHistoryModel.sanitized(
+            UsageHistoryModel.decode(storedHistory),
+            now: Date()
         )
+        persistUsageHistory()
         NSApp.setActivationPolicy(.accessory)
         menu.delegate = self
         statusItem.menu = menu
@@ -1319,7 +1741,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             group.enter()
             codexFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
-                    self?.usages[usage.name] = usage
+                    self?.acceptFetchedUsage(usage)
                     group.leave()
                 }
             }
@@ -1331,7 +1753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             group.enter()
             claudeFetcher.fetch { [weak self] usage in
                 DispatchQueue.main.async {
-                    self?.usages[usage.name] = usage
+                    self?.acceptFetchedUsage(usage)
                     group.leave()
                 }
             }
@@ -1348,6 +1770,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.updateStatusTitle()
             self.rebuildMenu()
         }
+    }
+
+    private func acceptFetchedUsage(_ fetched: ProviderUsage, at date: Date = Date()) {
+        if fetched.error == nil, !fetched.windows.isEmpty {
+            usages[fetched.name] = fetched.markedSuccessful(at: date)
+            return
+        }
+        if let issue = fetched.error,
+           let previous = usages[fetched.name],
+           !previous.windows.isEmpty,
+           previous.lastSuccessfulAt != nil {
+            usages[fetched.name] = .stale(from: previous, issue: issue)
+            return
+        }
+        usages[fetched.name] = fetched
     }
 
     private func updateStatusTitle() {
@@ -1369,10 +1806,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.image = providerIcon(for: summary.providerName, size: 16)
             statusItem.button?.imagePosition = .imageLeading
             statusItem.button?.imageScaling = .scaleProportionallyDown
-            statusItem.button?.toolTip = text.remainingTooltip(
-                provider: summary.providerName,
-                percent: summary.remainingPercent
-            )
+            if usages[summary.providerName]?.isStale == true {
+                statusItem.button?.toolTip = text.staleTooltip(
+                    provider: summary.providerName,
+                    percent: summary.remainingPercent
+                )
+            } else {
+                statusItem.button?.toolTip = text.remainingTooltip(
+                    provider: summary.providerName,
+                    percent: summary.remainingPercent
+                )
+            }
         } else {
             statusItem.button?.attributedTitle = NSAttributedString(string: "")
             statusItem.button?.title = "%—"
@@ -1406,21 +1850,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func recordUsageHistory(at date: Date) {
         guard usageHistoryEnabled else { return }
         for providerName in connectedProviderNames {
-            guard let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) else {
-                continue
+            guard let usage = usages[providerName], usage.error == nil else { continue }
+
+            if let legacySamples = usageHistory.removeValue(forKey: providerName),
+               let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) {
+                let migratedKey = historyKey(providerName: providerName, windowKind: summary.windowKind)
+                if usageHistory[migratedKey] == nil {
+                    usageHistory[migratedKey] = legacySamples
+                }
             }
-            usageHistory[providerName] = UsageHistoryModel.adding(
-                remainingPercent: summary.remainingPercent,
-                at: date,
-                to: usageHistory[providerName] ?? []
-            )
+
+            for window in usage.windows {
+                let key = historyKey(providerName: providerName, windowKind: window.kind)
+                usageHistory[key] = UsageHistoryModel.adding(
+                    remainingPercent: min(100, max(0, 100 - window.usedPercent)),
+                    at: date,
+                    to: usageHistory[key] ?? []
+                )
+            }
         }
+        usageHistory = UsageHistoryModel.sanitized(usageHistory, now: date)
         persistUsageHistory()
+    }
+
+    private func historyKey(providerName: String, windowKind: UsageWindowKind) -> String {
+        "\(providerName)|\(windowKind.historyKey)"
     }
 
     private func persistUsageHistory() {
         guard let data = UsageHistoryModel.encode(usageHistory) else { return }
         UserDefaults.standard.set(data, forKey: PreferenceKey.usageHistoryData)
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
     }
 
     private func migrateLegacyPreferences() {
@@ -1499,6 +1959,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshItem.isEnabled = !isRefreshing && !connectedNames.isEmpty
         menu.addItem(refreshItem)
 
+        let diagnosticsItem = NSMenuItem(
+            title: text.copyDiagnostics,
+            action: #selector(copyDiagnostics),
+            keyEquivalent: ""
+        )
+        diagnosticsItem.target = self
+        menu.addItem(diagnosticsItem)
+
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
         quitItem.target = self
@@ -1541,7 +2009,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addMenuBarAppearanceSettings() {
         let rootItem = NSMenuItem(title: text.menuBarAppearance, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
         let resetItem = NSMenuItem(
             title: text.showResetInMenuBar,
             action: #selector(toggleResetInMenuBar),
@@ -1581,7 +2049,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addUsageColorSettings() {
         let rootItem = NSMenuItem(title: text.usageColorsTitle, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
 
         let enabledItem = NSMenuItem(
             title: text.usageColorsEnabled,
@@ -1612,7 +2080,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addUsageHistorySettings() {
         let rootItem = NSMenuItem(title: text.usageHistoryTitle, action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
+        let submenu = manuallyEnabledMenu()
 
         let enabledItem = NSMenuItem(
             title: text.showUsageHistory,
@@ -1636,6 +2104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(rootItem)
     }
 
+    private func manuallyEnabledMenu() -> NSMenu {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        return submenu
+    }
+
     private func addLaunchAtLoginItem() {
         let status = SMAppService.mainApp.status
         let suffix = status == .requiresApproval ? " (\(text.loginItemNeedsApproval))" : ""
@@ -1657,25 +2131,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func addProvider(_ usage: ProviderUsage) {
-        var rows: [NSAttributedString] = []
-        if let session = usage.session {
-            rows.append(windowTitle(text.fiveHours, session))
-        }
-        if let weekly = usage.weekly {
-            rows.append(windowTitle(text.weekly, weekly))
+        var rows: [(title: NSAttributedString, history: [UsageHistorySample])] = []
+        for (position, window) in usage.windows.enumerated() {
+            let samples = usageHistoryEnabled
+                ? usageHistory[historyKey(providerName: usage.name, windowKind: window.kind)] ?? []
+                : []
+            rows.append((windowTitle(text.usageWindowLabel(window, position: position), window), samples))
         }
         if let error = usage.error {
-            rows.append(errorTitle(error))
+            if let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
+                rows.append((staleTitle(error, lastSuccessfulAt: lastSuccessfulAt), []))
+            } else {
+                rows.append((errorTitle(error), []))
+            }
         }
-
-        let historySamples = usageHistoryEnabled ? (usageHistory[usage.name] ?? []) : []
-        let historyHeight: CGFloat = historySamples.isEmpty ? 0 : 58
 
         let width: CGFloat = 276
-        let rowHeights = rows.map { attributedTitle in
-            attributedTitle.string.contains("\n") ? CGFloat(40) : CGFloat(25)
+        let rowHeights = rows.map { row in
+            row.title.string.contains("\n") ? CGFloat(40) : CGFloat(25)
         }
-        let height = 46 + rowHeights.reduce(0, +) + historyHeight
+        let historyHeights = rows.map { $0.history.isEmpty ? CGFloat(0) : CGFloat(58) }
+        let height = 46 + rowHeights.reduce(0, +) + historyHeights.reduce(0, +)
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
         if let icon = providerIcon(for: usage.name, size: 18) {
@@ -1692,9 +2168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         container.addSubview(title)
 
         var rowTop = height - 42
-        for (attributedTitle, rowHeight) in zip(rows, rowHeights) {
+        for (index, rowData) in rows.enumerated() {
+            let rowHeight = rowHeights[index]
             rowTop -= rowHeight
-            let row = NSTextField(labelWithAttributedString: attributedTitle)
+            let row = NSTextField(labelWithAttributedString: rowData.title)
             row.maximumNumberOfLines = 2
             row.lineBreakMode = .byWordWrapping
             row.frame = NSRect(
@@ -1704,28 +2181,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 height: rowHeight
             )
             container.addSubview(row)
-        }
 
-        if let latestSample = historySamples.last {
-            let historyModel = UsageHistoryChartModel(samples: historySamples)
+            guard let latestSample = rowData.history.last else { continue }
+            rowTop -= historyHeights[index]
+            let historyModel = UsageHistoryChartModel(samples: rowData.history)
             let historyRange = text.usageHistoryRange(historyModel.recordedDuration)
             let historySummary = text.usageHistorySummary(historyModel)
             let historyLabel = NSTextField(labelWithString: historyRange)
             historyLabel.font = .systemFont(ofSize: 10, weight: .medium)
             historyLabel.textColor = .secondaryLabelColor
-            historyLabel.frame = NSRect(x: 14, y: 43, width: width - 28, height: 13)
+            historyLabel.frame = NSRect(x: 14, y: rowTop + 43, width: width - 28, height: 13)
             container.addSubview(historyLabel)
 
             let summaryLabel = NSTextField(labelWithString: historySummary)
             summaryLabel.font = .systemFont(ofSize: 9.5, weight: .regular)
             summaryLabel.textColor = .secondaryLabelColor
             summaryLabel.lineBreakMode = .byTruncatingTail
-            summaryLabel.frame = NSRect(x: 14, y: 30, width: width - 28, height: 12)
+            summaryLabel.frame = NSRect(x: 14, y: rowTop + 30, width: width - 28, height: 12)
             container.addSubview(summaryLabel)
 
             let graph = UsageSparklineView(
-                frame: NSRect(x: 14, y: 6, width: width - 28, height: 22),
-                samples: historySamples,
+                frame: NSRect(x: 14, y: rowTop + 6, width: width - 28, height: 22),
+                samples: rowData.history,
                 lineColor: remainingColor(latestSample.remainingPercent)
             )
             graph.setAccessibilityLabel(historyRange)
@@ -1788,6 +2265,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
     }
 
+    private func staleTitle(_ issue: ProviderIssue, lastSuccessfulAt: Date) -> NSAttributedString {
+        NSAttributedString(
+            string: text.staleData(
+                lastSuccessfulTime: formattedTime(lastSuccessfulAt),
+                issue: issue
+            ),
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.systemOrange
+            ]
+        )
+    }
+
     private func remainingColor(_ percent: Int) -> NSColor {
         guard usageColorsEnabled else { return .labelColor }
         switch usageAlertPolicy.level(for: percent) {
@@ -1837,7 +2327,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func connectCodex() {
-        guard ExecutableLocator.codex() != nil else {
+        switch ExecutableLocator.codex() {
+        case .found:
+            break
+        case .untrusted:
+            showConnectionError(
+                title: text.codexUntrustedTitle,
+                message: text.codexUntrustedMessage
+            )
+            return
+        case .missing:
             showConnectionError(
                 title: text.codexNotFoundTitle,
                 message: text.codexNotFoundMessage
@@ -1854,7 +2353,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func connectClaude() {
-        guard ExecutableLocator.claude() != nil else {
+        switch ExecutableLocator.claude() {
+        case .found:
+            break
+        case .untrusted:
+            showConnectionError(
+                title: text.claudeUntrustedTitle,
+                message: text.claudeUntrustedMessage
+            )
+            return
+        case .missing:
             showConnectionError(
                 title: text.claudeNotFoundTitle,
                 message: text.claudeNotFoundMessage
@@ -1929,7 +2437,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func clearUsageHistory() {
         usageHistory.removeAll()
         UserDefaults.standard.removeObject(forKey: PreferenceKey.usageHistoryData)
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
         rebuildMenu()
+    }
+
+    @objc private func copyDiagnostics() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(diagnosticsSummary(), forType: .string)
+    }
+
+    private func diagnosticsSummary() -> String {
+        let system = ProcessInfo.processInfo.operatingSystemVersion
+        let lastRefresh = lastUpdated.map { ISO8601DateFormatter().string(from: $0) } ?? "never"
+        var lines = [
+            "UsageBar \(AppMetadata.version) (\(AppMetadata.build))",
+            "macOS \(system.majorVersion).\(system.minorVersion).\(system.patchVersion)",
+            "language=\(language.rawValue)",
+            "last_refresh=\(lastRefresh)",
+            "history_enabled=\(usageHistoryEnabled)",
+            "history_series=\(usageHistory.count)",
+            "history_samples=\(usageHistory.values.reduce(0) { $0 + $1.count })"
+        ]
+
+        for providerName in ["Codex", "Claude Code"] {
+            let connected = providerName == "Codex" ? codexConnected : claudeConnected
+            let executableState: String
+            let lookup = providerName == "Codex"
+                ? ExecutableLocator.codex()
+                : ExecutableLocator.claude()
+            switch lookup {
+            case .found: executableState = "trusted"
+            case .untrusted: executableState = "untrusted"
+            case .missing: executableState = "missing"
+            }
+            let usage = usages[providerName]
+            let state: String
+            if usage?.isStale == true {
+                state = "stale"
+            } else if usage?.error != nil {
+                state = "error"
+            } else if usage?.windows.isEmpty == false {
+                state = "fresh"
+            } else {
+                state = "no_data"
+            }
+            let windowKinds = usage?.windows.map { $0.kind.historyKey }.joined(separator: ",") ?? "none"
+            let issue = usage?.error?.diagnosticCode ?? "none"
+            let key = providerName == "Codex" ? "codex" : "claude"
+            lines.append("\(key)=connected:\(connected),executable:\(executableState),state:\(state),windows:\(windowKinds),issue:\(issue)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -1986,7 +2544,11 @@ private func runSelfTest() -> Int32 {
     let durationOrigin = Date(timeIntervalSince1970: 1_000_000)
     guard
         turkish.remaining(59) == "%59 kaldı",
-        english.remaining(59) == "%59 remaining",
+        english.remaining(59) == "59% remaining",
+        english.remainingTooltip(provider: "Codex", percent: 59) == "Codex: 59% remaining",
+        AppLanguage.preferred(from: ["tr-TR", "en-US"]) == .turkish,
+        AppLanguage.preferred(from: ["en-US", "tr-TR"]) == .english,
+        AppLanguage.preferred(from: []) == .english,
         turkish.issue(.claudeNotLoggedIn) == "Claude Code'a giriş yapılmamış",
         english.issue(.claudeNotLoggedIn) == "Claude Code is not signed in",
         english.relativeReset(
@@ -2036,6 +2598,13 @@ private func runSelfTest() -> Int32 {
     )
     let encodedHistory = UsageHistoryModel.encode(["Codex": replacedHistory])
     let decodedHistory = UsageHistoryModel.decode(encodedHistory)
+    let sanitizedHistory = UsageHistoryModel.sanitized([
+        "Codex|weekly": [
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(-120), remainingPercent: 140),
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(-90), remainingPercent: -20),
+            UsageHistorySample(recordedAt: historyOrigin.addingTimeInterval(120), remainingPercent: 50)
+        ]
+    ], now: historyOrigin)
     let flatChart = UsageHistoryChartModel(samples: [
         UsageHistorySample(recordedAt: historyOrigin, remainingPercent: 33)
     ])
@@ -2059,6 +2628,8 @@ private func runSelfTest() -> Int32 {
         replacedHistory.count == 2,
         replacedHistory.last?.remainingPercent == 65,
         decodedHistory["Codex"] == replacedHistory,
+        sanitizedHistory["Codex|weekly"]?.count == 1,
+        sanitizedHistory["Codex|weekly"]?.first?.remainingPercent == 0,
         flatChart.lowerBound == 28,
         flatChart.upperBound == 38,
         changingChart.delta == -2,
@@ -2116,6 +2687,19 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
+    let partialStructuredClaude = UsageParser.claudeStatusLine("""
+    USAGEBAR_LIMITS:|||\r
+    33.4|1784740200||\r
+    """)
+    guard
+        partialStructuredClaude?.session?.usedPercent == 33,
+        partialStructuredClaude?.weekly == nil,
+        partialStructuredClaude?.session?.resetsAt?.timeIntervalSince1970 == 1_784_740_200
+    else {
+        fputs("Claude kısmi yapılandırılmış limit testi başarısız\n", stderr)
+        return 1
+    }
+
     let summary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
         "Codex": parsedCodex,
         "Claude Code": parsedClaude
@@ -2127,12 +2711,15 @@ private func runSelfTest() -> Int32 {
 
     let claudeSessionFirst = ProviderUsage(
         name: "Claude Code",
-        session: UsageWindow(
-            usedPercent: 20,
-            resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
-            durationMinutes: 300
-        ),
-        weekly: UsageWindow(usedPercent: 95, resetsAt: nil, durationMinutes: 10_080),
+        windows: [
+            UsageWindow(
+                kind: .fiveHour,
+                usedPercent: 20,
+                resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
+                durationMinutes: 300
+            ),
+            UsageWindow(kind: .weekly, usedPercent: 95, resetsAt: nil, durationMinutes: 10_080)
+        ],
         error: nil
     )
     let sessionFirstSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
@@ -2158,8 +2745,9 @@ private func runSelfTest() -> Int32 {
 
     let claudeWeeklyFallback = ProviderUsage(
         name: "Claude Code",
-        session: nil,
-        weekly: UsageWindow(usedPercent: 26, resetsAt: nil, durationMinutes: 10_080),
+        windows: [
+            UsageWindow(kind: .weekly, usedPercent: 26, resetsAt: nil, durationMinutes: 10_080)
+        ],
         error: nil
     )
     let weeklyFallbackSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: [
@@ -2167,6 +2755,21 @@ private func runSelfTest() -> Int32 {
     ])
     guard weeklyFallbackSummary?.remainingPercent == 74 else {
         fputs("Claude haftalık yedek pencere testi başarısız\n", stderr)
+        return 1
+    }
+
+    let successfulUsage = claudeSessionFirst.markedSuccessful(at: historyOrigin)
+    let staleUsage = ProviderUsage.stale(from: successfulUsage, issue: .claudeUsageUnreadable)
+    guard
+        staleUsage.isStale,
+        staleUsage.lastSuccessfulAt == historyOrigin,
+        staleUsage.error?.diagnosticCode == "claude_usage_unreadable",
+        UsageSummaryCalculator.summary(
+            for: "Claude Code",
+            in: ["Claude Code": staleUsage]
+        )?.remainingPercent == 80
+    else {
+        fputs("Eski veri durumu testi başarısız\n", stderr)
         return 1
     }
 
@@ -2182,14 +2785,73 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
+    let customWindowCodex = """
+    {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":13,"windowDurationMins":10080},"secondary":{"usedPercent":55,"windowDurationMins":4320}}}}
+    """
+    guard
+        let parsedCustomWindow = UsageParser.codexResponse(from: Data(customWindowCodex.utf8)),
+        parsedCustomWindow.windows.count == 2,
+        parsedCustomWindow.windows.contains(where: { $0.kind == .duration(minutes: 4_320) }),
+        UsageSummaryCalculator.summary(
+            for: "Codex",
+            in: ["Codex": parsedCustomWindow]
+        )?.remainingPercent == 45,
+        english.usageWindowLabel(
+            UsageWindow(usedPercent: 55, resetsAt: nil, durationMinutes: 4_320),
+            position: 1
+        ) == "3 days"
+    else {
+        fputs("Codex özel pencere testi başarısız\n", stderr)
+        return 1
+    }
+
     let boundedCapture = BoundedDataCapture(limit: 4)
     guard
         boundedCapture.append(Data([1, 2, 3])),
         !boundedCapture.append(Data([4, 5])),
         boundedCapture.snapshot().data == Data([1, 2, 3, 4]),
-        boundedCapture.snapshot().exceeded
+        boundedCapture.snapshot().exceeded,
+        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/bin") != nil,
+        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil
     else {
-        fputs("Çıktı sınırı testi başarısız\n", stderr)
+        fputs("Süreç güvenliği testi başarısız\n", stderr)
+        return 1
+    }
+
+    var ptySmokeProcess: ProviderPTYProcess?
+    do {
+        let process = try ProviderPTYLauncher.launch(
+            executable: "/bin/cat",
+            arguments: [],
+            environment: ProviderProcessContext.environment,
+            workingDirectory: ProviderProcessContext.workingDirectory
+        )
+        ptySmokeProcess = process
+        let capture = BoundedDataCapture(limit: 4 * 1_024)
+        let dataAvailable = DispatchSemaphore(value: 0)
+        let drainer = PipeDrainer.start(
+            fileDescriptor: process.masterFileDescriptor,
+            capture: capture,
+            dataAvailable: dataAvailable
+        )
+        try process.write(Data("USAGEBAR_PTY_PROBE\n".utf8))
+        let probe = Data("USAGEBAR_PTY_PROBE".utf8)
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline,
+              capture.snapshot().data.range(of: probe) == nil {
+            _ = dataAvailable.wait(timeout: .now() + .milliseconds(50))
+        }
+        let receivedProbe = capture.snapshot().data.range(of: probe) != nil
+        process.stop()
+        ptySmokeProcess = nil
+        _ = drainer.wait(timeout: .now() + .seconds(1))
+        guard receivedProbe else {
+            fputs("Yerel PTY veri yolu testi başarısız\n", stderr)
+            return 1
+        }
+    } catch {
+        ptySmokeProcess?.stop()
+        fputs("Yerel PTY başlatma testi başarısız\n", stderr)
         return 1
     }
 
@@ -2197,8 +2859,93 @@ private func runSelfTest() -> Int32 {
     return 0
 }
 
+private func runClaudeLiveDiagnostics() -> Int32 {
+    let completed = DispatchSemaphore(value: 0)
+    let lock = NSLock()
+    var result: ProviderUsage?
+    ClaudeUsageFetcher().fetch { usage in
+        lock.lock()
+        result = usage
+        lock.unlock()
+        completed.signal()
+    }
+
+    guard completed.wait(timeout: .now() + .seconds(25)) == .success else {
+        print("claude_live=issue:diagnostic_wait_timed_out,windows:none")
+        return 2
+    }
+    lock.lock()
+    let usage = result
+    lock.unlock()
+    guard let usage else {
+        print("claude_live=issue:no_result,windows:none")
+        return 2
+    }
+    let windows = usage.windows.map { $0.kind.historyKey }.joined(separator: ",")
+    print("claude_live=issue:\(usage.error?.diagnosticCode ?? "none"),windows:\(windows.isEmpty ? "none" : windows)")
+    return usage.error == nil ? 0 : 2
+}
+
+private func runClaudeStatusFilter() -> Int32 {
+    let maximumInputBytes = 64 * 1_024
+    var input = Data()
+
+    while true {
+        let chunk = FileHandle.standardInput.readData(ofLength: 4 * 1_024)
+        if chunk.isEmpty { break }
+        guard input.count + chunk.count <= maximumInputBytes else { return 1 }
+        input.append(chunk)
+    }
+
+    guard
+        let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
+        let limits = object["rate_limits"] as? [String: Any]
+    else { return 1 }
+
+    func field(_ window: String, _ key: String) -> String {
+        guard
+            let values = limits[window] as? [String: Any],
+            let value = values[key]
+        else { return "" }
+        if let number = value as? NSNumber { return number.stringValue }
+        if let string = value as? String, Double(string) != nil { return string }
+        return ""
+    }
+
+    let fields = [
+        field("five_hour", "used_percentage"),
+        field("five_hour", "resets_at"),
+        field("seven_day", "used_percentage"),
+        field("seven_day", "resets_at")
+    ]
+    print("USAGEBAR_LIMITS:" + fields.joined(separator: "|"))
+    return 0
+}
+
+private func runProcessGroupLauncher() -> Int32 {
+    let argumentOffset: Int32 = 2
+    guard CommandLine.argc > argumentOffset else { return Int32(EINVAL) }
+    return Int32(usagebar_exec_in_new_process_group(
+        CommandLine.argc - argumentOffset,
+        CommandLine.unsafeArgv.advanced(by: Int(argumentOffset))
+    ))
+}
+
 if CommandLine.arguments.contains("--self-test") {
     exit(runSelfTest())
+}
+
+if CommandLine.arguments.contains("--diagnose-claude-live") {
+    exit(runClaudeLiveDiagnostics())
+}
+
+if CommandLine.arguments.contains("--claude-status-filter") {
+    exit(runClaudeStatusFilter())
+}
+
+if CommandLine.arguments.count > 2,
+   CommandLine.arguments[1] == "--process-group-launcher" {
+    exit(runProcessGroupLauncher())
 }
 
 let application = NSApplication.shared

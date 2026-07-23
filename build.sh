@@ -44,22 +44,32 @@ trap cleanup EXIT
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
+SWIFTPM_BUILD_DIR="$BUILD_DIR/swiftpm"
 CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache" \
 SWIFT_MODULECACHE_PATH="$BUILD_DIR/module-cache" \
-xcrun swiftc \
-  -swift-version 5 \
-  -O \
-  -framework AppKit \
-  -framework Foundation \
-  -framework ServiceManagement \
-  "$PROJECT_DIR/Sources/UsageBar/main.swift" \
-  -o "$APP_DIR/Contents/MacOS/UsageBar"
+swift test \
+  --package-path "$PROJECT_DIR" \
+  --scratch-path "$SWIFTPM_BUILD_DIR"
+
+CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache" \
+SWIFT_MODULECACHE_PATH="$BUILD_DIR/module-cache" \
+swift build \
+  --package-path "$PROJECT_DIR" \
+  --scratch-path "$SWIFTPM_BUILD_DIR" \
+  --configuration release
+
+SWIFTPM_BINARY_DIR="$(swift build \
+  --package-path "$PROJECT_DIR" \
+  --scratch-path "$SWIFTPM_BUILD_DIR" \
+  --configuration release \
+  --show-bin-path)"
+cp "$SWIFTPM_BINARY_DIR/UsageBar" "$APP_DIR/Contents/MacOS/UsageBar"
 
 cp "$PROJECT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
 xattr -cr "$APP_DIR"
-codesign --force --deep --sign - --identifier local.codex.usagebar "$APP_DIR"
+codesign --force --sign - --identifier local.codex.usagebar "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
 # Publish from a clean directory. Copying into an existing .app would preserve

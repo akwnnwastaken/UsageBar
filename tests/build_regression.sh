@@ -32,4 +32,28 @@ if [[ "$signature_valid" != true ]]; then
 fi
 
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
+
+while IFS= read -r file; do
+  relative="${file#$APP_DIR/}"
+  case "$relative" in
+    Contents/Info.plist|Contents/MacOS/UsageBar|Contents/_CodeSignature/CodeResources)
+      ;;
+    *)
+      print -u2 "Uygulama paketinde beklenmeyen dosya var: $relative"
+      exit 1
+      ;;
+  esac
+done < <(find "$APP_DIR" -type f -print)
+
+while IFS= read -r dependency; do
+  case "$dependency" in
+    /System/Library/*|/usr/lib/*)
+      ;;
+    *)
+      print -u2 "Beklenmeyen dinamik kütüphane: $dependency"
+      exit 1
+      ;;
+  esac
+done < <(otool -L "$APP_DIR/Contents/MacOS/UsageBar" | tail -n +2 | awk '{print $1}')
+
 print "Paketleme regresyon testi başarılı"

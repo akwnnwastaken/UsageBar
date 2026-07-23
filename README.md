@@ -15,16 +15,18 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 
 - Codex ve Claude Code kullanımını tek uygulamada izler.
 - Menü çubuğunda seçili sağlayıcının aktif kullanım penceresine ait kalan oranı gösterir.
-- 5 saatlik ve haftalık pencereleri ayrı ayrı listeler; yalnızca hesapta bulunan pencereleri gösterir.
+- 5 saatlik, haftalık ve sağlayıcının döndürdüğü diğer süreli pencereleri ayrı ayrı listeler; yalnızca hesapta bulunan pencereleri gösterir.
 - Sıfırlama zamanını yüzde bilgisinin altında gösterir (`1sa 15dk` / `1h 15m`).
 - Kalan oranı seviyesine göre yeşil, turuncu veya kırmızı renklendirir.
 - Menü çubuğundaki yüzdeyi kritik seviyelerde turuncu veya kırmızı gösterir; renkler kapatılabilir ve üç farklı eşik profili seçilebilir.
 - İstenirse menü çubuğunda seçili kullanım penceresinin sıfırlanma sayacını da gösterir.
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
-- Her sağlayıcının 24 saate kadar kalan yüzde geçmişini yerel bir mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Tek ölçümlük ±1 puan yuvarlama dalgalanmaları yalnızca çizimde yumuşatılır.
+- Her kullanım penceresinin 24 saate kadar kalan yüzde geçmişini ayrı bir yerel mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Tek ölçümlük ±1 puan yuvarlama dalgalanmaları yalnızca çizimde yumuşatılır.
+- Sağlayıcı geçici olarak yanıt vermezse son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder; eski ölçüm geçmişe yeniden yazılmaz.
+- Sürüm, macOS, bağlantı durumu, pencere türleri ve güvenli hata kodlarından oluşan bir tanılama özetini panoya kopyalar. Ham CLI çıktısı, dosya yolu veya kimlik bilgisi eklemez.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
-- Türkçe ve İngilizce arayüz sunar; seçimleri sonraki açılışlar için saklar.
+- İlk açılışta macOS diline göre Türkçe veya İngilizce arayüz seçer; kullanıcı seçimini sonraki açılışlar için saklar.
 - Her 5 dakikada bir ve menü yeniden açıldığında kullanım verisini yeniler.
 - Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
 
@@ -76,6 +78,19 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 shasum -a 256 ~/Downloads/UsageBar-1.4.4-macOS-arm64.zip
 ```
 
+v1.5.0 ve sonraki CI üretimi paketlerde GitHub build provenance kaydını da
+doğrulayabilirsiniz:
+
+```sh
+gh attestation verify ~/Downloads/UsageBar-1.5.0-macOS-arm64.zip \
+  --repo akwnnwastaken/UsageBar \
+  --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
+```
+
+SHA-256 dosyanın değişmediğini, attestation ise dosyanın bu deponun sabitlenmiş
+GitHub Actions akışı tarafından üretildiğini doğrular. İkisini birlikte kontrol
+etmek en güçlü ücretsiz doğrulamadır.
+
 Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yapamadığı bir uygulamayı açma](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
 
 ### Kullanım
@@ -85,10 +100,11 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 3. **Codex'e bağlan** veya **Claude Code'a bağlan** seçeneğini kullanın.
 4. İki sağlayıcı da bağlıysa `Otomatik | Codex | Claude` anahtarıyla sabit bir sağlayıcı seçin veya 30 saniyelik otomatik geçişi açın.
 5. `Üst çubuk görünümü`, `Kullanım renkleri` ve `Kullanım geçmişi` menülerinden görünümü isteğinize göre ayarlayın.
+6. Sorun bildirirken kişisel veri içermeyen özeti almak için **Tanılama özetini kopyala** seçeneğini kullanın.
 
 Bağlantı seçimi yalnızca yerel tercihi kaydeder. UsageBar şifre, erişim anahtarı veya oturum belirteci saklamaz.
 
-Mini grafik açıksa UsageBar yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Başlangıçta grafik yalnızca gerçekten kaydedilmiş süreyi gösterir ve zamanla 24 saate ulaşır. Kayıtlar 24 saat sonra otomatik silinir; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
+Mini grafik açıksa UsageBar her sağlayıcı/pencere çifti için yalnızca ölçüm zamanı ile kalan yüzdeyi yerel uygulama tercihlerinde saklar. Başlangıçta grafik yalnızca gerçekten kaydedilmiş süreyi gösterir ve zamanla 24 saate ulaşır. Kayıtlar açılışta ve her yeni ölçümde 24 saat, seri sayısı ve örnek sayısı sınırlarına göre budanır; sağlayıcı yanıtları, komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
 
 ### Gizlilik ve macOS izinleri
 
@@ -107,7 +123,7 @@ Claude Code bağlantısında macOS, mevcut `Claude Code-credentials` Anahtar Zin
 
 **Mac açılışında başlat** seçeneği yalnızca macOS'un Giriş Öğeleri sistemini kullanır ve uygulama `/Applications` klasöründeyken kullanılmalıdır. macOS bu değişikliği bir sistem bildirimiyle gösterebilir veya Sistem Ayarları'ndan onay isteyebilir; ekran, disk veya otomasyon izni verilmez.
 
-Sağlayıcı komutları uygulamaya özel geçici bir klasörde çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez.
+Sağlayıcı komutları uygulamaya özel geçici bir klasörde, küçük bir ortam değişkeni listesiyle ve ayrı süreç grubunda çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez. Zaman aşımında tüm çocuk süreç grubu kapatılır; çıktı 2 MiB ile sınırlandırılır. Çalıştırılabilir dosyaların gerçek symlink hedefi, sahibi ve yazma izinleri de kullanılmadan önce doğrulanır.
 
 ### Veri kaynakları
 
@@ -126,7 +142,7 @@ chmod +x build.sh
 open build/UsageBar.app
 ```
 
-Derleme betiği uygulamayı oluşturur; parser, yerelleştirme, pencere önceliği, renk eşikleri, geçmiş ve sağlayıcı dönüşümü öz testlerini çalıştırır; ardından temiz paketi yerel kullanım için ad hoc imzalar.
+Derleme betiği kanonik SwiftPM grafiğiyle XCTest testlerini ve paket içi öz testleri çalıştırır; ardından temiz paketi yerel kullanım için ad hoc imzalar.
 
 Paketleme regresyonunu da çalıştırmak için:
 
@@ -134,16 +150,29 @@ Paketleme regresyonunu da çalıştırmak için:
 ./tests/build_regression.sh
 ```
 
+CI ile aynı tam güvenlik kabul kapısını çalıştırmak için:
+
+```sh
+./tests/security_acceptance.sh
+```
+
 ### Proje yapısı
 
 ```text
 UsageBar/
-├── Sources/UsageBar/main.swift    # Uygulama, arayüz, veri okuyucuları ve öz testler
-├── tests/build_regression.sh      # Temiz paketleme ve imza regresyonu
-├── .github/workflows/ci.yml       # GitHub Actions derleme kontrolü
-├── Package.swift                  # SwiftPM ve CodeQL derleme tanımı
+├── Sources/UsageBar/main.swift                 # Uygulama, arayüz ve sağlayıcı okuyucuları
+├── Sources/UsageBarCore/Core.swift             # Saf, XCTest ile test edilen kurallar
+├── Sources/UsageBarProcessLauncher/            # Shell kullanmayan süreç grubu başlatıcısı
+├── tests/UsageBarCoreTests/                     # XCTest testleri
+├── tests/build_regression.sh                    # Temiz paketleme ve imza regresyonu
+├── tests/security_acceptance.sh                 # CI güvenlik kabul kapısı
+├── .github/workflows/ci.yml                     # Paket ve güvenlik testleri
+├── .github/workflows/codeql.yml                 # Manuel Swift CodeQL derlemesi
+├── .github/workflows/release-candidate.yml      # İmzalı tag, SHA ve provenance üretimi
+├── Package.swift                                # Kanonik SwiftPM derleme tanımı
 ├── Info.plist                     # macOS uygulama ve sürüm metadata'sı
 ├── build.sh                       # Derleme, test ve yerel imzalama
+├── SECURITY.md                    # İki dilli güvenlik bildirim politikası
 ├── LICENSE                        # MIT Lisansı
 └── README.md                      # Türkçe ve İngilizce dokümantasyon
 ```
@@ -151,6 +180,8 @@ UsageBar/
 ### Geliştirme
 
 Değişiklikler ayrı commitler ve pull requestler üzerinden ilerletilir. Böylece GitHub'daki commit geçmişinden önceki çalışan sürümlere dönülebilir ve her değişiklik ayrı ayrı incelenebilir.
+
+Hassas bir güvenlik açığını herkese açık Issue yerine [güvenlik politikasındaki](SECURITY.md) özel bildirim adımlarıyla paylaşın.
 
 ### Lisans
 
@@ -171,16 +202,18 @@ It shows the **remaining usage percentage** for the selected provider, together 
 
 - Tracks Codex and Claude Code usage in one app.
 - Shows the remaining percentage for the selected provider's active usage window in the menu bar.
-- Lists five-hour and weekly windows separately and only displays windows available on the account.
+- Lists five-hour, weekly, and any other duration returned by the provider separately, showing only windows available on the account.
 - Shows the reset countdown below the remaining percentage (`1h 15m`).
 - Highlights the remaining percentage in green, orange, or red based on its level.
 - Colors the menu-bar percentage orange or red at critical levels; colors can be disabled and three threshold profiles are available.
 - Optionally shows the selected usage window's reset countdown in the menu bar.
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
-- Shows up to 24 hours of each provider's remaining-percentage history in a local mini chart. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Isolated one-sample ±1 point rounding fluctuations are smoothed only in the drawing.
+- Shows up to 24 hours of remaining-percentage history separately for every usage window. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Isolated one-sample ±1 point rounding fluctuations are smoothed only in the drawing.
+- Keeps showing the last successful value with its timestamp and failure reason when a provider is temporarily unavailable; stale values are not recorded as new history samples.
+- Copies a diagnostic summary containing only version, macOS, connection state, window kinds, and safe error codes. It excludes raw CLI output, file paths, and credentials.
 - Can launch automatically at login through macOS Login Items.
-- Includes Turkish and English interfaces and remembers the selected language.
+- Selects Turkish or English from the macOS language on first launch and remembers the user's selection.
 - Refreshes usage every five minutes and when the menu is reopened.
 - Runs only in the menu bar without a Dock icon or main window.
 
@@ -232,6 +265,19 @@ To compare the downloaded file's SHA-256 value with the value published on the R
 shasum -a 256 ~/Downloads/UsageBar-1.4.4-macOS-arm64.zip
 ```
 
+For v1.5.0 and later CI-produced packages, you can also verify GitHub build
+provenance:
+
+```sh
+gh attestation verify ~/Downloads/UsageBar-1.5.0-macOS-arm64.zip \
+  --repo akwnnwastaken/UsageBar \
+  --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
+```
+
+SHA-256 verifies that the file did not change; the attestation verifies that it
+was produced by this repository's pinned GitHub Actions workflow. Checking both
+provides the strongest free verification available for the current release.
+
 Apple's official instructions: [Open an app Apple cannot check for malicious software](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
 
 ### Usage
@@ -241,10 +287,11 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 3. Choose **Connect Codex** or **Connect Claude Code**.
 4. If both providers are connected, use `Auto | Codex | Claude` to pin one provider or enable 30-second automatic rotation.
 5. Customize the display through the `Menu bar appearance`, `Usage colors`, and `Usage history` menus.
+6. When reporting a problem, use **Copy diagnostics** to obtain a summary without personal data.
 
 Connecting a provider only saves a local preference. UsageBar does not store passwords, API keys, access tokens, or session tokens.
 
-When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage in local app preferences. The chart initially shows only the span actually recorded and grows toward 24 hours. Samples expire automatically after 24 hours; provider responses, command output, and credentials are never written to history.
+When the mini chart is enabled, UsageBar stores only the measurement time and remaining percentage for each provider/window pair in local app preferences. The chart initially shows only the span actually recorded and grows toward 24 hours. Data is pruned on launch and after every measurement using 24-hour, series-count, and sample-count limits; provider responses, command output, and credentials are never written to history.
 
 ### Privacy and macOS permissions
 
@@ -263,7 +310,7 @@ When connecting Claude Code, macOS may request access to the existing `Claude Co
 
 The **Launch at login** option uses only the macOS Login Items system and should be enabled while the app is in `/Applications`. macOS may show a system notification or require approval in System Settings; no screen, disk, or automation permission is granted.
 
-Provider commands run in an app-specific temporary directory. Project settings, plugins, MCP servers, Chrome integration, and shell startup files are not loaded.
+Provider commands run in an app-specific temporary directory with a small environment and a separate process group. Project settings, plugins, MCP servers, Chrome integration, and shell startup files are not loaded. Timeouts terminate the entire child process group and output is limited to 2 MiB. Resolved symlink targets, ownership, and write permissions of provider executables are validated before use.
 
 ### Data sources
 
@@ -282,7 +329,7 @@ chmod +x build.sh
 open build/UsageBar.app
 ```
 
-The build script compiles the app; runs built-in tests for parsing, localization, window priority, color thresholds, history, and provider rotation; then applies an ad hoc signature to the clean bundle for local use.
+The build script uses the canonical SwiftPM graph, runs XCTest and packaged-binary self-tests, then applies an ad hoc signature to the clean bundle for local use.
 
 To run the packaging regression as well:
 
@@ -290,16 +337,29 @@ To run the packaging regression as well:
 ./tests/build_regression.sh
 ```
 
+To run the same complete security acceptance gate as CI:
+
+```sh
+./tests/security_acceptance.sh
+```
+
 ### Project structure
 
 ```text
 UsageBar/
-├── Sources/UsageBar/main.swift    # Application, UI, usage readers, and self-tests
-├── tests/build_regression.sh      # Clean packaging and signature regression
-├── .github/workflows/ci.yml       # GitHub Actions build check
-├── Package.swift                  # SwiftPM and CodeQL build definition
+├── Sources/UsageBar/main.swift                 # Application, UI, and provider readers
+├── Sources/UsageBarCore/Core.swift             # Pure rules covered by XCTest
+├── Sources/UsageBarProcessLauncher/            # Shell-free process-group launcher
+├── tests/UsageBarCoreTests/                     # XCTest suite
+├── tests/build_regression.sh                    # Clean packaging and signature regression
+├── tests/security_acceptance.sh                 # CI security acceptance gate
+├── .github/workflows/ci.yml                     # Packaging and security checks
+├── .github/workflows/codeql.yml                 # Manual Swift CodeQL build
+├── .github/workflows/release-candidate.yml      # Signed tag, SHA, and provenance build
+├── Package.swift                                # Canonical SwiftPM build graph
 ├── Info.plist                     # macOS application and version metadata
 ├── build.sh                       # Build, test, and local signing
+├── SECURITY.md                    # Bilingual vulnerability reporting policy
 ├── LICENSE                        # MIT License
 └── README.md                      # Turkish and English documentation
 ```
@@ -307,6 +367,8 @@ UsageBar/
 ### Development
 
 Changes are developed through separate commits and pull requests. This keeps each change reviewable and makes it possible to return to earlier working versions through Git history.
+
+Report sensitive vulnerabilities through the private process in the [security policy](SECURITY.md), not a public Issue.
 
 ### License
 
