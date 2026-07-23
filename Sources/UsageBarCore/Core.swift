@@ -173,6 +173,31 @@ public enum ProviderRotation {
     }
 }
 
+/// Pure state transition for disconnecting a provider, so the selection and
+/// auto-rotate rules are testable without the AppKit menu.
+public enum ProviderConnectionTransition {
+    /// The provider that should be status-selected after `disconnected` is removed.
+    /// Keeps the previous selection if it is still connected; otherwise falls back
+    /// to whatever remains (nil if nothing does).
+    public static func selection(
+        afterDisconnecting disconnected: String,
+        remaining: [String],
+        previousSelection: String?
+    ) -> String? {
+        if let previousSelection,
+           previousSelection != disconnected,
+           remaining.contains(previousSelection) {
+            return previousSelection
+        }
+        return remaining.first
+    }
+
+    /// Auto-rotate only makes sense with two or more connected providers.
+    public static func autoRotateStaysEnabled(remainingCount: Int, wasEnabled: Bool) -> Bool {
+        wasEnabled && remainingCount > 1
+    }
+}
+
 // MARK: - Provider usage models
 
 public enum UsageWindowKind: Equatable {

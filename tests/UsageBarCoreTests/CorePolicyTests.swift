@@ -179,6 +179,44 @@ final class CorePolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Provider disconnect transition
+
+    func testDisconnectKeepsValidSelectionOtherwiseFallsBack() {
+        // Disconnecting the non-selected provider keeps the selection.
+        XCTAssertEqual(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Codex",
+                remaining: ["Claude Code"],
+                previousSelection: "Claude Code"
+            ),
+            "Claude Code"
+        )
+        // Disconnecting the selected provider falls back to what remains.
+        XCTAssertEqual(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Claude Code",
+                remaining: ["Codex"],
+                previousSelection: "Claude Code"
+            ),
+            "Codex"
+        )
+        // Nothing left -> no selection.
+        XCTAssertNil(
+            ProviderConnectionTransition.selection(
+                afterDisconnecting: "Codex",
+                remaining: [],
+                previousSelection: "Codex"
+            )
+        )
+    }
+
+    func testAutoRotateTurnsOffBelowTwoProviders() {
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 1, wasEnabled: true))
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 0, wasEnabled: true))
+        XCTAssertTrue(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 2, wasEnabled: true))
+        XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 2, wasEnabled: false))
+    }
+
     // MARK: - Codex parsing
 
     func testCodexResponseParsesAndClassifiesWindows() {
