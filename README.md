@@ -129,7 +129,7 @@ Sağlayıcı komutları uygulamaya özel geçici bir klasörde, küçük bir ort
 ### Veri kaynakları
 
 - **Codex:** Kurulu Codex aracının `account/rateLimits/read` yerel arayüzü.
-- **Claude Code:** Claude Code'un resmi `rate_limits.five_hour` ve `rate_limits.seven_day` alanları; gerektiğinde `/usage` çıktısı yedek olarak kullanılır.
+- **Claude Code:** Claude Code'un `claude -p "/usage"` komutunun düz metin çıktısı. Bu, oturum kaydı bırakmayan, model kotası tüketmeyen yerel bir komuttur.
 
 UsageBar sağlayıcıların web sitelerine kendi hesabıyla giriş yapmaz; bilgisayarınızdaki mevcut Codex ve Claude Code oturumlarını kullanır.
 
@@ -316,7 +316,7 @@ Provider commands run in an app-specific temporary directory with a small enviro
 ### Data sources
 
 - **Codex:** The installed Codex tool's local `account/rateLimits/read` interface.
-- **Claude Code:** Claude Code's official `rate_limits.five_hour` and `rate_limits.seven_day` fields, with `/usage` output used as a fallback when needed.
+- **Claude Code:** the plain-text output of Claude Code's `claude -p "/usage"` command — a local command that leaves no session record and consumes no model quota.
 
 UsageBar does not sign in to provider websites itself. It uses the existing local Codex and Claude Code sessions on the Mac.
 

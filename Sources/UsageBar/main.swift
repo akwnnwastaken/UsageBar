@@ -647,6 +647,66 @@ enum UsageParser {
         )
     }
 
+    /// Parses the plain-text output of `claude -p "/usage"`. Print mode prints
+    /// one line per window, e.g.
+    ///   Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+    ///   Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    /// There are no terminal cursor moves, so there is none of the space-collapse
+    /// or overlay-height fragility of the interactive `/usage` panel.
+    static func claudePrintUsage(_ raw: String, now: Date = Date()) -> ProviderUsage {
+        let session = printWindow("Current session", in: raw, now: now)
+        let weekly = printWindow("Current week[^:\\n]*", in: raw, now: now)
+
+        if session == nil && weekly == nil {
+            let lower = raw.lowercased()
+            let notLoggedIn = lower.contains("log in")
+                || lower.contains("login")
+                || lower.contains("sign in")
+                || lower.contains("not authenticated")
+                || lower.contains("authenticate")
+            return .unavailable(
+                "Claude Code",
+                notLoggedIn ? .claudeNotLoggedIn : .claudeUsageUnreadable
+            )
+        }
+
+        return ProviderUsage(
+            name: "Claude Code",
+            windows: [
+                session.map {
+                    UsageWindow(kind: .fiveHour, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 300)
+                },
+                weekly.map {
+                    UsageWindow(kind: .weekly, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 10_080)
+                }
+            ].compactMap { $0 },
+            error: nil
+        )
+    }
+
+    private static func printWindow(
+        _ labelPattern: String,
+        in text: String,
+        now: Date
+    ) -> (percent: Int, reset: Date?)? {
+        let pattern = "(?is)\(labelPattern)\\s*:\\s*(\\d{1,3}(?:[.,]\\d+)?)\\s*%\\s*used(?:[^\\n]*?resets?\\s+([^\\n]+))?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard
+            let match = regex.firstMatch(in: text, range: range),
+            let percentRange = Range(match.range(at: 1), in: text)
+        else { return nil }
+        let normalized = text[percentRange].replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized) else { return nil }
+        let percent = min(100, max(0, Int(value.rounded())))
+        var reset: Date?
+        if match.numberOfRanges > 2, let resetRange = Range(match.range(at: 2), in: text) {
+            let resetText = String(text[resetRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            reset = parseClaudeReset(resetText, now: now)
+        }
+        return (percent, reset)
+    }
+
     static func claudeStatusLine(_ raw: String) -> ProviderUsage? {
         let cleaned = stripTerminalCodes(raw)
         guard let markerRange = cleaned.range(of: "USAGEBAR_LIMITS:") else { return nil }
@@ -1416,24 +1476,6 @@ final class CodexUsageFetcher {
 
 final class ClaudeUsageFetcher {
     private static let usageTimeout: TimeInterval = 15
-    private static let usageFallbackDelays: [TimeInterval] = [1.5, 5]
-    private static let statusLineSettings: String = {
-        guard let executablePath = Bundle.main.executableURL?.path else { return "{}" }
-        let quotedExecutable = "'" + executablePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        let command = "\(quotedExecutable) --claude-status-filter"
-        let settings: [String: Any] = [
-            "statusLine": [
-                "type": "command",
-                "command": command,
-                "padding": 0
-            ]
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: settings),
-            let json = String(data: data, encoding: .utf8)
-        else { return "{}" }
-        return json
-    }()
 
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
@@ -1449,100 +1491,65 @@ final class ClaudeUsageFetcher {
                 return
             }
 
-            // Ignore user/project/local settings and inject only a tiny status
-            // line that exposes Claude's official structured quota fields.
-            // This avoids project files, hooks, plugins, MCP and Chrome while
-            // keeping normal local authentication available.
-            let arguments = [
+            let process = Process()
+            let output = Pipe()
+            let errors = Pipe()
+            // Read usage non-interactively with `-p /usage`. Print mode prints
+            // the usage summary as plain text and exits; with
+            // --no-session-persistence it registers no session (so it leaves no
+            // Claude "Recents" entry) and writes no transcript. `/usage` is a
+            // local slash command, so it does not consume model quota. The
+            // isolation flags keep project settings, hooks, Chrome, MCP and
+            // tools out of the quota check while leaving local auth available.
+            ProviderProcessLauncher.configure(process, executable: executable, arguments: [
+                "-p", "/usage",
+                "--no-session-persistence",
                 "--setting-sources", "",
-                "--settings", Self.statusLineSettings,
                 "--no-chrome",
                 "--strict-mcp-config",
                 "--tools", ""
-            ]
-            var ptyProcess: ProviderPTYProcess?
+            ])
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = output
+            process.standardError = errors
+            ProviderProcessContext.apply(to: process)
 
             do {
-                let process = try ProviderPTYLauncher.launch(
-                    executable: executable,
-                    arguments: arguments,
-                    environment: ProviderProcessContext.environment,
-                    workingDirectory: ProviderProcessContext.workingDirectory
-                )
-                ptyProcess = process
+                try process.run()
                 let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+                let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
                 let dataAvailable = DispatchSemaphore(value: 0)
-                let drainer = PipeDrainer.start(
-                    fileDescriptor: process.masterFileDescriptor,
+                let outputDrainer = PipeDrainer.start(
+                    output,
                     capture: captured,
                     dataAvailable: dataAvailable
                 )
-                let startedAt = Date()
-                let deadline = startedAt.addingTimeInterval(Self.usageTimeout)
-                var sentUsageFallbackCount = 0
-                var parsedUsage: ProviderUsage?
+                let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
 
-                while Date() < deadline {
-                    let snapshot = captured.snapshot()
-                    if snapshot.exceeded { break }
-
-                    let screen = String(decoding: snapshot.data, as: UTF8.self)
-                    if let structured = UsageParser.claudeStatusLine(screen) {
-                        parsedUsage = structured
-                        break
-                    }
-                    let fallback = UsageParser.claudeScreen(screen)
-                    if fallback.session != nil || fallback.weekly != nil {
-                        parsedUsage = fallback
-                        break
-                    }
-                    // Do NOT treat a "login" mention as a verdict here: the
-                    // startup banner's "What's new" changelog can mention login
-                    // (e.g. "warning when your login is about to expire") before
-                    // the /usage panel is ever requested. Keep polling and let
-                    // the /usage attempts run; the not-logged-in case is decided
-                    // once, after the loop, from the final screen.
-
-                    if sentUsageFallbackCount < Self.usageFallbackDelays.count,
-                       Date().timeIntervalSince(startedAt)
-                        >= Self.usageFallbackDelays[sentUsageFallbackCount],
-                       process.isRunning {
-                        // Claude Code (2.1.x) submits input on CR once its TUI
-                        // puts the pty into raw mode; LF no longer counts as
-                        // Enter, so the command would sit unsubmitted. Send the
-                        // command and the CR separately so the input line is
-                        // fully rendered before Enter is delivered.
-                        try? process.write(Data("/usage".utf8))
-                        try? process.write(Data("\r".utf8))
-                        sentUsageFallbackCount += 1
-                    }
-
-                    if !process.isRunning { break }
+                // Print mode emits its whole output then exits, so wait for the
+                // process to finish (bounded by the deadline) and parse the
+                // complete text once. This avoids accepting a partially-written
+                // line that would drop the weekly window.
+                let deadline = Date().addingTimeInterval(Self.usageTimeout)
+                while process.isRunning && Date() < deadline {
+                    if captured.snapshot().exceeded { break }
                     _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
                 }
 
-                process.stop()
-                _ = drainer.wait(timeout: .now() + .seconds(1))
+                ProviderProcessLimits.stop(process)
+                _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+                _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
                 let snapshot = captured.snapshot()
                 guard !snapshot.exceeded else {
                     completion(.unavailable("Claude Code", .outputTooLarge("Claude Code")))
                     return
                 }
-                if let parsedUsage {
-                    completion(parsedUsage)
-                    return
-                }
-                // Re-evaluate the final screen. A genuine logged-out session
-                // cannot open the /usage panel, so the usage rows stay absent
-                // and the login prompt remains on screen. Only trust the
-                // not-logged-in verdict once every /usage attempt was sent.
-                let finalScreen = String(decoding: snapshot.data, as: UTF8.self)
-                let finalUsage = UsageParser.claudeScreen(finalScreen)
-                if finalUsage.session != nil || finalUsage.weekly != nil {
-                    completion(finalUsage)
-                } else if case .claudeNotLoggedIn? = finalUsage.error,
-                          sentUsageFallbackCount >= Self.usageFallbackDelays.count {
+                let finalText = String(decoding: snapshot.data, as: UTF8.self)
+                let final = UsageParser.claudePrintUsage(finalText)
+                if final.error == nil {
+                    completion(final)
+                } else if case .claudeNotLoggedIn? = final.error {
                     completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 } else if Date() >= deadline {
                     completion(.unavailable("Claude Code", .claudeUsageTimedOut))
@@ -1550,7 +1557,7 @@ final class ClaudeUsageFetcher {
                     completion(.unavailable("Claude Code", .claudeUsageUnreadable))
                 }
             } catch {
-                ptyProcess?.stop()
+                ProviderProcessLimits.stop(process)
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
@@ -2827,6 +2834,56 @@ private func runSelfTest() -> Int32 {
         parsedClaude.weekly?.resetsAt != nil
     else {
         fputs("Claude parser testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Print-mode `claude -p "/usage"` output: plain text, one line per window.
+    let printClaude = UsageParser.claudePrintUsage("""
+    You are currently using your subscription to power your Claude Code usage
+
+    Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+    Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+
+    Last 24h · 623 requests · 8 sessions
+    """)
+    guard
+        printClaude.session?.usedPercent == 100,
+        printClaude.weekly?.usedPercent == 53,
+        printClaude.session?.kind == .fiveHour,
+        printClaude.weekly?.kind == .weekly,
+        printClaude.session?.resetsAt != nil,
+        printClaude.weekly?.resetsAt != nil, // minute-less "10pm" still parses
+        printClaude.error == nil
+    else {
+        fputs("Claude print-mode kullanım testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Fractional percentage rounds; the "Last 24h · N requests" line must not be
+    // misread as a usage window.
+    let printFractional = UsageParser.claudePrintUsage("""
+    Current session: 8.6% used · resets Jul 23 at 5pm (Europe/Istanbul)
+    Current week (all models): 47% used
+    Last 24h · 640 requests · 8 sessions
+    """)
+    guard
+        printFractional.session?.usedPercent == 9,
+        printFractional.weekly?.usedPercent == 47,
+        printFractional.weekly?.resetsAt == nil,
+        printFractional.error == nil
+    else {
+        fputs("Claude print-mode kesirli/kısmi testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Logged out and unreadable verdicts.
+    guard
+        case .claudeNotLoggedIn? =
+            UsageParser.claudePrintUsage("Please run /login to authenticate").error,
+        case .claudeUsageUnreadable? =
+            UsageParser.claudePrintUsage("some unrelated output").error
+    else {
+        fputs("Claude print-mode oturum durumu testi başarısız\n", stderr)
         return 1
     }
 
