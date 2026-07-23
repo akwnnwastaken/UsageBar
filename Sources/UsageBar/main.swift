@@ -28,6 +28,8 @@ struct Localizer {
     var noData: String { pick("Henüz veri yok", "No data yet") }
     var connectCodex: String { pick("Codex'e bağlan", "Connect Codex") }
     var connectClaude: String { pick("Claude Code'a bağlan", "Connect Claude Code") }
+    var disconnectCodex: String { pick("Codex bağlantısını kaldır", "Disconnect Codex") }
+    var disconnectClaude: String { pick("Claude Code bağlantısını kaldır", "Disconnect Claude Code") }
     var refreshNow: String { pick("Şimdi yenile", "Refresh now") }
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
@@ -1235,6 +1237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addUsageColorSettings()
             addUsageHistorySettings()
             addRefreshIntervalSettings()
+            addDisconnectItems(connectedNames)
         }
 
         if !codexConnected || !claudeConnected {
@@ -1468,6 +1471,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.target = self
         item.image = providerIcon(for: providerName, size: 16)
         menu.addItem(item)
+    }
+
+    private func addDisconnectItems(_ connectedNames: [String]) {
+        for providerName in connectedNames {
+            let title = providerName == "Codex" ? text.disconnectCodex : text.disconnectClaude
+            let action = providerName == "Codex"
+                ? #selector(disconnectCodex)
+                : #selector(disconnectClaude)
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.image = providerIcon(for: providerName, size: 16)
+            menu.addItem(item)
+        }
     }
 
     private func addProvider(_ usage: ProviderUsage) {
@@ -1726,6 +1742,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusTitle()
         rebuildMenu()
         refresh()
+    }
+
+    @objc private func disconnectCodex() { disconnectProvider("Codex") { self.codexConnected = false } }
+    @objc private func disconnectClaude() { disconnectProvider("Claude Code") { self.claudeConnected = false } }
+
+    private func disconnectProvider(_ providerName: String, clearPreference: () -> Void) {
+        let previousSelection = selectedProviderName
+        clearPreference()
+        // Drop the live usage and menu-display state for the provider. Usage
+        // history is intentionally kept (the "Clear history" item removes it).
+        usages.removeValue(forKey: providerName)
+        let prefix = "\(providerName)|"
+        displayedRemaining = displayedRemaining.filter { !$0.key.hasPrefix(prefix) }
+        pendingRemainingRise = pendingRemainingRise.filter { !$0.key.hasPrefix(prefix) }
+        pendingRemainingRiseCount = pendingRemainingRiseCount.filter { !$0.key.hasPrefix(prefix) }
+
+        let remaining = connectedProviderNames
+        selectedProviderName = ProviderConnectionTransition.selection(
+            afterDisconnecting: providerName,
+            remaining: remaining,
+            previousSelection: previousSelection
+        )
+        if !ProviderConnectionTransition.autoRotateStaysEnabled(
+            remainingCount: remaining.count,
+            wasEnabled: autoRotateProviders
+        ) {
+            autoRotateProviders = false
+        }
+        configureStatusPresentationTimer()
+        updateStatusTitle()
+        rebuildMenu()
     }
 
     @objc private func selectStatusProvider(_ sender: NSSegmentedControl) {
