@@ -1437,18 +1437,24 @@ final class ClaudeUsageFetcher {
                         parsedUsage = fallback
                         break
                     }
-                    if case .claudeNotLoggedIn? = fallback.error {
-                        parsedUsage = fallback
-                        break
-                    }
+                    // Do NOT treat a "login" mention as a verdict here: the
+                    // startup banner's "What's new" changelog can mention login
+                    // (e.g. "warning when your login is about to expire") before
+                    // the /usage panel is ever requested. Keep polling and let
+                    // the /usage attempts run; the not-logged-in case is decided
+                    // once, after the loop, from the final screen.
 
                     if sentUsageFallbackCount < Self.usageFallbackDelays.count,
                        Date().timeIntervalSince(startedAt)
                         >= Self.usageFallbackDelays[sentUsageFallbackCount],
                        process.isRunning {
-                        // Claude Code 2.1.203 treats LF as Enter on the native
-                        // pseudo-terminal. CR only inserts the command.
-                        try? process.write(Data("/usage\n".utf8))
+                        // Claude Code (2.1.x) submits input on CR once its TUI
+                        // puts the pty into raw mode; LF no longer counts as
+                        // Enter, so the command would sit unsubmitted. Send the
+                        // command and the CR separately so the input line is
+                        // fully rendered before Enter is delivered.
+                        try? process.write(Data("/usage".utf8))
+                        try? process.write(Data("\r".utf8))
                         sentUsageFallbackCount += 1
                     }
 
@@ -1466,6 +1472,19 @@ final class ClaudeUsageFetcher {
                 }
                 if let parsedUsage {
                     completion(parsedUsage)
+                    return
+                }
+                // Re-evaluate the final screen. A genuine logged-out session
+                // cannot open the /usage panel, so the usage rows stay absent
+                // and the login prompt remains on screen. Only trust the
+                // not-logged-in verdict once every /usage attempt was sent.
+                let finalScreen = String(decoding: snapshot.data, as: UTF8.self)
+                let finalUsage = UsageParser.claudeScreen(finalScreen)
+                if finalUsage.session != nil || finalUsage.weekly != nil {
+                    completion(finalUsage)
+                } else if case .claudeNotLoggedIn? = finalUsage.error,
+                          sentUsageFallbackCount >= Self.usageFallbackDelays.count {
+                    completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 } else if Date() >= deadline {
                     completion(.unavailable("Claude Code", .claudeUsageTimedOut))
                 } else {
