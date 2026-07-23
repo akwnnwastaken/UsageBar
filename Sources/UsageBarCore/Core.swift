@@ -55,6 +55,41 @@ public struct UsageAlertPolicy {
     }
 }
 
+public enum UsageRefreshInterval: String, CaseIterable {
+    case oneMinute
+    case twoMinutes
+    case fiveMinutes
+
+    public static let fallback: UsageRefreshInterval = .fiveMinutes
+
+    public var minutes: Int {
+        switch self {
+        case .oneMinute: return 1
+        case .twoMinutes: return 2
+        case .fiveMinutes: return 5
+        }
+    }
+
+    public var seconds: TimeInterval { TimeInterval(minutes * 60) }
+
+    public static func resolved(from rawValue: String?) -> UsageRefreshInterval {
+        guard let rawValue, let interval = UsageRefreshInterval(rawValue: rawValue) else {
+            return fallback
+        }
+        return interval
+    }
+}
+
+public enum UsageRefreshPolicy {
+    /// Menü açıldığında verinin bu süreden eskiyse yeniden okunması istenir.
+    public static let menuOpenStalenessThreshold: TimeInterval = 30
+
+    public static func shouldRefreshOnMenuOpen(lastUpdated: Date?, now: Date) -> Bool {
+        guard let lastUpdated else { return false }
+        return now.timeIntervalSince(lastUpdated) > menuOpenStalenessThreshold
+    }
+}
+
 public enum ProviderRotation {
     public static let interval: TimeInterval = 30
 
