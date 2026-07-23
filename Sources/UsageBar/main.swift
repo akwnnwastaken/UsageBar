@@ -870,11 +870,17 @@ enum UsageParser {
                 }
             }
 
+            // Roll forward in the reset's own time zone, not the Mac's. Adding a
+            // calendar day/year is DST-aware, so it must use a Gregorian calendar
+            // pinned to `timeZone`; `Calendar.current` would offset the result by
+            // the Mac↔reset zone gap and mishandle DST boundaries.
+            var rollCalendar = Calendar(identifier: .gregorian)
+            rollCalendar.timeZone = timeZone
             if !format.contains("MMM"), parsed <= now,
-               let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: parsed) {
+               let nextDay = rollCalendar.date(byAdding: .day, value: 1, to: parsed) {
                 parsed = nextDay
             } else if format.contains("MMM"), !format.contains("yyyy"), parsed < now,
-                      let nextYear = Calendar.current.date(byAdding: .year, value: 1, to: parsed) {
+                      let nextYear = rollCalendar.date(byAdding: .year, value: 1, to: parsed) {
                 parsed = nextYear
             }
             return parsed
@@ -2697,6 +2703,48 @@ private func runSelfTest() -> Int32 {
             UsageParser.claudePrintUsage("some unrelated output").error
     else {
         fputs("Claude print-mode oturum durumu testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Reset time-zone / DST handling. All date math must happen in the reset's
+    // own time zone, independent of the Mac's, so these expectations hold on any
+    // runner. `instant` builds the expected absolute time in a given zone.
+    func resetInstant(_ resetText: String, now: Date) -> Date? {
+        UsageParser.claudePrintUsage(
+            "Current session: 10% used · resets \(resetText)",
+            now: now
+        ).session?.resetsAt
+    }
+    func instant(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ mi: Int, _ zone: String) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: zone)!
+        var components = DateComponents()
+        components.year = y; components.month = mo; components.day = d
+        components.hour = h; components.minute = mi
+        return calendar.date(from: components)!
+    }
+    let ist = "Europe/Istanbul"
+    let ny = "America/New_York"
+    guard
+        // Reset zone differs from the Mac's zone: resolves in Istanbul time.
+        resetInstant("Jul 26 at 10pm (Europe/Istanbul)", now: instant(2026, 7, 20, 12, 0, ist))
+            == instant(2026, 7, 26, 22, 0, ist),
+        // Minute-less "5pm" pins to :00 and rolls to the next occurrence in-zone.
+        resetInstant("5pm (America/New_York)", now: instant(2026, 3, 10, 18, 0, ny))
+            == instant(2026, 3, 11, 17, 0, ny),
+        // "4:59pm" keeps its minutes (not misread as "4" by the ha format).
+        resetInstant("4:59pm (America/New_York)", now: instant(2026, 3, 10, 12, 0, ny))
+            == instant(2026, 3, 10, 16, 59, ny),
+        // Year-end roll: from a December now, "Jan 1 at 1am" advances a year in-zone.
+        resetInstant("Jan 1 at 1am (America/New_York)", now: instant(2026, 12, 15, 12, 0, ny))
+            == instant(2027, 1, 1, 1, 0, ny),
+        // DST spring-forward: rolling "1am" a day across the US change (Mar 8, 2026)
+        // preserves the 1am wall clock in New York. A Mac-zone roll would add a
+        // fixed 24h and land an hour off.
+        resetInstant("1am (America/New_York)", now: instant(2026, 3, 8, 3, 0, ny))
+            == instant(2026, 3, 9, 1, 0, ny)
+    else {
+        fputs("Claude reset zaman dilimi/DST testi başarısız\n", stderr)
         return 1
     }
 
