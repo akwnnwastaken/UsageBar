@@ -95,6 +95,15 @@ struct ProviderUsage {
         ProviderUsage(name: name, windows: [], error: issue)
     }
 
+    func replacingWindows(_ replacements: [UsageWindow]) -> ProviderUsage {
+        ProviderUsage(
+            name: name,
+            windows: replacements,
+            error: error,
+            lastSuccessfulAt: lastSuccessfulAt
+        )
+    }
+
     func markedSuccessful(at date: Date) -> ProviderUsage {
         ProviderUsage(name: name, windows: windows, error: nil, lastSuccessfulAt: date)
     }
@@ -1641,6 +1650,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusPresentationTimer: Timer?
     private var rotatingProviderIndex = 0
     private var usageHistory: [String: [UsageHistorySample]] = [:]
+    private var displayedRemaining: [String: Int] = [:]
+    private var pendingRemainingRise: [String: Int] = [:]
+    private var pendingRemainingRiseCount: [String: Int] = [:]
 
     private var language: AppLanguage {
         get {
@@ -1805,6 +1817,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let updateDate = Date()
             self.lastUpdated = updateDate
             self.recordUsageHistory(at: updateDate)
+            self.updateDisplayedRemaining()
             self.updateStatusTitle()
             self.rebuildMenu()
         }
@@ -1827,7 +1840,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateStatusTitle() {
         if let statusProviderName,
-           let summary = UsageSummaryCalculator.summary(for: statusProviderName, in: usages) {
+           let summary = UsageSummaryCalculator.summary(for: statusProviderName, in: displayUsages) {
             var title = "%\(summary.remainingPercent)"
             if showResetInMenuBar, let resetsAt = summary.resetsAt {
                 title += " · \(text.relativeReset(resetsAt))"
@@ -1915,6 +1928,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "\(providerName)|\(windowKind.historyKey)"
     }
 
+    /// Gösterilecek kalan yüzdeleri günceller. Yalnızca yenileme tamamlandığında
+    /// çağrılmalıdır; menü her yeniden çizildiğinde çağrılırsa bekletme mantığı
+    /// tek bir ölçümü birden çok kez saymış olur.
+    private func updateDisplayedRemaining() {
+        for (providerName, usage) in usages where usage.error == nil {
+            for window in usage.windows {
+                let key = historyKey(providerName: providerName, windowKind: window.kind)
+                let decision = UsageDisplayNoiseFilter.decide(
+                    raw: remainingPercent(of: window),
+                    previouslyDisplayed: displayedRemaining[key],
+                    pendingRise: pendingRemainingRise[key],
+                    pendingCount: pendingRemainingRiseCount[key] ?? 0
+                )
+                displayedRemaining[key] = decision.displayed
+                pendingRemainingRise[key] = decision.pendingRise
+                pendingRemainingRiseCount[key] = decision.pendingCount
+            }
+        }
+    }
+
+    private func remainingPercent(of window: UsageWindow) -> Int {
+        min(100, max(0, 100 - window.usedPercent))
+    }
+
+    /// Menü ve üst çubuk için yumuşatılmış kopya. Geçmiş kaydı ham `usages`
+    /// üzerinden yapılır, bu dönüşüm yalnızca gösterimi etkiler.
+    private var displayUsages: [String: ProviderUsage] {
+        usages.mapValues { usage in
+            guard usage.error == nil else { return usage }
+            return usage.replacingWindows(usage.windows.map { window in
+                let key = historyKey(providerName: usage.name, windowKind: window.kind)
+                guard let displayed = displayedRemaining[key],
+                      displayed != remainingPercent(of: window)
+                else { return window }
+                return UsageWindow(
+                    kind: window.kind,
+                    usedPercent: 100 - displayed,
+                    resetsAt: window.resetsAt,
+                    durationMinutes: window.durationMinutes
+                )
+            })
+        }
+    }
+
     private func persistUsageHistory() {
         guard let data = UsageHistoryModel.encode(usageHistory) else { return }
         UserDefaults.standard.set(data, forKey: PreferenceKey.usageHistoryData)
@@ -1944,7 +2001,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
-            addProvider(usages[providerName] ?? .unavailable(providerName, fallback))
+            addProvider(displayUsages[providerName] ?? .unavailable(providerName, fallback))
         }
 
         if !connectedNames.isEmpty {
@@ -2781,6 +2838,22 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
+    let diagnosticReset = Date(timeIntervalSince1970: 1_800_000_000)
+    guard
+        claudeDiagnosticWindowSummary([]) == "none",
+        claudeDiagnosticWindowSummary([
+            UsageWindow(kind: .fiveHour, usedPercent: 58, resetsAt: diagnosticReset, durationMinutes: 300),
+            UsageWindow(kind: .weekly, usedPercent: 48, resetsAt: diagnosticReset, durationMinutes: 10_080)
+        ]) == "five-hour+reset,weekly+reset",
+        claudeDiagnosticWindowSummary([
+            UsageWindow(kind: .fiveHour, usedPercent: 58, resetsAt: diagnosticReset, durationMinutes: 300),
+            UsageWindow(kind: .weekly, usedPercent: 48, resetsAt: nil, durationMinutes: 10_080)
+        ]) == "five-hour+reset,weekly"
+    else {
+        fputs("Claude teşhis pencere özeti testi başarısız\n", stderr)
+        return 1
+    }
+
     let claudeWeeklyFallback = ProviderUsage(
         name: "Claude Code",
         windows: [
@@ -2897,6 +2970,16 @@ private func runSelfTest() -> Int32 {
     return 0
 }
 
+/// Teşhis çıktısı için pencere özeti. Sıfırlama zamanının **okunabildiğini**
+/// bildirir, zamanın kendisini asla yazmaz; böylece çıktı gizlilik açısından
+/// güvenli kalırken sıfırlama ayrıştırmasındaki bir gerileme de görünür olur.
+private func claudeDiagnosticWindowSummary(_ windows: [UsageWindow]) -> String {
+    guard !windows.isEmpty else { return "none" }
+    return windows
+        .map { $0.resetsAt == nil ? $0.kind.historyKey : "\($0.kind.historyKey)+reset" }
+        .joined(separator: ",")
+}
+
 private func runClaudeLiveDiagnostics() -> Int32 {
     let completed = DispatchSemaphore(value: 0)
     let lock = NSLock()
@@ -2919,8 +3002,8 @@ private func runClaudeLiveDiagnostics() -> Int32 {
         print("claude_live=issue:no_result,windows:none")
         return 2
     }
-    let windows = usage.windows.map { $0.kind.historyKey }.joined(separator: ",")
-    print("claude_live=issue:\(usage.error?.diagnosticCode ?? "none"),windows:\(windows.isEmpty ? "none" : windows)")
+    let windows = claudeDiagnosticWindowSummary(usage.windows)
+    print("claude_live=issue:\(usage.error?.diagnosticCode ?? "none"),windows:\(windows)")
     return usage.error == nil ? 0 : 2
 }
 
