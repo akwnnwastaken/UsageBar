@@ -86,6 +86,60 @@ final class CorePolicyTests: XCTestCase {
         XCTAssertEqual(rendered([41, 42, 41, 42, 42]), [41, 41, 41, 41, 41])
     }
 
+    func testCodexTimeoutWinsOverSignalKilledExitStatus() {
+        // A timed-out fetch that UsageBar killed leaves a non-zero status; it
+        // must classify as timedOut, never commandFailed.
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: false, outputExceeded: false, incompatible: false,
+                didTimeout: true, terminationStatus: 15
+            ),
+            .timedOut
+        )
+    }
+
+    func testCodexClassificationOrdering() {
+        // usage and outputTooLarge take precedence even alongside a timeout.
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: true, outputExceeded: false, incompatible: false,
+                didTimeout: true, terminationStatus: 9
+            ),
+            .usage
+        )
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: false, outputExceeded: true, incompatible: true,
+                didTimeout: true, terminationStatus: 9
+            ),
+            .outputTooLarge
+        )
+        // A genuine non-zero exit (no timeout) is a command failure.
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: false, outputExceeded: false, incompatible: false,
+                didTimeout: false, terminationStatus: 3
+            ),
+            .commandFailed
+        )
+        // Incompatible flag error is diagnosed before a bare command failure.
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: false, outputExceeded: false, incompatible: true,
+                didTimeout: false, terminationStatus: 1
+            ),
+            .incompatible
+        )
+        // Clean zero exit with no usage is an empty response.
+        XCTAssertEqual(
+            CodexFetchOutcome.classify(
+                hasUsage: false, outputExceeded: false, incompatible: false,
+                didTimeout: false, terminationStatus: 0
+            ),
+            .emptyResponse
+        )
+    }
+
     func testProviderRotationWrapsAndHandlesEmptyInput() {
         XCTAssertEqual(ProviderRotation.nextIndex(after: 0, providerCount: 2), 1)
         XCTAssertEqual(ProviderRotation.nextIndex(after: 1, providerCount: 2), 0)

@@ -1076,6 +1076,11 @@ private enum ProviderProcessLimits {
         if process.isRunning {
             Darwin.kill(processIdentifier, SIGKILL)
         }
+        // Reap the child so a later `terminationStatus` read is safe. Without
+        // this, reading `terminationStatus` before Foundation observes the exit
+        // traps (SIGABRT, exit 134). The process group was already signalled, so
+        // this returns promptly. Runs on a background queue, never the UI thread.
+        process.waitUntilExit()
     }
 
     static func stop(processIdentifier: pid_t) {
@@ -1224,7 +1229,9 @@ final class CodexUsageFetcher {
 
                 let deadline = Date().addingTimeInterval(Self.responseTimeout)
                 var parsedUsage: ProviderUsage?
-                while Date() < deadline {
+                var didTimeout = false
+                while true {
+                    if Date() >= deadline { didTimeout = true; break }
                     let snapshot = captured.snapshot()
                     if snapshot.exceeded { break }
                     parsedUsage = Self.response(from: snapshot.data)
@@ -1233,23 +1240,32 @@ final class CodexUsageFetcher {
                 }
 
                 input.fileHandleForWriting.closeFile()
+                // stop() reaps the process, so `terminationStatus` below is safe.
                 ProviderProcessLimits.stop(process)
                 _ = outputDrainer.wait(timeout: .now() + .seconds(1))
                 _ = errorDrainer.wait(timeout: .now() + .seconds(1))
 
                 let finalSnapshot = captured.snapshot()
                 let final = parsedUsage ?? Self.response(from: finalSnapshot.data)
-                if finalSnapshot.exceeded || errorCapture.snapshot().exceeded {
+                let outcome = CodexFetchOutcome.classify(
+                    hasUsage: final != nil,
+                    outputExceeded: finalSnapshot.exceeded || errorCapture.snapshot().exceeded,
+                    incompatible: Self.isIncompatible(errorCapture.snapshot().data),
+                    didTimeout: didTimeout,
+                    terminationStatus: process.terminationStatus
+                )
+                switch outcome {
+                case .usage:
+                    completion(final ?? .unavailable("Codex", .codexEmptyResponse))
+                case .outputTooLarge:
                     completion(.unavailable("Codex", .outputTooLarge("Codex")))
-                } else if let final {
-                    completion(final)
-                } else if Self.isIncompatible(errorCapture.snapshot().data) {
+                case .incompatible:
                     completion(.unavailable("Codex", .codexIncompatible))
-                } else if process.terminationStatus != 0 {
-                    completion(.unavailable("Codex", .codexCommandFailed))
-                } else if Date() >= deadline {
+                case .timedOut:
                     completion(.unavailable("Codex", .codexTimedOut))
-                } else {
+                case .commandFailed:
+                    completion(.unavailable("Codex", .codexCommandFailed))
+                case .emptyResponse:
                     completion(.unavailable("Codex", .codexEmptyResponse))
                 }
             } catch {
@@ -2892,6 +2908,44 @@ private func runSelfTest() -> Int32 {
         ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil
     else {
         fputs("Süreç güvenliği testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Regression for the SIGTERM/terminationStatus crash: stopping a child that
+    // ignores SIGTERM must escalate to SIGKILL and reap it, so reading
+    // terminationStatus afterward is safe. Before the fix this trapped
+    // (SIGABRT, exit 134), which would abort this very self-test. Also exercise a
+    // clean zero exit and a non-zero exit so terminationStatus is read across
+    // outcomes.
+    func runProcessStub(_ script: String) -> (exited: Bool, status: Int32)? {
+        let process = Process()
+        ProviderProcessLauncher.configure(
+            process,
+            executable: "/bin/sh",
+            arguments: ["-c", script]
+        )
+        ProviderProcessContext.apply(to: process)
+        guard (try? process.run()) != nil else { return nil }
+        // Mirror the fetcher: let a self-exiting process finish on its own before
+        // stopping, so a clean exit keeps its real status instead of the signal
+        // stop() would otherwise deliver. A stubborn process outlives this wait
+        // and is force-stopped below.
+        let deadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        ProviderProcessLimits.stop(process)
+        return (!process.isRunning, process.terminationStatus)
+    }
+    guard
+        let stubborn = runProcessStub("trap '' TERM; sleep 30"),
+        stubborn.exited, stubborn.status != 0,
+        let cleanExit = runProcessStub("exit 0"),
+        cleanExit.exited, cleanExit.status == 0,
+        let failedExit = runProcessStub("exit 3"),
+        failedExit.exited, failedExit.status == 3
+    else {
+        fputs("Süreç sonlandırma regresyon testi başarısız\n", stderr)
         return 1
     }
 
