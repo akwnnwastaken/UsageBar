@@ -996,6 +996,124 @@ private enum ProviderProcessLauncher {
     }
 }
 
+private final class ProviderPTYProcess {
+    let processIdentifier: pid_t
+    let masterFileDescriptor: Int32
+    private let stateLock = NSLock()
+    private var reaped = false
+
+    init(processIdentifier: pid_t, masterFileDescriptor: Int32) {
+        self.processIdentifier = processIdentifier
+        self.masterFileDescriptor = masterFileDescriptor
+    }
+
+    var isRunning: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !reaped else { return false }
+
+        var status: Int32 = 0
+        let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
+        if result == 0 { return true }
+        if result == processIdentifier || (result == -1 && errno == ECHILD) {
+            reaped = true
+        }
+        return false
+    }
+
+    func write(_ data: Data) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard var pointer = rawBuffer.baseAddress else { return }
+            var remaining = rawBuffer.count
+            while remaining > 0 {
+                let written = Darwin.write(masterFileDescriptor, pointer, remaining)
+                if written > 0 {
+                    pointer = pointer.advanced(by: written)
+                    remaining -= written
+                } else if written == -1 && errno == EINTR {
+                    continue
+                } else {
+                    throw NSError(
+                        domain: NSPOSIXErrorDomain,
+                        code: Int(errno),
+                        userInfo: nil
+                    )
+                }
+            }
+        }
+    }
+
+    func stop() {
+        ProviderProcessLimits.stop(processIdentifier: processIdentifier)
+        Darwin.close(masterFileDescriptor)
+
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !reaped else { return }
+        var status: Int32 = 0
+        while Darwin.waitpid(processIdentifier, &status, 0) == -1 && errno == EINTR {}
+        reaped = true
+    }
+}
+
+private enum ProviderPTYLauncher {
+    static func launch(
+        executable: String,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: URL
+    ) throws -> ProviderPTYProcess {
+        let argvStrings = [executable] + arguments
+        let environmentStrings = environment
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+
+        return try withCStringArray(argvStrings) { argv in
+            try withCStringArray(environmentStrings) { envp in
+                var processIdentifier: pid_t = 0
+                var masterFileDescriptor: Int32 = -1
+                let result = executable.withCString { executablePointer in
+                    workingDirectory.path.withCString { directoryPointer in
+                        usagebar_spawn_in_pty(
+                            executablePointer,
+                            argv,
+                            envp,
+                            directoryPointer,
+                            &processIdentifier,
+                            &masterFileDescriptor
+                        )
+                    }
+                }
+                guard result == 0 else {
+                    throw NSError(
+                        domain: NSPOSIXErrorDomain,
+                        code: Int(result),
+                        userInfo: nil
+                    )
+                }
+                return ProviderPTYProcess(
+                    processIdentifier: processIdentifier,
+                    masterFileDescriptor: masterFileDescriptor
+                )
+            }
+        }
+    }
+
+    private static func withCStringArray<Result>(
+        _ strings: [String],
+        body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> Result
+    ) rethrows -> Result {
+        var pointers = strings.map { strdup($0) }
+        pointers.append(nil)
+        defer {
+            for pointer in pointers where pointer != nil { free(pointer) }
+        }
+        return try pointers.withUnsafeMutableBufferPointer { buffer in
+            try body(buffer.baseAddress!)
+        }
+    }
+}
+
 private enum ProviderProcessLimits {
     static let maxOutputBytes = 2 * 1_024 * 1_024
     private static let terminationGrace: TimeInterval = 1
@@ -1003,19 +1121,21 @@ private enum ProviderProcessLimits {
     static func stop(_ process: Process) {
         let processIdentifier = process.processIdentifier
         guard processIdentifier > 0 else { return }
-        Darwin.kill(-processIdentifier, SIGTERM)
+        stop(processIdentifier: processIdentifier)
         if process.isRunning {
-            process.terminate()
+            Darwin.kill(processIdentifier, SIGKILL)
         }
+    }
+
+    static func stop(processIdentifier: pid_t) {
+        guard processIdentifier > 0 else { return }
+        Darwin.kill(-processIdentifier, SIGTERM)
         let deadline = Date().addingTimeInterval(terminationGrace)
         while processGroupExists(processIdentifier), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
         if processGroupExists(processIdentifier) {
             Darwin.kill(-processIdentifier, SIGKILL)
-        }
-        if process.isRunning {
-            Darwin.kill(processIdentifier, SIGKILL)
         }
     }
 
@@ -1064,15 +1184,62 @@ private enum PipeDrainer {
         capture: BoundedDataCapture,
         dataAvailable: DispatchSemaphore? = nil
     ) -> DispatchGroup {
+        start(
+            pipe.fileHandleForReading,
+            capture: capture,
+            dataAvailable: dataAvailable
+        )
+    }
+
+    static func start(
+        _ fileHandle: FileHandle,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
         let group = DispatchGroup()
         group.enter()
         DispatchQueue.global(qos: .utility).async {
             defer { group.leave() }
             while true {
-                let chunk = pipe.fileHandleForReading.readData(ofLength: 16 * 1_024)
-                guard !chunk.isEmpty else { return }
-                capture.append(chunk)
-                dataAvailable?.signal()
+                do {
+                    guard
+                        let chunk = try fileHandle.read(upToCount: 16 * 1_024),
+                        !chunk.isEmpty
+                    else { return }
+                    capture.append(chunk)
+                    dataAvailable?.signal()
+                } catch {
+                    return
+                }
+            }
+        }
+        return group
+    }
+
+    static func start(
+        fileDescriptor: Int32,
+        capture: BoundedDataCapture,
+        dataAvailable: DispatchSemaphore? = nil
+    ) -> DispatchGroup {
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            var buffer = [UInt8](repeating: 0, count: 16 * 1_024)
+            while true {
+                let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
+                if count > 0 {
+                    capture.append(Data(buffer.prefix(count)))
+                    dataAvailable?.signal()
+                } else if count == 0 {
+                    return
+                } else if errno == EINTR {
+                    continue
+                } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                    Thread.sleep(forTimeInterval: 0.01)
+                } else {
+                    return
+                }
             }
         }
         return group
@@ -1223,32 +1390,31 @@ final class ClaudeUsageFetcher {
                 return
             }
 
-            let process = Process()
-            let input = Pipe()
-            let output = Pipe()
             // Ignore user/project/local settings and inject only a tiny status
             // line that exposes Claude's official structured quota fields.
             // This avoids project files, hooks, plugins, MCP and Chrome while
             // keeping normal local authentication available.
-            ProviderProcessLauncher.configure(process, executable: "/usr/bin/script", arguments: [
-                "-q", "/dev/null", executable,
+            let arguments = [
                 "--setting-sources", "",
                 "--settings", Self.statusLineSettings,
                 "--no-chrome",
                 "--strict-mcp-config",
                 "--tools", ""
-            ])
-            process.standardInput = input
-            process.standardOutput = output
-            process.standardError = output
-            ProviderProcessContext.apply(to: process)
+            ]
+            var ptyProcess: ProviderPTYProcess?
 
             do {
-                try process.run()
+                let process = try ProviderPTYLauncher.launch(
+                    executable: executable,
+                    arguments: arguments,
+                    environment: ProviderProcessContext.environment,
+                    workingDirectory: ProviderProcessContext.workingDirectory
+                )
+                ptyProcess = process
                 let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
                 let dataAvailable = DispatchSemaphore(value: 0)
                 let drainer = PipeDrainer.start(
-                    output,
+                    fileDescriptor: process.masterFileDescriptor,
                     capture: captured,
                     dataAvailable: dataAvailable
                 )
@@ -1280,10 +1446,9 @@ final class ClaudeUsageFetcher {
                        Date().timeIntervalSince(startedAt)
                         >= Self.usageFallbackDelays[sentUsageFallbackCount],
                        process.isRunning {
-                        // Claude Code 2.1.203's raw terminal input treats LF as
-                        // Enter in this PTY. CR only inserts the command without
-                        // submitting it, which leaves the fetch waiting forever.
-                        try? input.fileHandleForWriting.write(contentsOf: Data("/usage\n".utf8))
+                        // Claude Code 2.1.203 treats LF as Enter on the native
+                        // pseudo-terminal. CR only inserts the command.
+                        try? process.write(Data("/usage\n".utf8))
                         sentUsageFallbackCount += 1
                     }
 
@@ -1291,8 +1456,7 @@ final class ClaudeUsageFetcher {
                     _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
                 }
 
-                input.fileHandleForWriting.closeFile()
-                ProviderProcessLimits.stop(process)
+                process.stop()
                 _ = drainer.wait(timeout: .now() + .seconds(1))
 
                 let snapshot = captured.snapshot()
@@ -1308,7 +1472,7 @@ final class ClaudeUsageFetcher {
                     completion(.unavailable("Claude Code", .claudeUsageUnreadable))
                 }
             } catch {
-                ProviderProcessLimits.stop(process)
+                ptyProcess?.stop()
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
@@ -2632,6 +2796,43 @@ private func runSelfTest() -> Int32 {
         ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil
     else {
         fputs("Süreç güvenliği testi başarısız\n", stderr)
+        return 1
+    }
+
+    var ptySmokeProcess: ProviderPTYProcess?
+    do {
+        let process = try ProviderPTYLauncher.launch(
+            executable: "/bin/cat",
+            arguments: [],
+            environment: ProviderProcessContext.environment,
+            workingDirectory: ProviderProcessContext.workingDirectory
+        )
+        ptySmokeProcess = process
+        let capture = BoundedDataCapture(limit: 4 * 1_024)
+        let dataAvailable = DispatchSemaphore(value: 0)
+        let drainer = PipeDrainer.start(
+            fileDescriptor: process.masterFileDescriptor,
+            capture: capture,
+            dataAvailable: dataAvailable
+        )
+        try process.write(Data("USAGEBAR_PTY_PROBE\n".utf8))
+        let probe = Data("USAGEBAR_PTY_PROBE".utf8)
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline,
+              capture.snapshot().data.range(of: probe) == nil {
+            _ = dataAvailable.wait(timeout: .now() + .milliseconds(50))
+        }
+        let receivedProbe = capture.snapshot().data.range(of: probe) != nil
+        process.stop()
+        ptySmokeProcess = nil
+        _ = drainer.wait(timeout: .now() + .seconds(1))
+        guard receivedProbe else {
+            fputs("Yerel PTY veri yolu testi başarısız\n", stderr)
+            return 1
+        }
+    } catch {
+        ptySmokeProcess?.stop()
+        fputs("Yerel PTY başlatma testi başarısız\n", stderr)
         return 1
     }
 
