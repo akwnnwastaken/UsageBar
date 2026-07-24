@@ -100,7 +100,9 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/akwnnwastaken/UsageBar/compare/v1.5.2...v1.5.3
