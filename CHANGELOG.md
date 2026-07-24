@@ -9,6 +9,18 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Added
+- The menu shows a disabled version row (`Version X.Y.Z (build N)`) above Quit,
+  so the running version is visible without opening Finder → Get Info.
+
+### Changed
+- The menu-bar value now withholds any remaining-percentage rise below the reset
+  threshold until it persists across several readings, not just exact +1 rounding
+  jumps. This hides the Claude "stale server snapshot" rebound (e.g. remaining
+  33% then 38%) that occurs when a freshly spawned reader gets a cached usage
+  snapshot lagging the live value. Resets (a large jump back toward ~100%) still
+  display immediately, and recorded history stays raw.
+
 ## [1.7.0] - 2026-07-24
 
 ### Added
