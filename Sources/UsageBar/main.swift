@@ -2042,6 +2042,34 @@ private func runSelfTest() -> Int32 {
         return 1
     }
 
+    // Eski snapshot geri sıçraması (33 → 38) gösterimde bekletilmeli; kalıcı
+    // artış ise doğrulanınca kabul edilmeli.
+    func renderedRemaining(_ raw: [Int]) -> [Int] {
+        var displayed: Int?
+        var pendingRise: Int?
+        var pendingCount = 0
+        return raw.map { value in
+            let decision = UsageDisplayNoiseFilter.decide(
+                raw: value,
+                previouslyDisplayed: displayed,
+                pendingRise: pendingRise,
+                pendingCount: pendingCount
+            )
+            displayed = decision.displayed
+            pendingRise = decision.pendingRise
+            pendingCount = decision.pendingCount
+            return decision.displayed
+        }
+    }
+    guard
+        renderedRemaining([33, 38, 33]) == [33, 33, 33],
+        renderedRemaining([33, 38, 38, 38]) == [33, 33, 33, 38],
+        renderedRemaining([4, 100, 98]) == [4, 100, 98]
+    else {
+        fputs("Kullanım gösterim filtresi testi başarısız\n", stderr)
+        return 1
+    }
+
     let codex = """
     {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":35,"windowDurationMins":300,"resetsAt":1784740000},"secondary":{"usedPercent":12.4,"windowDurationMins":10080,"resetsAt":1785000000}}}}
     """

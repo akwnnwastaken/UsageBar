@@ -58,16 +58,27 @@ public struct UsageAlertPolicy {
 
 /// Sağlayıcılar kalan yüzdeyi tam sayıya yuvarlayarak bildirir, bu yüzden gerçek
 /// değer bir yuvarlama sınırındayken ardışık iki ölçüm 41 ↔ 42 gibi oynayabilir.
-/// Bir pencere içinde kalan yüzde gerçekte artamayacağı için tek ölçümlük +1
-/// sıçramaları gösterimde bekletilir. Sıçrama ikinci ölçümde de sürüyorsa kabul
-/// edilir; böylece gecikme tek bir yenileme döngüsüyle sınırlı kalır ve gerçek
-/// bir artış kalıcı olarak gizlenmez. Kayıtlı geçmiş her zaman ham kalır.
+/// Ayrıca yeni spawn edilen bir okuyucu oturumu bazen server tarafında
+/// cache'lenmiş, canlı değerin gerisinde kalan eski bir snapshot alabilir; bu da
+/// 33 → 38 gibi birkaç puanlık sahte bir geri sıçrama olarak görünür.
+/// Bir pencere içinde kalan yüzde gerçekte artamayacağı için, reset eşiğinin
+/// altındaki (`riseHoldThreshold`) tüm yükselişler gösterimde bekletilir.
+/// Sıçrama üst üste ölçümlerde de sürüyorsa kabul edilir; böylece gecikme birkaç
+/// yenileme döngüsüyle sınırlı kalır ve gerçek bir artış kalıcı olarak gizlenmez.
+/// Reset (~%100'e büyük sıçrama) eşiğin üstünde kaldığı için anında gösterilir.
+/// Kayıtlı geçmiş her zaman ham kalır.
 public enum UsageDisplayNoiseFilter {
-    /// +1'lik bir yükselişin gerçek kabul edilmesi için gereken üst üste ölçüm
-    /// sayısı. Gözlenen yuvarlama dalgalanmaları iki ölçüm sürebildiği için eşik
-    /// üçtür; böylece gösterim en fazla üç yenileme geriden gelir ve kalıcı
-    /// olarak yanlış kalmaz.
+    /// Bir yükselişin gerçek kabul edilmesi için gereken üst üste ölçüm sayısı.
+    /// Gözlenen dalgalanmalar iki ölçüm sürebildiği için eşik üçtür; böylece
+    /// gösterim en fazla üç yenileme geriden gelir ve kalıcı olarak yanlış kalmaz.
     public static let risePersistenceThreshold = 3
+
+    /// Bu değerin altındaki yükselişler sahte (yuvarlama gürültüsü ya da eski
+    /// snapshot geri sıçraması) kabul edilip bekletilir; bu değer ve üzeri
+    /// yükselişler gerçek reset sayılıp anında geçirilir. Gözlenen geri
+    /// sıçramalar birkaç puanlıktır (+4, +5); gerçek reset ise ~%100'e sıçradığı
+    /// için 12'nin çok üstünde kalır.
+    public static let riseHoldThreshold = 12
 
     public struct Decision: Equatable {
         public let displayed: Int
@@ -89,8 +100,10 @@ public enum UsageDisplayNoiseFilter {
     ) -> Decision {
         let accepted = Decision(displayed: raw, pendingRise: nil, pendingCount: 0)
         guard let previouslyDisplayed else { return accepted }
-        // Düşüşler ve +2 ve üzeri sıçramalar (sıfırlama, limit değişimi) gerçektir.
-        guard raw == previouslyDisplayed + 1 else { return accepted }
+        // Düşüşler gerçektir; reset eşiği ve üzeri sıçramalar (sıfırlama) da anında
+        // gösterilir. Aradaki küçük yükselişler (yuvarlama / eski snapshot) bekletilir.
+        let rise = raw - previouslyDisplayed
+        guard rise >= 1, rise < riseHoldThreshold else { return accepted }
         let count = (pendingRise == raw ? pendingCount : 0) + 1
         guard count < risePersistenceThreshold else { return accepted }
         return Decision(displayed: previouslyDisplayed, pendingRise: raw, pendingCount: count)
