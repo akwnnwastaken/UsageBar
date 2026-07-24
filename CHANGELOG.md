@@ -9,6 +9,14 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Internal
+- The security acceptance gate scans `Sources` for forbidden patterns with
+  `grep` (POSIX-guaranteed) instead of `rg`, through a helper that fails closed
+  on a scan error or a missing tool. The previous `if rg …; then` form silently
+  passed whenever `rg` could not run, so those scans could be skipped entirely.
+- Repaired the CHANGELOG comparison links: added the `[1.8.0]` and `[1.9.0]`
+  definitions and pointed `[Unreleased]` at `v1.9.0`.
+
 ## [1.9.0] - 2026-07-24
 
 ### Added
