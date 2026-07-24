@@ -199,6 +199,10 @@ struct Localizer {
         pick("Son güncelleme: \(time)", "Last updated: \(time)")
     }
 
+    func appVersion(_ version: String, _ build: String) -> String {
+        pick("Sürüm \(version) (yapı \(build))", "Version \(version) (build \(build))")
+    }
+
     func staleData(lastSuccessfulTime: String, issue: ProviderIssue) -> String {
         pick(
             "Son iyi veri: \(lastSuccessfulTime)\n\(self.issue(issue))",
@@ -1291,6 +1295,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(diagnosticsItem)
 
         menu.addItem(.separator())
+        let versionItem = NSMenuItem(
+            title: text.appVersion(AppMetadata.version, AppMetadata.build),
+            action: nil,
+            keyEquivalent: ""
+        )
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+
         let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -1944,6 +1956,8 @@ private func runSelfTest() -> Int32 {
         turkish.remaining(59) == "%59 kaldı",
         english.remaining(59) == "59% remaining",
         english.remainingTooltip(provider: "Codex", percent: 59) == "Codex: 59% remaining",
+        turkish.appVersion("1.7.0", "22") == "Sürüm 1.7.0 (yapı 22)",
+        english.appVersion("1.7.0", "22") == "Version 1.7.0 (build 22)",
         AppLanguage.preferred(from: ["tr-TR", "en-US"]) == .turkish,
         AppLanguage.preferred(from: ["en-US", "tr-TR"]) == .english,
         AppLanguage.preferred(from: []) == .english,
