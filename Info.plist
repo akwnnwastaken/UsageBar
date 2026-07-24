@@ -6,6 +6,8 @@
 	<string>tr</string>
 	<key>CFBundleExecutable</key>
 	<string>UsageBar</string>
+	<key>CFBundleIconFile</key>
+	<string>UsageBar</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.codex.usagebar</string>
 	<key>CFBundleInfoDictionaryVersion</key>

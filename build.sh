@@ -66,6 +66,7 @@ SWIFTPM_BINARY_DIR="$(swift build \
 cp "$SWIFTPM_BINARY_DIR/UsageBar" "$APP_DIR/Contents/MacOS/UsageBar"
 
 cp "$PROJECT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$PROJECT_DIR/UsageBar.icns" "$APP_DIR/Contents/Resources/UsageBar.icns"
 
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
 xattr -cr "$APP_DIR"

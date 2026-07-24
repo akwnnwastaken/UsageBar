@@ -36,7 +36,7 @@ fi
 while IFS= read -r file; do
   relative="${file#$APP_DIR/}"
   case "$relative" in
-    Contents/Info.plist|Contents/MacOS/UsageBar|Contents/_CodeSignature/CodeResources)
+    Contents/Info.plist|Contents/MacOS/UsageBar|Contents/Resources/UsageBar.icns|Contents/_CodeSignature/CodeResources)
       ;;
     *)
       print -u2 "Uygulama paketinde beklenmeyen dosya var: $relative"
