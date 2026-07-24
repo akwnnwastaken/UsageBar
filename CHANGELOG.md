@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-24
+
 ### Added
 - The menu shows a disabled version row (`Version X.Y.Z (build N)`) above Quit,
   so the running version is visible without opening Finder → Get Info.
