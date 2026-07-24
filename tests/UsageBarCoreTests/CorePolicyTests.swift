@@ -54,10 +54,28 @@ final class CorePolicyTests: XCTestCase {
 
     func testDecreasesAndLargeJumpsPassThroughUnchanged() {
         XCTAssertEqual(rendered([90, 80, 60, 59, 10]), [90, 80, 60, 59, 10])
-        // Sıfırlama: büyük yükseliş anında kabul edilir.
+        // Sıfırlama: reset eşiği ve üzeri büyük yükseliş anında kabul edilir.
         XCTAssertEqual(rendered([4, 100, 98]), [4, 100, 98])
-        // Limit değişimi gibi +2'lik bir yükseliş de bekletilmez.
-        XCTAssertEqual(rendered([41, 43]), [41, 43])
+    }
+
+    /// Gerçek gözlem: yeni okuyucu oturumu eski bir snapshot alınca kalan yüzde
+    /// birkaç puan geri sıçrayabiliyor (33 → 38). Aralıklı geldiği için ekranda
+    /// hiç görünmemeli; kalıcı bir artışsa üçüncü ölçümde gerçeğe dönmeli.
+    func testStaleSnapshotReboundIsHeld() {
+        let screen = rendered([33, 38, 33])
+        XCTAssertEqual(screen, [33, 33, 33])
+        XCTAssertFalse(zip(screen, screen.dropFirst()).contains { $1 > $0 })
+        // Aynı yüksek değer üst üste sürerse gerçek artış olarak kabul edilir.
+        XCTAssertEqual(rendered([33, 38, 38, 38]), [33, 33, 33, 38])
+    }
+
+    /// Reset eşiği sınırı: eşiğin altı bekletilir, eşik ve üzeri anında geçer.
+    func testRiseHoldThresholdBoundary() {
+        XCTAssertEqual(UsageDisplayNoiseFilter.riseHoldThreshold, 12)
+        // +12 (eşik) reset kabul edilip anında gösterilir.
+        XCTAssertEqual(rendered([50, 62]), [50, 62])
+        // +11 (eşik altı) bekletilir; aralıklıysa hiç görünmez.
+        XCTAssertEqual(rendered([50, 61, 50]), [50, 50, 50])
     }
 
     /// Gerçek gözlem: 5 saatlik pencerede kaydedilen 42, 41, 42, 42, 40 dizisi.
