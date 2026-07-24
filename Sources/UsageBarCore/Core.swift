@@ -438,16 +438,28 @@ public struct UsageHistoryChartModel {
     public let displaySamples: [UsageHistorySample]
     public let lowerBound: Double
     public let upperBound: Double
-    public let resetIndices: [Int]
 
     public init(samples: [UsageHistorySample]) {
         let sortedSamples = samples.sorted { $0.recordedAt < $1.recordedAt }
         self.samples = sortedSamples
-        displaySamples = sortedSamples.enumerated().map { index, sample in
-            guard index > 0, index < sortedSamples.count - 1 else { return sample }
-            let previous = sortedSamples[index - 1].remainingPercent
+
+        // A window's remaining percentage only falls until the window resets (a
+        // large upward jump back toward ~100%). To make each period a distinct,
+        // readable arc, the chart begins at the most recent reset instead of
+        // spanning the whole retained history — so once Claude's five-hour
+        // window resets to ~100%, the chart starts over from that point.
+        let resetStarts = sortedSamples.indices.dropFirst().filter { index in
+            sortedSamples[index].remainingPercent - sortedSamples[index - 1].remainingPercent
+                >= Self.resetJumpThreshold
+        }
+        let windowStart = resetStarts.last ?? 0
+        let windowSamples = Array(sortedSamples[windowStart...])
+
+        displaySamples = windowSamples.enumerated().map { index, sample in
+            guard index > 0, index < windowSamples.count - 1 else { return sample }
+            let previous = windowSamples[index - 1].remainingPercent
             let current = sample.remainingPercent
-            let next = sortedSamples[index + 1].remainingPercent
+            let next = windowSamples[index + 1].remainingPercent
             guard previous == next, abs(current - previous) == 1 else { return sample }
             return UsageHistorySample(recordedAt: sample.recordedAt, remainingPercent: previous)
         }
@@ -475,19 +487,18 @@ public struct UsageHistoryChartModel {
 
         lowerBound = lower
         upperBound = upper
-        resetIndices = sortedSamples.indices.dropFirst().filter { index in
-            sortedSamples[index].remainingPercent - sortedSamples[index - 1].remainingPercent
-                >= Self.resetJumpThreshold
-        }
     }
 
+    /// Duration of the shown window (since the last reset), not the full history.
     public var recordedDuration: TimeInterval {
-        guard let first = samples.first, let last = samples.last else { return 0 }
+        guard let first = displaySamples.first, let last = displaySamples.last else { return 0 }
         return max(0, last.recordedAt.timeIntervalSince(first.recordedAt))
     }
 
+    /// Net change across the shown window (since the last reset).
     public var delta: Int? {
-        guard let first = samples.first, let last = samples.last, samples.count > 1 else { return nil }
+        guard let first = displaySamples.first, let last = displaySamples.last,
+              displaySamples.count > 1 else { return nil }
         return last.remainingPercent - first.remainingPercent
     }
 

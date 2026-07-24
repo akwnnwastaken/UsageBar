@@ -9,7 +9,7 @@ Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren kü
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
 > [!NOTE]
-> En güncel sürüm **v1.8.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm menüye çalışan sürümü gösteren bir satır ekler ve Claude'un bazen eski bir sunucu anlık değeri döndürmesinden kaynaklanan sahte geri sıçramayı (kalan yüzdenin bir düşüp sonra yükselmesi) gizler. `main` dalı bu sürümün kaynak kodunu içerir.
+> En güncel sürüm **v1.9.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm bir uygulama simgesi ekler ve 24 saatlik geçmiş grafiğini her sıfırlamada baştan başlatır (grafik son sıfırlamadan itibaren çizilir; böylece her kota dönemi ayrı bir ark olur). `main` dalı bu sürümün kaynak kodunu içerir.
 
 ### Özellikler
 
@@ -23,7 +23,7 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 - Üst çubukta gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir.
 - İki sağlayıcı bağlıyken `Otomatik` moduyla Codex ve Claude arasında 30 saniyede bir geçiş yapar.
 - Her bağlı sağlayıcıyı menüden bağlantıdan kaldırabilir; bu, kullanım geçmişini silmez.
-- Her kullanım penceresinin 24 saate kadar kalan yüzde geçmişini ayrı bir yerel mini grafikte gösterir. Grafik gerçek kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle, sıfırlanmaları işaretlerle görünür kılar. Bir pencere içinde kalan oran gerçekte artamaz; yine de sağlayıcı yüzdeyi tam sayıya yuvarladığı için değer 41 ↔ 42 gibi oynayabilir ve yeni açılan bir okuma oturumu bazen sunucuda önbelleğe alınmış, canlı değerin gerisinde kalan eski bir anlık değer alıp 33 → 38 gibi sahte bir geri sıçrama gösterebilir. Menüdeki değer, sıfırlama eşiğinin altındaki bu yükselişleri birkaç ölçüm boyunca doğrulanmadıkça göstermez; böylece hem yuvarlama dalgalanmaları hem de eski anlık değer geri sıçramaları gizlenir. Sıfırlamalar (yaklaşık %100'e büyük sıçrama) anında yansır ve kaydedilen geçmiş her zaman ham kalır.
+- Her kullanım penceresinin kalan yüzde geçmişini (24 saate kadar) ayrı bir yerel mini grafikte gösterir. Grafik, mevcut pencerenin arkını net göstermek için **son sıfırlamadan itibaren** çizilir: pencere her sıfırlandığında (kalan oran yaklaşık %100'e döndüğünde) grafik baştan başlar. Gösterilen kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle görünür kılar. Bir pencere içinde kalan oran gerçekte artamaz; yine de sağlayıcı yüzdeyi tam sayıya yuvarladığı için değer 41 ↔ 42 gibi oynayabilir ve yeni açılan bir okuma oturumu bazen sunucuda önbelleğe alınmış, canlı değerin gerisinde kalan eski bir anlık değer alıp 33 → 38 gibi sahte bir geri sıçrama gösterebilir. Menüdeki değer, sıfırlama eşiğinin altındaki bu yükselişleri birkaç ölçüm boyunca doğrulanmadıkça göstermez; böylece hem yuvarlama dalgalanmaları hem de eski anlık değer geri sıçramaları gizlenir. Sıfırlamalar (yaklaşık %100'e büyük sıçrama) anında yansır ve kaydedilen geçmiş her zaman ham kalır.
 - Sağlayıcı geçici olarak yanıt vermezse son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder; eski ölçüm geçmişe yeniden yazılmaz.
 - Sürüm, macOS, bağlantı durumu, pencere türleri ve güvenli hata kodlarından oluşan bir tanılama özetini panoya kopyalar. Ham CLI çıktısı, dosya yolu veya kimlik bilgisi eklemez.
 - macOS Giriş Öğeleri üzerinden Mac açılışında otomatik başlatılabilir.
@@ -77,14 +77,14 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip
 ```
 
 CI tarafından üretilen paketlerde GitHub build provenance kaydını da
 doğrulayabilirsiniz:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -197,7 +197,7 @@ UsageBar is a small, local macOS menu bar app that displays Codex and Claude Cod
 It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
 
 > [!NOTE]
-> The latest release is **v1.8.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds a menu row showing the running version and hides the spurious rebound (remaining dropping then rising again) caused by Claude occasionally returning a stale server snapshot. The `main` branch contains its source.
+> The latest release is **v1.9.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds an app icon and restarts the 24-hour history chart at each reset (the chart is drawn from the last reset onward, so each quota period is a distinct arc). The `main` branch contains its source.
 
 ### Features
 
@@ -211,7 +211,7 @@ It shows the **remaining usage percentage** for the selected provider, together 
 - Switches the provider shown in the menu bar with the `Codex | Claude` selector.
 - Rotates between Codex and Claude every 30 seconds when `Auto` is selected and both providers are connected.
 - Can disconnect any connected provider from the menu; this does not delete the usage history.
-- Shows up to 24 hours of remaining-percentage history separately for every usage window. It labels the actual recorded span, start/end values, and change; adaptive scaling exposes small movements and markers identify resets. Remaining cannot genuinely rise inside a window, yet the value can flicker between 41 and 42 because the provider rounds to a whole number, and a freshly spawned reader session can occasionally return a server-cached snapshot that lags the live value, showing a spurious rebound such as 33 → 38. The menu withholds any rise below the reset threshold until it persists across several readings, hiding both the rounding flicker and the stale-snapshot rebound; resets (a large jump back toward ~100%) appear immediately, and the recorded history always stays raw.
+- Shows remaining-percentage history (up to 24 hours) separately for every usage window. To make the current window a clean arc, the chart is drawn **from the last reset onward**: each time the window resets (remaining returns to ~100%), the chart starts over. It labels the shown span, start/end values, and change, and adaptive scaling exposes small movements. Remaining cannot genuinely rise inside a window, yet the value can flicker between 41 and 42 because the provider rounds to a whole number, and a freshly spawned reader session can occasionally return a server-cached snapshot that lags the live value, showing a spurious rebound such as 33 → 38. The menu withholds any rise below the reset threshold until it persists across several readings, hiding both the rounding flicker and the stale-snapshot rebound; resets (a large jump back toward ~100%) appear immediately, and the recorded history always stays raw.
 - Keeps showing the last successful value with its timestamp and failure reason when a provider is temporarily unavailable; stale values are not recorded as new history samples.
 - Copies a diagnostic summary containing only version, macOS, connection state, window kinds, and safe error codes. It excludes raw CLI output, file paths, and credentials.
 - Can launch automatically at login through macOS Login Items.
@@ -265,14 +265,14 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip
 ```
 
 For CI-produced packages, you can also verify GitHub build
 provenance:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```

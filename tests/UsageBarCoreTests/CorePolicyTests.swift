@@ -386,10 +386,36 @@ final class CorePolicyTests: XCTestCase {
         let noisy = UsageHistoryChartModel(samples: series([33, 34, 33]))
         XCTAssertEqual(noisy.displaySamples.map(\.remainingPercent), [33, 33, 33])
         XCTAssertEqual(noisy.samples.map(\.remainingPercent), [33, 34, 33]) // raw kept
-        // Delta is end minus start of raw samples.
+        // Delta is end minus start of the shown window.
         XCTAssertEqual(UsageHistoryChartModel(samples: series([50, 45, 42])).delta, -8)
-        // A >=20 upward jump marks a reset.
-        let reset = UsageHistoryChartModel(samples: series([30, 12, 95]))
-        XCTAssertEqual(reset.resetIndices, [2])
+    }
+
+    /// After a reset (a >=20 upward jump), the chart restarts: it shows only the
+    /// samples from the most recent reset onward, so each window is a clean arc.
+    func testChartRestartsAtMostRecentReset() {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        func series(_ values: [Int]) -> [UsageHistorySample] {
+            values.enumerated().map {
+                UsageHistorySample(recordedAt: base.addingTimeInterval(Double($0.offset * 120)),
+                                   remainingPercent: $0.element)
+            }
+        }
+        // A single reset near the end: only the post-reset sample remains.
+        let single = UsageHistoryChartModel(samples: series([30, 12, 95]))
+        XCTAssertEqual(single.displaySamples.map(\.remainingPercent), [95])
+        XCTAssertNil(single.delta)
+        // Full raw history is still retained.
+        XCTAssertEqual(single.samples.map(\.remainingPercent), [30, 12, 95])
+
+        // Consumption, a reset to 100, then more consumption: the chart shows the
+        // current window from the reset, and the delta is measured from there.
+        let windowed = UsageHistoryChartModel(samples: series([80, 50, 30, 100, 90, 70]))
+        XCTAssertEqual(windowed.displaySamples.map(\.remainingPercent), [100, 90, 70])
+        XCTAssertEqual(windowed.delta, -30)
+
+        // Two resets: the chart starts at the most recent one.
+        let twoResets = UsageHistoryChartModel(samples: series([90, 40, 100, 60, 20, 95, 80]))
+        XCTAssertEqual(twoResets.displaySamples.map(\.remainingPercent), [95, 80])
+        XCTAssertEqual(twoResets.delta, -15)
     }
 }
