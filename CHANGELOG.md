@@ -9,6 +9,19 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-24
+
+### Added
+- App icon (`UsageBar.icns`), shown in Finder, Get Info, and app lists.
+
+### Changed
+- The 24-hour history chart now restarts at each reset: it is drawn from the
+  most recent reset onward (a large upward jump back toward ~100%), so each quota
+  period is a distinct arc instead of one continuous line with reset markers.
+  Once Claude's five-hour window resets, the chart starts over from ~100%. The
+  label, start/end values, and net change describe the current window; recorded
+  history stays full and raw.
+
 ## [1.8.0] - 2026-07-24
 
 ### Added
