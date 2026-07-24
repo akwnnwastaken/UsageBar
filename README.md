@@ -9,7 +9,7 @@ Codex ve Claude Code kullanım limitlerini macOS menü çubuğunda gösteren kü
 UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle birlikte üst çubukta gösterir. Ayrıntı menüsünde kullanım pencerelerini, kalan yüzdeleri ve sıfırlanmaya kalan süreyi görebilirsiniz.
 
 > [!NOTE]
-> En güncel sürüm **v1.7.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm sağlayıcı bağlantısını menüden kaldırma özelliğini ekler ve iki hatayı düzeltir (Codex zaman aşımı çökmesi; Claude sıfırlama sayacının zaman dilimi/DST hesabı). `main` dalı bu sürümün kaynak kodunu içerir.
+> En güncel sürüm **v1.8.0**'dır ve [Releases](https://github.com/akwnnwastaken/UsageBar/releases) sayfasından indirilebilir. Bu sürüm menüye çalışan sürümü gösteren bir satır ekler ve Claude'un bazen eski bir sunucu anlık değeri döndürmesinden kaynaklanan sahte geri sıçramayı (kalan yüzdenin bir düşüp sonra yükselmesi) gizler. `main` dalı bu sürümün kaynak kodunu içerir.
 
 ### Özellikler
 
@@ -77,14 +77,14 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip
 ```
 
 CI tarafından üretilen paketlerde GitHub build provenance kaydını da
 doğrulayabilirsiniz:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -197,7 +197,7 @@ UsageBar is a small, local macOS menu bar app that displays Codex and Claude Cod
 It shows the **remaining usage percentage** for the selected provider, together with its icon, directly in the menu bar. Open the detail menu to view usage windows, remaining percentages, and the time until each limit resets.
 
 > [!NOTE]
-> The latest release is **v1.7.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds disconnecting a provider from the menu and fixes two bugs (a Codex timeout crash; the Claude reset countdown's time-zone/DST math). The `main` branch contains its source.
+> The latest release is **v1.8.0**, downloadable from the [Releases](https://github.com/akwnnwastaken/UsageBar/releases) page. It adds a menu row showing the running version and hides the spurious rebound (remaining dropping then rising again) caused by Claude occasionally returning a stale server snapshot. The `main` branch contains its source.
 
 ### Features
 
@@ -265,14 +265,14 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip
 ```
 
 For CI-produced packages, you can also verify GitHub build
 provenance:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.7.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-1.8.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
