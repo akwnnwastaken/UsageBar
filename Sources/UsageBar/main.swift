@@ -93,7 +93,7 @@ struct Localizer {
     }
 
     func usageHistorySummary(_ model: UsageHistoryChartModel) -> String {
-        guard let first = model.samples.first, let last = model.samples.last else { return noData }
+        guard let first = model.displaySamples.first, let last = model.displaySamples.last else { return noData }
         let firstPercent = language == .turkish
             ? "%\(first.remainingPercent)"
             : "\(first.remainingPercent)%"
@@ -105,17 +105,10 @@ struct Localizer {
             ? "%\(last.remainingPercent)"
             : "\(last.remainingPercent)%"
         let signedDelta = delta > 0 ? "+\(delta)" : "\(delta)"
-        var result = pick(
+        return pick(
             "\(firstPercent) → \(lastPercent) · değişim \(signedDelta)",
             "\(firstPercent) → \(lastPercent) · change \(signedDelta)"
         )
-        if !model.resetIndices.isEmpty {
-            result += pick(
-                " · \(model.resetIndices.count) sıfırlama",
-                " · \(model.resetIndices.count) reset"
-            )
-        }
-        return result
     }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
     var codexNotFoundMessage: String {
@@ -798,19 +791,6 @@ final class UsageSparklineView: NSView {
         guide.line(to: NSPoint(x: chartRect.maxX, y: chartRect.midY))
         guide.lineWidth = 0.5
         guide.stroke()
-
-        for index in model.resetIndices {
-            let resetPoint = point(index, model.samples[index])
-            let marker = NSBezierPath()
-            marker.move(to: NSPoint(x: resetPoint.x, y: chartRect.minY))
-            marker.line(to: NSPoint(x: resetPoint.x, y: chartRect.maxY))
-            lineColor.withAlphaComponent(0.35).setStroke()
-            marker.lineWidth = 1
-            marker.stroke()
-            lineColor.setStroke()
-            let ring = NSRect(x: resetPoint.x - 2.5, y: resetPoint.y - 2.5, width: 5, height: 5)
-            NSBezierPath(ovalIn: ring).stroke()
-        }
 
         let path = NSBezierPath()
         for (index, sample) in model.displaySamples.enumerated() {
@@ -2045,7 +2025,9 @@ private func runSelfTest() -> Int32 {
         flatChart.lowerBound == 28,
         flatChart.upperBound == 38,
         changingChart.delta == -2,
-        resetChart.resetIndices == [2],
+        // The chart restarts at the reset: only the post-reset sample is shown.
+        resetChart.displaySamples.map(\.remainingPercent) == [90],
+        resetChart.delta == nil,
         noisyChart.samples.map(\.remainingPercent) == [33, 34, 33, 32, 31],
         noisyChart.displaySamples.map(\.remainingPercent) == [33, 33, 33, 32, 31],
         turkish.usageHistoryRange(changingChart.recordedDuration) == "Son 35 dk",
