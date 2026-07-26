@@ -1,0 +1,1 @@
+Please run /login to authenticate with your Anthropic account.

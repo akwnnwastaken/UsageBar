@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Platform-independent UsageBar behavior: models, policies, parsers,
+    localization and safe diagnostics. This project must never reference WPF,
+    Windows Forms, the registry, Win32 process/job APIs or any other
+    Windows-specific surface — that all lives in UsageBar.Windows.Infrastructure.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>UsageBar.Windows.Core</AssemblyName>
+    <RootNamespace>UsageBar.Windows.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageBar.Windows.Core.Tests" />
+  </ItemGroup>
+
+</Project>

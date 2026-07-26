@@ -1,0 +1,6 @@
+# Build output for the Windows port. Scoped to `windows/` so the repository
+# root .gitignore (macOS build) is left untouched.
+bin/
+obj/
+publish/
+*.user
