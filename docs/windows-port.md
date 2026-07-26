@@ -417,6 +417,31 @@ involved.
 The portable ZIP remains available and unchanged for users who prefer not to
 install.
 
+#### Finding from physical testing
+
+**2026-07-27 - the installer's own launch produced a false "Codex not found".**
+On a clean machine, with Codex installed at
+`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`, UsageBar reported
+`executable:missing / codex_not_found` when it was started by the installer's
+final-page checkbox. Closing it and launching the *same installed files* from the
+Start Menu found Codex immediately. A second clean install with the checkbox
+**unchecked** also found Codex on its first-ever Start Menu launch.
+
+So this was never first-run behaviour, settings initialisation, a missing Codex,
+or a gap in the candidate list - it was the launch context. The old entry started
+`{app}\UsageBar.exe` directly from Setup, so the application became a child of
+the Setup process and inherited its context instead of the shell's.
+
+The fix removes the difference rather than working around it: the final page now
+launches the Start Menu shortcut with ShellExecute semantics, so the first launch
+uses exactly the path every later launch uses. Provider discovery was not
+touched - no retries, no delays, no change to `CodexExecutableLocator`, no
+relaxed trust check.
+
+The precise Win32 difference between the two contexts was not isolated further,
+because the fix eliminates the inheritance entirely. **CI cannot confirm this
+fix**: no runner has the user's Codex installation, so only physical testing can.
+
 ### Panel layout
 
 The panel is not a fixed-size window. It uses `SizeToContent.WidthAndHeight`
@@ -733,8 +758,25 @@ private paths. **Copy diagnostics** produces a summary that is safe to send.
 - [ ] A Start Menu entry for UsageBar exists.
 - [ ] The desktop shortcut appears only when you asked for it.
 - [ ] UsageBar starts, and there is **exactly one** tray icon.
-- [ ] Codex still reads real usage; Claude still reads real usage.
 - [ ] Your settings, history, language and provider choices are as they were.
+
+### Installer-launched provider discovery
+
+This is the check the previous physical round failed. Run it at least **twice**
+from a genuinely clean state.
+
+- [ ] Uninstall UsageBar and delete `%LOCALAPPDATA%\UsageBar` so no settings or
+      history remain.
+- [ ] Install again and leave **Launch UsageBar** ticked.
+- [ ] In the app the installer just launched, **Codex is found immediately** -
+      not `executable:missing` or `codex_not_found`.
+- [ ] Claude works in that same session.
+- [ ] Exit UsageBar completely (tray menu, Exit), and confirm no UsageBar process
+      remains in Task Manager.
+- [ ] Launch from the Start Menu.
+- [ ] Codex and Claude both work there too.
+- [ ] Exactly one tray icon and one UsageBar process in each case.
+- [ ] Repeat the whole clean cycle at least once more.
 
 ### Upgrade
 

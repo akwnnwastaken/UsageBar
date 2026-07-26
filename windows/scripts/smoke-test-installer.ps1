@@ -68,7 +68,7 @@ function Invoke-Setup {
 
     Write-Host "  running $(Split-Path -Leaf $Path)"
     $process = Start-Process -FilePath $Path `
-        -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS-', "/DIR=$Destination" `
+        -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$Destination" `
         -Wait -PassThru
     return $process.ExitCode
 }
@@ -106,6 +106,27 @@ try {
     Test-Requirement 'The runtime is installed alongside it' (Test-Path -LiteralPath (Join-Path $installDir 'UsageBar.Windows.Core.dll'))
     Test-Requirement 'The destination is inside the user profile' ($installDir.StartsWith($env:USERPROFILE, [StringComparison]::OrdinalIgnoreCase)) "($installDir)"
     Test-Requirement 'Nothing was installed into Program Files' (-not (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'UsageBar')))
+
+    # The final page launches this shortcut, so it must exist and point at the
+    # installed executable. Setup creates [Icons] before running [Run].
+    Test-Requirement 'The Start Menu shortcut was created' (Test-Path -LiteralPath $startMenu)
+    if (Test-Path -LiteralPath $startMenu) {
+        $shell = New-Object -ComObject WScript.Shell
+        try {
+            $link = $shell.CreateShortcut($startMenu)
+            Test-Requirement 'The shortcut targets the installed UsageBar.exe' (
+                $link.TargetPath -ieq (Join-Path $installDir 'UsageBar.exe')) "($($link.TargetPath))"
+            Test-Requirement 'The shortcut works from the application directory' (
+                $link.WorkingDirectory.TrimEnd('\') -ieq $installDir.TrimEnd('\')) "($($link.WorkingDirectory))"
+        }
+        finally {
+            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)
+        }
+    }
+
+    # /VERYSILENT carries skipifsilent, so nothing should have been launched.
+    Test-Requirement 'A silent install does not launch UsageBar' (
+        @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
 
     $entry = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
     Test-Requirement 'One uninstall entry exists under the current user' ($null -ne $entry)

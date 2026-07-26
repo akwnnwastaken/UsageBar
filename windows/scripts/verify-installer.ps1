@@ -124,7 +124,15 @@ Test-Requirement 'A stable AppId is declared' ($iss -match '(?m)^\s*AppId=\{\{[0
 Test-Requirement 'Uninstall support is enabled' ($iss -match '(?m)^\s*Uninstallable\s*=\s*yes\s*$')
 Test-Requirement 'A Start Menu shortcut is created' ($iss -match '\{autoprograms\}')
 Test-Requirement 'The desktop shortcut is optional and unchecked' ($iss -match 'Name:\s*"desktopicon".*Flags:\s*unchecked')
-Test-Requirement 'A launch-after-install option exists' ($iss -match 'Flags:\s*nowait postinstall skipifsilent')
+Test-Requirement 'The launch-after-install option uses the Start Menu shortcut' (
+    $iss -match '(?m)^Filename: "\{autoprograms\}\\\{#AppName\}\.lnk".*postinstall')
+Test-Requirement 'The launch uses ShellExecute as the original user' (
+    $iss -match '(?m)^Filename:.*postinstall.*shellexec.*runasoriginaluser')
+Test-Requirement 'Setup never launches the executable directly' (
+    -not ($iss -match '(?m)^Filename: "\{app\}.*postinstall'))
+Test-Requirement 'The shortcut has a working directory' ($iss -match 'WorkingDir: "\{app\}"')
+Test-Requirement 'A skipped launch is reported rather than faked' (
+    $iss -match 'Check: LaunchShortcutAvailable')
 Test-Requirement 'The application icon is used for setup' ($iss -match '(?m)^\s*SetupIconFile\s*=')
 Test-Requirement 'A running instance is detected by mutex' ($iss -match '(?m)^\s*AppMutex\s*=\s*Local\\UsageBar')
 

@@ -195,15 +195,104 @@ public sealed class InstallerDefinitionTests
     }
 
     /// <summary>
-    /// UsageBar has no main window, so the post-install launch must not wait for
-    /// one — that would look like a hung installer.
+    /// The regression physical testing isolated: an application started straight
+    /// from Setup inherits Setup's process context, and in that context UsageBar
+    /// failed to find an installed Codex it located immediately when started from
+    /// the Start Menu. The final page must launch the shortcut, so the first
+    /// launch uses the same path as every later one.
     /// </summary>
     [Fact]
-    public void TheLaunchOptionSuitsATrayApplication()
+    public void TheFinalPageLaunchesTheStartMenuShortcutNotTheExecutable()
     {
-        Assert.Matches(@"\[Run\][\s\S]*Flags:\s*nowait postinstall skipifsilent", InstallerScript);
+        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
+
+        // The script uses the {#AppName} define, so match what is actually written.
+        Assert.Contains(@"{autoprograms}\{#AppName}.lnk", run, StringComparison.Ordinal);
+        // The old direct-execution entry must be gone. Only [Run] lines start
+        // with Filename:, so this cannot be confused with the [Icons] entries,
+        // which legitimately point at {app}\{#AppExeName}.
+        Assert.DoesNotMatch(@"(?m)^Filename:.*\{app\}.*postinstall", InstallerScript);
+        Assert.DoesNotContain("nowait postinstall", InstallerScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// shellexec is what makes it a shell launch rather than a Setup-context
+    /// CreateProcess — and it is required at all, because a .lnk is not directly
+    /// executable.
+    /// </summary>
+    [Fact]
+    public void TheLaunchUsesShellExecuteSemanticsAsTheOriginalUser()
+    {
+        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
+
+        Assert.Contains("shellexec", run, StringComparison.Ordinal);
+        Assert.Contains("runasoriginaluser", run, StringComparison.Ordinal);
+        Assert.Contains("skipifsilent", run, StringComparison.Ordinal);
+
+        // Never elevated, and never waiting for a window a tray app never opens.
         Assert.DoesNotContain("runascurrentuser", InstallerScript, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("waituntilterminated", InstallerScript, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("waituntilidle", InstallerScript, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The shortcut the final page launches is created by [Icons], which Setup
+    /// processes before [Run], and it points at the installed executable with the
+    /// application directory as its working directory.
+    /// </summary>
+    [Fact]
+    public void TheShortcutIsCreatedBeforeLaunchAndPointsAtTheInstalledExecutable()
+    {
+        var icon = Regex.Match(InstallerScript, @"(?m)^Name: ""\{autoprograms\}.*$").Value;
+
+        Assert.Contains(@"Filename: ""{app}\{#AppExeName}""", icon, StringComparison.Ordinal);
+        Assert.Contains(@"WorkingDir: ""{app}""", icon, StringComparison.Ordinal);
+
+        // [Icons] must appear before [Run] in the script, matching Setup's order.
+        Assert.True(
+            InstallerScript.IndexOf("[Icons]", StringComparison.Ordinal) <
+            InstallerScript.IndexOf("[Run]", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A missing shortcut skips the launch and says so; Setup never falls back to
+    /// starting the executable itself, which is the context being avoided.
+    /// </summary>
+    [Fact]
+    public void AFailedLaunchIsReportedRatherThanFakedOrRetriedDirectly()
+    {
+        Assert.Contains("Check: LaunchShortcutAvailable", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("function LaunchShortcutAvailable", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("en.LaunchUnavailable=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("tr.LaunchUnavailable=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("Start Menu", InstallerScript, StringComparison.Ordinal);
+
+        // Exactly one postinstall entry: no direct-execution fallback alongside it.
+        Assert.Single(Regex.Matches(InstallerScript, @"(?m)^Filename:.*postinstall"));
+    }
+
+    /// <summary>No shell, task or helper was smuggled in to work around the launch.</summary>
+    [Theory]
+    [InlineData("cmd.exe")]
+    [InlineData("powershell")]
+    [InlineData("explorer.exe")]
+    [InlineData("schtasks")]
+    [InlineData("wscript")]
+    [InlineData("Sleep(")]
+    public void NoLaunchWorkaroundWasAdded(string forbidden)
+    {
+        Assert.DoesNotContain(forbidden, InstallerScript, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The checkbox stays, and stays ticked.</summary>
+    [Fact]
+    public void TheLaunchCheckboxRemainsCheckedByDefault()
+    {
+        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
+
+        Assert.Contains("Description: \"{cm:LaunchAfterInstall", run, StringComparison.Ordinal);
+        // `unchecked` would clear it; only the desktop shortcut task uses that.
+        Assert.DoesNotContain("unchecked", run, StringComparison.Ordinal);
     }
 
     [Fact]
