@@ -381,6 +381,42 @@ a rounded square around every value and, because three digits did not fit inside
 it, substituted `•` for 100. The box has been removed and 100 now renders as
 itself.
 
+### Installer
+
+A conventional Setup EXE built with **Inno Setup 6.7.3**, pinned by version and
+SHA-256 and downloaded from the official jrsoftware GitHub release. The checksum
+is verified before the downloaded file is executed; no third-party action is
+involved.
+
+- **Per user, never elevated.** `PrivilegesRequired=lowest`, installing to
+  `%LOCALAPPDATA%\Programs\UsageBar`. `PrivilegesRequiredOverridesAllowed` is
+  deliberately unset, so an all-users or elevated install cannot be chosen even
+  from the command line. Nothing is written to Program Files or HKLM, and no
+  service, driver, scheduled task or PATH entry is created.
+- **Stable identity.** A permanent AppId GUID, committed in the script and never
+  regenerated, is what makes a newer installer upgrade the existing installation
+  in place and keeps a single entry in Installed Apps.
+- **One version source.** The version comes from `windows/Directory.Build.props`
+  - the same property that stamps the assemblies - and is passed to the
+  compiler. No script carries a second copy.
+- **Same payload as the portable ZIP.** The installer is compiled from the
+  staging directory the portable package gate already verified, so the installed
+  and portable builds cannot drift.
+- **A running instance is asked, not killed.** Inno waits on the application's
+  own single-instance mutex, so it prompts to close UsageBar rather than matching
+  a process name that might belong to something else.
+- **User data is never touched.** Settings and history live in
+  `%LOCALAPPDATA%\UsageBar`, beside the install directory rather than inside it,
+  so an upgrade or an uninstall leaves them alone. The uninstaller deletes no
+  data directory.
+- **Autostart stays the application's.** The installer creates no Run entry, no
+  Startup shortcut and no scheduled task, so the preference the application owns
+  survives an upgrade untouched.
+- **Unsigned.** See the note in the physical checklist.
+
+The portable ZIP remains available and unchanged for users who prefer not to
+install.
+
 ### Panel layout
 
 The panel is not a fixed-size window. It uses `SizeToContent.WidthAndHeight`
@@ -664,9 +700,70 @@ version, and — for WSL — the distribution name.
 - [ ] A failed Claude refresh keeps the last good value on screen with a stale
       warning, and the chart gains no new point for it.
 
-## 13. Known limitations
+## 13. Windows Installer Physical Test Checklist
 
-1. **Claude support is not physically verified.** It is implemented, unit-tested
+**Unverified.** The installer is built, verified and install/upgrade/uninstall
+smoke-tested on CI, but no human has run it on a physical machine.
+
+The installer is **not code signed**. SmartScreen will show "Windows protected
+your PC" on first run: choose **More info -> Run anyway** for that one file after
+checking the SHA-256. Do not disable SmartScreen or Defender. Signing and Store
+distribution are separate later phases.
+
+Please do not share tokens, credential files, raw provider output or full
+private paths. **Copy diagnostics** produces a summary that is safe to send.
+
+### Fresh installation
+
+- [ ] Download the **`UsageBar-Windows-Installer-x64`** artifact and extract the
+      outer ZIP GitHub wraps it in.
+- [ ] Verify the checksum:
+      ```powershell
+      (Get-FileHash .\UsageBar-Setup-x64.exe -Algorithm SHA256).Hash.ToLower()
+      Get-Content .\UsageBar-Setup-x64.exe.sha256
+      ```
+- [ ] Double-click `UsageBar-Setup-x64.exe`.
+- [ ] Note whether SmartScreen appears, and that **no UAC / administrator prompt
+      does** - the install is per-user.
+- [ ] Run it once in Turkish and once in English (the wizard should preselect
+      from your Windows language).
+- [ ] The destination shown is under `%LOCALAPPDATA%\Programs\UsageBar`.
+- [ ] Leave the desktop shortcut unchecked the first time; check it the second.
+- [ ] Finish with **Launch UsageBar** ticked.
+- [ ] A Start Menu entry for UsageBar exists.
+- [ ] The desktop shortcut appears only when you asked for it.
+- [ ] UsageBar starts, and there is **exactly one** tray icon.
+- [ ] Codex still reads real usage; Claude still reads real usage.
+- [ ] Your settings, history, language and provider choices are as they were.
+
+### Upgrade
+
+- [ ] With UsageBar **running**, start the installer again.
+- [ ] It asks you to close UsageBar rather than killing it, and closing it lets
+      the install continue.
+- [ ] Installed Apps shows **one** UsageBar entry, not two.
+- [ ] The version shown in Installed Apps is the new one.
+- [ ] Settings, usage history and provider connections are unchanged.
+- [ ] The **Launch at startup** preference is exactly as you left it - still on
+      if it was on, still off if it was off.
+- [ ] After launching, there is exactly one tray icon and no leftover old
+      process in Task Manager.
+
+### Uninstall
+
+- [ ] Uninstall from **Settings > Apps > Installed apps**.
+- [ ] No administrator prompt.
+- [ ] The program files and the Start Menu shortcut are gone.
+- [ ] `%LOCALAPPDATA%\UsageBar` - your settings and history - is **still there**.
+- [ ] Reinstall, and your previous settings and history come back.
+- [ ] No reboot was ever requested.
+
+## 14. Known limitations
+
+1. **The installer is not physically verified.** It is built, verified and
+   install/upgrade/uninstall smoke-tested on CI, but nobody has run it on a real
+   machine. It is also unsigned, so SmartScreen warns on first run.
+2. **Claude support is not physically verified.** It is implemented, unit-tested
    and packaged, but no human has run it against a real Claude installation.
    Section 12 is the checklist for it.
 2. **No physical Windows verification.** Three distinct levels apply, and they

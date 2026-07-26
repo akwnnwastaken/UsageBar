@@ -103,6 +103,36 @@ jobs:
       - name: Verify the package
         run: ./scripts/verify-package.ps1
 
+      # Compiled from the same staging directory the portable package was
+      # verified from, so the installed and portable builds cannot drift. A
+      # deliberately older build is produced too, purely so the upgrade smoke
+      # test upgrades from something rather than reinstalling identical bytes.
+      - name: Package (installer)
+        run: ./scripts/package-installer.ps1
+
+      - name: Package (previous version, for the upgrade test)
+        run: ./scripts/package-installer.ps1 -VersionOverride 0.0.1 -OutputBaseName UsageBar-Setup-x64-previous
+
+      - name: Verify the installer
+        run: ./scripts/verify-installer.ps1
+
+      # A real install, upgrade and uninstall on this runner. All state is
+      # created under temporary paths and removed afterwards.
+      - name: Install / upgrade / uninstall smoke test
+        run: >
+          ./scripts/smoke-test-installer.ps1
+          -SetupPath artifacts/UsageBar-Setup-x64.exe
+          -PreviousSetupPath artifacts/UsageBar-Setup-x64-previous.exe
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UsageBar-Windows-Installer-x64
+          path: |
+            windows/artifacts/UsageBar-Setup-x64.exe
+            windows/artifacts/UsageBar-Setup-x64.exe.sha256
+          if-no-files-found: error
+
       - name: Upload the portable package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
