@@ -133,6 +133,40 @@ internal sealed class SettingsWindow : Window
             _content.Children.Add(Note(text.LaunchAtStartupStalePath));
         }
 
+        _content.Children.Add(Caption(text.ClaudeInstallationTitle));
+        _content.Children.Add(Explanation(text.ClaudeInstallationHelp));
+        _content.Children.Add(Choice(
+            new[]
+            {
+                (text.ClaudeAdapterModeAutomatic, ClaudeAdapterMode.Automatic),
+                (text.ClaudeAdapterModeNative, ClaudeAdapterMode.NativeWindows),
+                (text.ClaudeAdapterModeWsl, ClaudeAdapterMode.Wsl)
+            },
+            ClaudeAdapterModes.Resolved(_controller.Settings.ClaudeAdapterMode),
+            mode => _controller.UpdateSettings(
+                settings => settings.ClaudeAdapterMode = mode.StorageValue())));
+
+        // Only offered when WSL can actually be used, and only ever a
+        // distribution name — never a path inside the distribution.
+        var distributions = _controller.WslDistributions;
+        if (ClaudeAdapterModes.Resolved(_controller.Settings.ClaudeAdapterMode) != ClaudeAdapterMode.NativeWindows &&
+            distributions.Count > 0)
+        {
+            _content.Children.Add(Caption(text.ClaudeWslDistributionTitle));
+
+            var options = new List<(string, string?)>
+            {
+                (text.ClaudeWslDistributionAutomatic, null)
+            };
+            options.AddRange(distributions.Select(name => (name, (string?)name)));
+
+            _content.Children.Add(Choice(
+                options,
+                _controller.Settings.ClaudeWslDistribution,
+                distribution => _controller.UpdateSettings(
+                    settings => settings.ClaudeWslDistribution = distribution)));
+        }
+
         _content.Children.Add(Caption(text.TrayGuidanceTitle));
         _content.Children.Add(Explanation(text.TrayGuidanceDetail));
         _content.Children.Add(Explanation(text.TrayGuidanceSettingsPath));

@@ -223,10 +223,10 @@ internal sealed class UsagePanelWindow : Window
         if (connected.Count == 0)
         {
             _content.Children.Add(Muted(text.ConnectFirst));
-            _content.Children.Add(ActionButton(text.ConnectCodex, _controller.ConnectCodex));
         }
         else
         {
+            // Auto only makes sense with more than one provider connected.
             if (connected.Count > 1)
             {
                 _content.Children.Add(ProviderSelector(text, connected));
@@ -238,8 +238,10 @@ internal sealed class UsagePanelWindow : Window
             }
         }
 
-        // Claude is listed so its absence is explicit rather than a silent gap.
-        _content.Children.Add(ClaudeNotice(text));
+        if (connected.Count < 2)
+        {
+            _content.Children.Add(ConnectActions(text));
+        }
 
         if (_controller.LastUpdated is DateTimeOffset updated)
         {
@@ -434,26 +436,25 @@ internal sealed class UsagePanelWindow : Window
         return panel;
     }
 
-    private UIElement ClaudeNotice(Localizer text)
+    /// <summary>
+    /// Connect actions for whichever providers are not connected yet. Wrapped
+    /// like every other action row so a long label never overflows.
+    /// </summary>
+    private UIElement ConnectActions(Localizer text)
     {
-        var panel = new StackPanel();
-        panel.Children.Add(new TextBlock
-        {
-            Text = text.ClaudeNotSupportedYet,
-            Foreground = _theme.SecondaryForeground,
-            FontWeight = FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap
-        });
-        panel.Children.Add(new TextBlock
-        {
-            Text = text.ClaudeNotSupportedYetDetail,
-            Foreground = _theme.SecondaryForeground,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 2, 0, 0)
-        });
+        var row = new WrapPanel();
 
-        return Section(panel);
+        if (!_controller.Settings.CodexConnected)
+        {
+            row.Children.Add(ActionButton(text.ConnectCodex, _controller.ConnectCodex));
+        }
+
+        if (!_controller.Settings.ClaudeConnected)
+        {
+            row.Children.Add(ActionButton(text.ConnectClaude, _controller.ConnectClaude));
+        }
+
+        return row;
     }
 
     /// <summary>

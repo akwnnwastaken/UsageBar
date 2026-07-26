@@ -70,18 +70,25 @@ public sealed class Localizer
     public string Close => Pick("Kapat", "Close");
     public string HistoryDisabled => Pick("Geçmiş kapalı", "History is off");
 
-    /// <summary>
-    /// Shown instead of a Claude connect action while the Windows Claude
-    /// adapters do not exist yet. UsageBar never fabricates provider data, so
-    /// the option is disabled and labeled rather than shown as working.
-    /// </summary>
-    public string ClaudeNotSupportedYet => Pick(
-        "Claude Code — Windows'ta henüz desteklenmiyor",
-        "Claude Code — not supported on Windows yet");
+    // MARK: - Claude installation
 
-    public string ClaudeNotSupportedYetDetail => Pick(
-        "Claude Code okuyucusu Windows sürümüne henüz eklenmedi. Bu sürümde yalnızca Codex kullanılabilir.",
-        "The Claude Code reader has not been added to the Windows build yet. This build supports Codex only.");
+    public string ClaudeInstallationTitle => Pick("Claude Code kurulumu", "Claude Code installation");
+
+    public string ClaudeAdapterModeAutomatic => Pick("Otomatik", "Automatic");
+    public string ClaudeAdapterModeNative => Pick("Windows kurulumu", "Native Windows");
+    public string ClaudeAdapterModeWsl => Pick("WSL", "WSL");
+
+    public string ClaudeWslDistributionTitle => Pick("WSL dağıtımı", "WSL distribution");
+
+    public string ClaudeWslDistributionAutomatic => Pick("Otomatik seç", "Choose automatically");
+
+    public string ClaudeSignInRequired => Pick(
+        "Claude Code'a giriş yapılmamış. Bir terminalde claude komutunu çalıştırıp giriş yapın; UsageBar giriş akışını kendisi başlatmaz.",
+        "Claude Code is not signed in. Run claude in a terminal and sign in there; UsageBar never starts the login flow itself.");
+
+    public string ClaudeInstallationHelp => Pick(
+        "UsageBar mevcut Claude Code oturumunuzu kullanır. Parola, API anahtarı veya oturum belirteci istemez ve saklamaz.",
+        "UsageBar uses your existing Claude Code session. It never asks for or stores a password, API key or session token.");
 
     // MARK: - Tray visibility guidance
 
@@ -387,6 +394,20 @@ public sealed class Localizer
                 Pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage"),
             ProviderIssueCode.ClaudeUsageTimedOut =>
                 Pick("Claude kullanım sorgusu zaman aşımına uğradı", "Claude usage query timed out"),
+            ProviderIssueCode.ClaudeCommandFailed =>
+                Pick("Claude kullanım komutu başarısız oldu", "The Claude usage command failed"),
+            ProviderIssueCode.ClaudeGitBashMissing =>
+                Pick(
+                    "Claude Code, Git for Windows (Git Bash) bulamadı",
+                    "Claude Code could not find Git for Windows (Git Bash)"),
+            ProviderIssueCode.ClaudeWslUnavailable =>
+                Pick("WSL bu bilgisayarda kullanılamıyor", "WSL is not available on this computer"),
+            ProviderIssueCode.ClaudeWslDistributionUnavailable =>
+                Pick(
+                    "Claude Code kurulu bir WSL dağıtımı bulunamadı",
+                    "No WSL distribution with Claude Code was found"),
+            ProviderIssueCode.Cancelled =>
+                Pick("Yenileme durduruldu", "The refresh was stopped"),
             ProviderIssueCode.ClaudeLaunchFailed =>
                 Pick($"Claude Code başlatılamadı: {issue.Detail}", $"Could not start Claude Code: {issue.Detail}"),
             ProviderIssueCode.OutputTooLarge =>

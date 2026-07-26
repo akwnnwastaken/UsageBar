@@ -11,9 +11,19 @@ namespace UsageBar.Windows.Core.Diagnostics;
 public enum ProviderAdapterKind
 {
     None,
+
+    /// <summary>A real .exe started directly.</summary>
     NativeExecutable,
+
+    /// <summary>A legacy local installation under the user's Claude folder.</summary>
+    NativeLocal,
+
+    /// <summary>A JavaScript entry point started through a validated node.exe.</summary>
     NodeLauncher,
+
     GitForWindows,
+
+    /// <summary>Started inside a WSL distribution through wsl.exe.</summary>
     Wsl
 }
 
@@ -122,6 +132,7 @@ public static class DiagnosticsReportBuilder
     private static string AdapterKind(ProviderAdapterKind kind) => kind switch
     {
         ProviderAdapterKind.NativeExecutable => "native_exe",
+        ProviderAdapterKind.NativeLocal => "native_local",
         ProviderAdapterKind.NodeLauncher => "node_launcher",
         ProviderAdapterKind.GitForWindows => "git_for_windows",
         ProviderAdapterKind.Wsl => "wsl",

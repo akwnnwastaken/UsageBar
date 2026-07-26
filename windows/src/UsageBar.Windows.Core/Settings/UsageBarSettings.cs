@@ -63,6 +63,24 @@ public sealed class UsageBarSettings
     [JsonPropertyName("claudeExecutablePath")]
     public string? ClaudeExecutablePath { get; set; }
 
+    /// <summary>Which Claude installation form to use: automatic, native or WSL.</summary>
+    [JsonPropertyName("claudeAdapterMode")]
+    public string? ClaudeAdapterMode { get; set; }
+
+    /// <summary>
+    /// The WSL distribution to run Claude in. Null means "choose automatically".
+    /// Only the distribution name is stored — never a path inside it.
+    /// </summary>
+    [JsonPropertyName("claudeWslDistribution")]
+    public string? ClaudeWslDistribution { get; set; }
+
+    /// <summary>
+    /// The adapter kind that last worked, so discovery can start with it instead
+    /// of probing everything again. A safe token such as "native_exe" or "wsl".
+    /// </summary>
+    [JsonPropertyName("claudeLastAdapterKind")]
+    public string? ClaudeLastAdapterKind { get; set; }
+
     public UsageBarSettings Clone() => (UsageBarSettings)MemberwiseClone();
 }
 
@@ -85,6 +103,24 @@ public static class UsageBarSettingsSanitizer
             .Resolved(value.RefreshInterval)
             .StorageValue();
         value.UsageAlertPreset = ResolvePreset(value.UsageAlertPreset).ToStorageValue();
+        value.ClaudeAdapterMode = ClaudeAdapterModes
+            .Resolved(value.ClaudeAdapterMode)
+            .StorageValue();
+
+        // A distribution name is a short identifier. Anything longer, or
+        // containing a separator, is not one and is dropped rather than stored.
+        if (value.ClaudeWslDistribution is { } distribution &&
+            (distribution.Length is 0 or > 64 ||
+             distribution.IndexOfAny(new[] { '/', '\\', '\0', '\n', '\r' }) >= 0))
+        {
+            value.ClaudeWslDistribution = null;
+        }
+
+        if (value.ClaudeLastAdapterKind is { } adapter &&
+            !Diagnostics.DiagnosticsSanitizer.IsSafeToken(adapter))
+        {
+            value.ClaudeLastAdapterKind = null;
+        }
 
         if (value.SelectedProvider is not null &&
             !Providers.ProviderNames.All.Contains(value.SelectedProvider))

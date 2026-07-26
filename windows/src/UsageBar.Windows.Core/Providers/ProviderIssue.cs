@@ -26,7 +26,25 @@ public enum ProviderIssueCode
     ClaudeUsageUnreadable,
     ClaudeUsageTimedOut,
     ClaudeLaunchFailed,
-    OutputTooLarge
+    ClaudeCommandFailed,
+
+    /// <summary>
+    /// Claude itself reported that it could not find Git Bash. Git for Windows
+    /// is optional for a quota query — the query disables tools — so this is
+    /// only produced when Claude says so, never assumed from its absence.
+    /// </summary>
+    ClaudeGitBashMissing,
+
+    /// <summary>WSL is not installed or not usable on this machine.</summary>
+    ClaudeWslUnavailable,
+
+    /// <summary>WSL works, but no distribution has a usable Claude Code.</summary>
+    ClaudeWslDistributionUnavailable,
+
+    OutputTooLarge,
+
+    /// <summary>The refresh was stopped by the application, not by a failure.</summary>
+    Cancelled
 }
 
 /// <summary>
@@ -53,6 +71,12 @@ public sealed record ProviderIssue(ProviderIssueCode Code, string? Detail = null
     public static ProviderIssue ClaudeNotLoggedIn { get; } = new(ProviderIssueCode.ClaudeNotLoggedIn);
     public static ProviderIssue ClaudeUsageUnreadable { get; } = new(ProviderIssueCode.ClaudeUsageUnreadable);
     public static ProviderIssue ClaudeUsageTimedOut { get; } = new(ProviderIssueCode.ClaudeUsageTimedOut);
+    public static ProviderIssue ClaudeCommandFailed { get; } = new(ProviderIssueCode.ClaudeCommandFailed);
+    public static ProviderIssue ClaudeGitBashMissing { get; } = new(ProviderIssueCode.ClaudeGitBashMissing);
+    public static ProviderIssue ClaudeWslUnavailable { get; } = new(ProviderIssueCode.ClaudeWslUnavailable);
+    public static ProviderIssue ClaudeWslDistributionUnavailable { get; } =
+        new(ProviderIssueCode.ClaudeWslDistributionUnavailable);
+    public static ProviderIssue Cancelled { get; } = new(ProviderIssueCode.Cancelled);
 
     public static ProviderIssue CodexLaunchFailed(string? reason) =>
         new(ProviderIssueCode.CodexLaunchFailed, reason);
@@ -84,7 +108,13 @@ public sealed record ProviderIssue(ProviderIssueCode Code, string? Detail = null
         ProviderIssueCode.ClaudeNotLoggedIn => "claude_not_logged_in",
         ProviderIssueCode.ClaudeUsageUnreadable => "claude_usage_unreadable",
         ProviderIssueCode.ClaudeUsageTimedOut => "claude_usage_timed_out",
+        ProviderIssueCode.ClaudeLaunchFailed => "claude_launch_failed",
+        ProviderIssueCode.ClaudeCommandFailed => "claude_command_failed",
+        ProviderIssueCode.ClaudeGitBashMissing => "claude_git_bash_missing",
+        ProviderIssueCode.ClaudeWslUnavailable => "claude_wsl_unavailable",
+        ProviderIssueCode.ClaudeWslDistributionUnavailable => "claude_wsl_distribution_unavailable",
         ProviderIssueCode.OutputTooLarge => "output_too_large",
+        ProviderIssueCode.Cancelled => "cancelled",
         _ => "unknown"
     };
 
@@ -92,7 +122,7 @@ public sealed record ProviderIssue(ProviderIssueCode Code, string? Detail = null
     /// Informational states shown in a neutral color rather than as an error.
     /// </summary>
     public bool IsInformational =>
-        Code is ProviderIssueCode.Refreshing or ProviderIssueCode.NoData;
+        Code is ProviderIssueCode.Refreshing or ProviderIssueCode.NoData or ProviderIssueCode.Cancelled;
 
     /// <summary>All codes a diagnostics report is allowed to emit.</summary>
     public static IReadOnlySet<string> KnownDiagnosticCodes { get; } =

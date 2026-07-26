@@ -193,6 +193,9 @@ internal sealed class TrayApplication : Application
             _panel.ShowNearTray();
         }
 
+        // Populated on first use so the settings window can offer a
+        // distribution list without probing WSL on every refresh.
+        _ = _controller.LoadWslDistributionsAsync();
         _settings.ShowSettings();
     }
 

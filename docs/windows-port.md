@@ -8,9 +8,9 @@ this port. Nothing under `Sources/`, `tests/`, `Package.swift`, `build.sh`,
 `Info.plist`, `README.md`, `SECURITY.md`, `.github/workflows/ci.yml` or
 `.github/workflows/release-candidate.yml` is modified by the Windows work.
 
-> **Status.** Codex works end to end. **Claude Code is not implemented on
-> Windows yet** — it is shown disabled and explicitly labeled as unsupported in
-> the tray menu and the panel. No placeholder value is ever displayed for it.
+> **Status.** Codex works end to end and has been verified on a physical
+> Windows machine. **Claude Code is implemented but has not been physically
+> tested yet** — see the checklist in section 12.
 
 ---
 
@@ -75,9 +75,14 @@ platform, which is why the Core suite runs identically on macOS and Windows.
 | Turkish/English strings, complete durations | `Localizer` | `Localization/Localizer.cs` | `LocalizationAndTrayPresentationTests` |
 | Safe diagnostic codes | `ProviderIssue.diagnosticCode` | `Providers/ProviderIssue.cs` | `DiagnosticsTests` |
 
-The Claude parser is ported and fully tested even though no Windows Claude
-adapter exists yet: the parsing rules are the part that is expensive to get
-right, and having them in place keeps the eventual adapter small.
+| Claude outcome ordering (timeout/cancel win) | `ClaudeUsageFetcher` | `Policies/ClaudeFetchOutcome.cs` | `ClaudeUsageReaderTests` |
+| Claude query flags (`-p /usage`, no session, no tools) | `ClaudeUsageFetcher` | `Providers/ClaudeQuery.cs` | `ClaudeUsageReaderTests` |
+
+Claude's query is the same one macOS runs — `-p "/usage"` in print mode with
+session persistence, setting sources, Chrome, MCP and tools all disabled — so
+the reading costs no model quota, registers no session and leaves no transcript.
+Output is parsed only after the process has finished, so a partially written
+final line can never drop the weekly window.
 
 ---
 
@@ -99,7 +104,7 @@ right, and having them in place keeps the eventual adapter small.
 | 12 | The Claude parser also accepts a colon-less label and a reset on the following line. | Cheap resilience; the print-mode shape is still what the adapter will use. |
 | 13 | First-run tray-visibility guidance exists. | New tray icons can land in the `^` overflow menu, which has no macOS equivalent. |
 | 14 | The panel sizes itself to its content between a minimum and the monitor's working area, and its actions wrap onto further lines. | Turkish runs longer than English, and a fixed width clipped the footer buttons on a real machine. |
-| 15 | **Claude Code is not available at all in this build.** | The Windows adapters are not written yet. Shown disabled, never faked. |
+| 15 | Claude runs either as a native Windows executable or inside a WSL distribution, selectable in settings. | Windows has two supported Claude installation targets; macOS has one. |
 
 ---
 
@@ -197,17 +202,54 @@ passed both before and after, because no CI runner has Codex installed.
 
 ### Supported Claude installation formats
 
-**None yet.** The layering is planned as native Windows → Git for Windows →
-optional WSL, and the print-mode parser is already in place, but no adapter
-exists in this build.
+Taken from the official Claude Code setup and troubleshooting documentation, not
+from guesswork. Each is covered by a discovery test.
+
+| Format | Location | Adapter |
+| --- | --- | --- |
+| **Native installer** (recommended) | `%USERPROFILE%\.local\bin\claude.exe` | `native_exe` |
+| WinGet | `%LOCALAPPDATA%\Microsoft\WinGet\Links\claude.exe` | `native_exe` |
+| npm global | the documented per-platform package `@anthropic-ai/claude-code-win32-x64` under `%APPDATA%\npm\node_modules` | `native_exe` |
+| Legacy local install | `%USERPROFILE%\.claude\local` | `native_local` |
+| WSL 1 / WSL 2 | `~/.local/bin/claude` inside a distribution, or `claude` on the distribution's default PATH | `wsl` |
+| User-selected | any path, validated identically | `native_exe` |
+
+Claude Code on Windows ships a **real native executable**: the documentation
+states that the npm package installs the same binary as the standalone installer
+and that the installed `claude` binary does not itself invoke Node. There is
+therefore no Node-launcher path for Claude, unlike Codex.
+
+Because the exact position of the binary inside the npm platform package and the
+legacy local folder is not documented, those two are located by searching for
+`claude.exe` **inside that documented package root only**, at most two
+directories deep. The search never leaves the root and never consults PATH.
+
+#### Git for Windows
+
+**Not required.** The documentation is explicit that Git for Windows is
+*optional* on native Windows: it enables Claude's own Bash tool, and without it
+Claude uses the PowerShell tool instead. UsageBar's quota query runs with
+`--tools ""`, so neither is used.
+
+When a trusted `bash.exe` does exist in a documented Git for Windows root, its
+path is passed through as `CLAUDE_CODE_GIT_BASH_PATH` — the variable Claude
+documents for exactly this — so a Claude build that probes for it at start-up
+finds it. **UsageBar never launches `bash.exe` itself**, and never falls back to
+Git Bash to run the query.
+
+`claude_git_bash_missing` is reported only when Claude's own output says it could
+not find Git Bash. It is never inferred from Git for Windows being absent.
 
 ### Unsupported installation formats
 
 - A bare `.cmd`, `.bat`, `.ps1` or `.vbs` shim with no resolvable interpreter.
   Reported as `unsupported_installation`; UsageBar does not fall back to a shell.
-- An npm install with no discoverable `node.exe`.
+- An npm Codex install with no discoverable `node.exe`.
 - Anything outside the documented roots, or writable by a wider group than the
   current user.
+- A Claude installation reachable only through Git Bash or a login shell.
+- A WSL build without `wsl.exe --cd` support, when Claude is installed under
+  `~/.local/bin` inside the distribution. The PATH-based form still works there.
 
 ---
 
@@ -524,9 +566,78 @@ Requires Codex installed and signed in.
 For anything that fails, the most useful report is: which checkbox, what
 happened instead, and the output of **Copy diagnostics**.
 
-## 12. Known limitations
+## 12. Claude Code Physical Windows Test Checklist
 
-1. **Claude Code is not implemented.** Codex is the only working provider.
+**Unverified.** Claude support is built, unit-tested and packaged on CI, but no
+human has run it against a real Claude Code installation. Codex has been
+physically verified; Claude has not.
+
+Please do not paste tokens, credential files, raw provider output or full
+private paths into any report. **Copy diagnostics** already produces a summary
+that is safe to share. When something fails, the useful reply is: which
+checkbox, a screenshot, the safe diagnostics output, `claude --version`, the
+adapter type shown in diagnostics, which installation form you use, your Windows
+version, and — for WSL — the distribution name.
+
+### Native Windows
+
+- [ ] `claude --version` prints a version such as `2.1.211 (Claude Code)`.
+- [ ] `Get-Command claude -All` and `where.exe claude` agree on one installation.
+      If they show several, keep one — Claude's own troubleshooting guide
+      recommends the native install at `%USERPROFILE%\.local\bin\claude.exe`.
+- [ ] Claude Code is already signed in. **Do not** sign in through UsageBar: it
+      never starts a login flow.
+- [ ] In UsageBar, **Connect Claude Code** succeeds.
+- [ ] Diagnostics show `claude=connected:true,executable:trusted,adapter:native_exe`
+      (or `native_local` for a legacy install).
+- [ ] Both the five-hour and weekly windows appear, with values matching what
+      `claude` reports itself.
+- [ ] The reset countdowns are plausible and count down.
+- [ ] Ten refreshes in a row leave **no** stray `claude`, `node`, `bash`, `cmd`
+      or `conhost` process in Task Manager.
+- [ ] With Git for Windows installed, everything above still holds.
+- [ ] With Git for Windows **not** installed, everything above still holds —
+      it is optional for this query.
+- [ ] Signing out of Claude (`/logout` in Claude Code) makes UsageBar show a
+      clear "not signed in" message rather than a wrong number, and the message
+      does not repeat as a popup on every automatic refresh.
+- [ ] Signing back in restores the reading on the next refresh.
+
+### WSL
+
+- [ ] `wsl --list --verbose` lists your distributions and their state.
+- [ ] In UsageBar settings, set **Claude Code installation** to **WSL** and pick
+      the distribution.
+- [ ] `claude --version` works *inside that distribution*.
+- [ ] Claude is already signed in inside that distribution.
+- [ ] UsageBar reads real usage; diagnostics show `adapter:wsl`.
+- [ ] Diagnostics contain **no** Linux path — no `/home/...`, no `/mnt/...`.
+- [ ] Switching to a distribution without Claude gives a clear
+      "no WSL distribution with Claude Code" message, not a crash.
+- [ ] Switching back to the working distribution recovers on the next refresh.
+- [ ] Starting from a **stopped** distribution works (the first refresh may be
+      slower while WSL starts it).
+- [ ] Repeated refreshes do not start every distribution — only the selected one
+      runs.
+- [ ] Setting the mode back to **Automatic** still finds a working installation.
+- [ ] Killing the query mid-flight (quit UsageBar during a refresh) leaves no
+      `wsl.exe` behind.
+
+### Both providers
+
+- [ ] With Codex and Claude both connected, the **Auto** selector appears.
+- [ ] Auto alternates the tray icon between the two roughly every 30 seconds.
+- [ ] Selecting a single provider pins the tray to it.
+- [ ] Disconnecting Claude leaves Codex working and **keeps** Claude's history
+      until history is cleared explicitly.
+- [ ] A failed Claude refresh keeps the last good value on screen with a stale
+      warning, and the chart gains no new point for it.
+
+## 13. Known limitations
+
+1. **Claude support is not physically verified.** It is implemented, unit-tested
+   and packaged, but no human has run it against a real Claude installation.
+   Section 12 is the checklist for it.
 2. **No physical Windows verification.** Three distinct levels apply, and they
    must not be conflated:
    - *Compiled and automatically tested on Windows CI* — the whole solution,

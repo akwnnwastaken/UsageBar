@@ -137,11 +137,16 @@ internal sealed class TrayIconController : IDisposable
                 () => _controller.DisconnectProvider(ProviderNames.Codex)));
         }
 
-        // Claude has no Windows adapter yet. It is shown disabled and labeled
-        // rather than offered as if it worked.
-        var claude = Item(text.ClaudeNotSupportedYet, static () => { }, enabled: false);
-        claude.ToolTipText = text.ClaudeNotSupportedYetDetail;
-        _menu.Items.Add(claude);
+        if (!_controller.Settings.ClaudeConnected)
+        {
+            _menu.Items.Add(Item(text.ConnectClaude, _controller.ConnectClaude));
+        }
+        else
+        {
+            _menu.Items.Add(Item(
+                text.DisconnectClaude,
+                () => _controller.DisconnectProvider(ProviderNames.ClaudeCode)));
+        }
 
         _menu.Items.Add(new ToolStripSeparator());
 
