@@ -81,12 +81,15 @@ jobs:
       # CreateProcessW argument round-trips, executable ACL validation, registry
       # auto-start) can only run here. Elsewhere they report as skipped, never
       # as passed.
+      # No fixed LogFileName: the solution has two test projects, and a shared
+      # name meant the second overwrote the first, so the uploaded results only
+      # ever showed one assembly. The default name is per-assembly.
       - name: Test (Release)
         run: >
           dotnet test UsageBar.Windows.sln
           --configuration Release
           --no-build
-          --logger "trx;LogFileName=windows-tests.trx"
+          --logger trx
           --results-directory artifacts/test-results
 
       # -SkipTests because the step above just ran the whole suite against this
