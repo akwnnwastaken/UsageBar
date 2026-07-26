@@ -76,32 +76,61 @@ public sealed class TrayIconRenderingTests
     }
 
     /// <summary>
-    /// The regression, checked where it happened. A box would paint the corners;
-    /// nothing may.
+    /// Height of the band at the bottom reserved for the state rule. A rule is a
+    /// deliberate mark and may reach the bottom corners; a box may not paint
+    /// anywhere on the perimeter.
+    /// </summary>
+    private const int RuleBand = 3;
+
+    /// <summary>
+    /// The regression, checked where it happened. A border or plate paints the
+    /// whole perimeter, so the test probes the edges a rule can never reach: the
+    /// top, and the left and right columns above the rule band.
     /// </summary>
     [WindowsTheory]
     [InlineData(100)]
     [InlineData(42)]
+    [InlineData(18)]
     [InlineData(7)]
     public void NoBorderPlateOrChipIsDrawn(int remaining)
     {
         using var bitmap = TrayIconRenderer.RenderBitmap(Presentation(remaining), IconSize, lightForeground: true);
 
-        foreach (var (x, y) in new[]
-                 {
-                     (0, 0), (IconSize - 1, 0), (0, IconSize - 1), (IconSize - 1, IconSize - 1),
-                     (1, 1), (IconSize - 2, 1), (1, IconSize - 2), (IconSize - 2, IconSize - 2)
-                 })
-        {
-            Assert.True(
-                bitmap.GetPixel(x, y).A <= 24,
-                $"Pixel ({x},{y}) is painted — a border or plate is back.");
-        }
-
-        // The whole top edge is clear too: no plate, not even a thin one.
+        // The top edge and the row below it: a plate of any kind paints here.
         for (var x = 0; x < IconSize; x++)
         {
             Assert.True(bitmap.GetPixel(x, 0).A <= 24, $"Top edge pixel ({x},0) is painted.");
+        }
+
+        // The side columns, everywhere above the state rule.
+        for (var y = 0; y < IconSize - RuleBand; y++)
+        {
+            Assert.True(bitmap.GetPixel(0, y).A <= 24, $"Left edge pixel (0,{y}) is painted.");
+            Assert.True(
+                bitmap.GetPixel(IconSize - 1, y).A <= 24,
+                $"Right edge pixel ({IconSize - 1},{y}) is painted.");
+        }
+    }
+
+    /// <summary>
+    /// The normal state draws no rule at all, so for it the entire perimeter —
+    /// bottom corners included — must be clear.
+    /// </summary>
+    [WindowsFact]
+    public void TheNormalStateLeavesTheWholePerimeterClear()
+    {
+        using var bitmap = TrayIconRenderer.RenderBitmap(Presentation(42), IconSize, lightForeground: true);
+
+        for (var index = 0; index < IconSize; index++)
+        {
+            Assert.True(bitmap.GetPixel(index, 0).A <= 24, $"Top pixel ({index},0) is painted.");
+            Assert.True(
+                bitmap.GetPixel(index, IconSize - 1).A <= 24,
+                $"Bottom pixel ({index},{IconSize - 1}) is painted.");
+            Assert.True(bitmap.GetPixel(0, index).A <= 24, $"Left pixel (0,{index}) is painted.");
+            Assert.True(
+                bitmap.GetPixel(IconSize - 1, index).A <= 24,
+                $"Right pixel ({IconSize - 1},{index}) is painted.");
         }
     }
 
