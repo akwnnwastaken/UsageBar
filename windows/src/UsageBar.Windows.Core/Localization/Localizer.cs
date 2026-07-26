@@ -87,9 +87,25 @@ public sealed class Localizer
 
     public string TrayGuidanceTitle => Pick("UsageBar'ı görünür tutun", "Keep UsageBar visible");
 
+    /// <summary>
+    /// Physical testing showed Windows does not necessarily place a moved icon
+    /// beside the clock — it landed next to the `^` button, which is normal
+    /// Windows ordering. The wording therefore asks for the visible tray area
+    /// rather than promising an exact position the application cannot control.
+    /// </summary>
     public string TrayGuidanceBody => Pick(
-        "UsageBar simgesini sürekli görmek için görev çubuğundaki ^ simgesini açıp UsageBar'ı saat yanına sürükleyin.",
-        "To keep UsageBar visible, open the ^ menu on the taskbar and drag UsageBar next to the clock.");
+        "UsageBar simgesi ^ menüsünde gizliyse simgeyi görev çubuğundaki görünür sistem tepsisi alanına taşıyın.",
+        "If UsageBar is hidden under ^, move its icon to the visible system tray area on the taskbar.");
+
+    /// <summary>The fuller explanation shown in settings, next to the manual action.</summary>
+    public string TrayGuidanceDetail => Pick(
+        "Windows, UsageBar simgesini ilk açılışta ^ menüsünde gizleyebilir. Simgeyi ^ menüsünden görev çubuğundaki görünür sistem tepsisi alanına taşıyabilirsiniz. Windows simgeyi saatin hemen yanına yerleştirmeyebilir; görünür alanda bulunması yeterlidir.",
+        "Windows may initially hide UsageBar under the ^ menu. You can move the icon from the overflow menu to the visible system tray area. Windows may not place it immediately next to the clock; being visible in the tray area is sufficient.");
+
+    /// <summary>Fallback route for Windows builds where dragging is unavailable.</summary>
+    public string TrayGuidanceSettingsPath => Pick(
+        "Windows Ayarlar > Kişiselleştirme > Görev Çubuğu > Diğer sistem tepsisi simgeleri",
+        "Windows Settings > Personalization > Taskbar > Other system tray icons");
 
     public string ShowTrayGuidanceAgain => Pick(
         "Sistem tepsisi yönlendirmesini yeniden göster",

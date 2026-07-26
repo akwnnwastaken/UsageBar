@@ -24,15 +24,34 @@ public sealed class TrayGuidanceTests
         Assert.False(TrayGuidancePolicy.ShouldShowAutomatically(TrayGuidancePolicy.CurrentGuidanceVersion));
     }
 
+    /// <summary>
+    /// The wording changed after physical testing, so the current version is 2
+    /// and everyone — including someone who already saw version 1 — must see the
+    /// corrected text exactly once.
+    /// </summary>
     [Fact]
-    public void OlderStoredVersionShowsGuidanceAgain()
+    public void TheCurrentGuidanceVersionIsTwo()
     {
-        Assert.True(TrayGuidancePolicy.ShouldShowAutomatically(1, currentVersion: 2));
+        Assert.Equal(2, TrayGuidancePolicy.CurrentGuidanceVersion);
+    }
+
+    [Theory]
+    [InlineData(null, true)]   // never shown
+    [InlineData(0, true)]      // recorded before any guidance existed
+    [InlineData(1, true)]      // saw the old "next to the clock" wording
+    [InlineData(2, false)]     // already saw the corrected wording
+    [InlineData(3, false)]     // a settings file from a future build
+    public void AutomaticGuidanceFollowsTheStoredVersion(int? stored, bool expected)
+    {
+        Assert.Equal(expected, TrayGuidancePolicy.ShouldShowAutomatically(stored, currentVersion: 2));
     }
 
     [Fact]
     public void NewerStoredVersionIsNeitherDowngradedNorReshown()
     {
+        Assert.False(TrayGuidancePolicy.ShouldShowAutomatically(3, currentVersion: 2));
+        Assert.Equal(3, TrayGuidancePolicy.VersionAfterShowing(3, currentVersion: 2));
+
         Assert.False(TrayGuidancePolicy.ShouldShowAutomatically(5, currentVersion: 1));
         Assert.Equal(5, TrayGuidancePolicy.VersionAfterShowing(5, currentVersion: 1));
     }
@@ -43,11 +62,32 @@ public sealed class TrayGuidanceTests
         Assert.True(TrayGuidancePolicy.ShouldShowManually());
     }
 
-    [Fact]
-    public void ShowingRecordsTheCurrentVersion()
+    [Theory]
+    [InlineData(null, 2)]
+    [InlineData(0, 2)]
+    [InlineData(1, 2)]
+    [InlineData(2, 2)]
+    public void ShowingRecordsTheCurrentVersion(int? stored, int expected)
     {
-        Assert.Equal(1, TrayGuidancePolicy.VersionAfterShowing(null, currentVersion: 1));
-        Assert.Equal(2, TrayGuidancePolicy.VersionAfterShowing(1, currentVersion: 2));
+        Assert.Equal(expected, TrayGuidancePolicy.VersionAfterShowing(stored, currentVersion: 2));
+    }
+
+    /// <summary>
+    /// Showing version 2 once must settle: the very next check must not ask for
+    /// it again.
+    /// </summary>
+    [Fact]
+    public void GuidanceShownOnceIsNotShownAutomaticallyAgain()
+    {
+        int? stored = 1;
+
+        Assert.True(TrayGuidancePolicy.ShouldShowAutomatically(stored));
+        stored = TrayGuidancePolicy.VersionAfterShowing(stored);
+
+        Assert.Equal(TrayGuidancePolicy.CurrentGuidanceVersion, stored);
+        Assert.False(TrayGuidancePolicy.ShouldShowAutomatically(stored));
+        // The manual action still works afterwards.
+        Assert.True(TrayGuidancePolicy.ShouldShowManually());
     }
 
     /// <summary>
@@ -95,14 +135,44 @@ public sealed class TrayGuidanceTests
 
         Assert.Equal("UsageBar'ı görünür tutun", turkish.TrayGuidanceTitle);
         Assert.Equal(
-            "UsageBar simgesini sürekli görmek için görev çubuğundaki ^ simgesini açıp UsageBar'ı saat yanına sürükleyin.",
+            "UsageBar simgesi ^ menüsünde gizliyse simgeyi görev çubuğundaki görünür sistem tepsisi alanına taşıyın.",
             turkish.TrayGuidanceBody);
         Assert.Equal("Sistem tepsisi yönlendirmesini yeniden göster", turkish.ShowTrayGuidanceAgain);
+        Assert.Equal(
+            "Windows Ayarlar > Kişiselleştirme > Görev Çubuğu > Diğer sistem tepsisi simgeleri",
+            turkish.TrayGuidanceSettingsPath);
 
         Assert.Equal("Keep UsageBar visible", english.TrayGuidanceTitle);
         Assert.Equal(
-            "To keep UsageBar visible, open the ^ menu on the taskbar and drag UsageBar next to the clock.",
+            "If UsageBar is hidden under ^, move its icon to the visible system tray area on the taskbar.",
             english.TrayGuidanceBody);
         Assert.Equal("Show system tray guidance again", english.ShowTrayGuidanceAgain);
+        Assert.Equal(
+            "Windows Settings > Personalization > Taskbar > Other system tray icons",
+            english.TrayGuidanceSettingsPath);
+    }
+
+    /// <summary>
+    /// The corrected wording must not promise a position Windows controls.
+    /// Physical testing showed the icon landing beside the `^` button rather
+    /// than beside the clock, which is normal and must not read as a failure.
+    /// </summary>
+    [Fact]
+    public void GuidanceDoesNotPromiseAPositionWindowsControls()
+    {
+        var turkish = new Localizer(AppLanguage.Turkish);
+        var english = new Localizer(AppLanguage.English);
+
+        Assert.DoesNotContain("saat yanına", turkish.TrayGuidanceBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("next to the clock", english.TrayGuidanceBody, StringComparison.OrdinalIgnoreCase);
+
+        // Both point at the visible tray area instead.
+        Assert.Contains("görünür sistem tepsisi", turkish.TrayGuidanceBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("visible system tray area", english.TrayGuidanceBody, StringComparison.OrdinalIgnoreCase);
+
+        // The detailed text may mention the clock, but only to say the position
+        // is not guaranteed.
+        Assert.Contains("yeterlidir", turkish.TrayGuidanceDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("is sufficient", english.TrayGuidanceDetail, StringComparison.OrdinalIgnoreCase);
     }
 }

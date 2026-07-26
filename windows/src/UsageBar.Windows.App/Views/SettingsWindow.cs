@@ -133,6 +133,9 @@ internal sealed class SettingsWindow : Window
             _content.Children.Add(Note(text.LaunchAtStartupStalePath));
         }
 
+        _content.Children.Add(Caption(text.TrayGuidanceTitle));
+        _content.Children.Add(Explanation(text.TrayGuidanceDetail));
+        _content.Children.Add(Explanation(text.TrayGuidanceSettingsPath));
         _content.Children.Add(Action(
             text.ShowTrayGuidanceAgain,
             () => TrayGuidanceRequested?.Invoke(this, EventArgs.Empty)));
@@ -258,6 +261,16 @@ internal sealed class SettingsWindow : Window
         FontSize = 11,
         FontWeight = FontWeights.SemiBold,
         Margin = new Thickness(0, 6, 0, 6)
+    };
+
+    /// <summary>Wrapping explanatory text; never clipped, however long.</summary>
+    private TextBlock Explanation(string value) => new()
+    {
+        Text = value,
+        Foreground = _theme.SecondaryForeground,
+        FontSize = 11,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 8)
     };
 
     private TextBlock Note(string value) => new()

@@ -98,7 +98,8 @@ right, and having them in place keeps the eventual adapter small.
 | 11 | Minute-less reset times resolve with seconds pinned to zero. | Sub-minute detail never reaches a countdown displayed in minutes. |
 | 12 | The Claude parser also accepts a colon-less label and a reset on the following line. | Cheap resilience; the print-mode shape is still what the adapter will use. |
 | 13 | First-run tray-visibility guidance exists. | New tray icons can land in the `^` overflow menu, which has no macOS equivalent. |
-| 14 | **Claude Code is not available at all in this build.** | The Windows adapters are not written yet. Shown disabled, never faked. |
+| 14 | The panel sizes itself to its content between a minimum and the monitor's working area, and its actions wrap onto further lines. | Turkish runs longer than English, and a fixed width clipped the footer buttons on a real machine. |
+| 15 | **Claude Code is not available at all in this build.** | The Windows adapters are not written yet. Shown disabled, never faked. |
 
 ---
 
@@ -254,11 +255,34 @@ one non-modal balloon:
 | Body | UsageBar simgesini sürekli görmek için görev çubuğundaki ^ simgesini açıp UsageBar'ı saat yanına sürükleyin. | To keep UsageBar visible, open the ^ menu on the taskbar and drag UsageBar next to the clock. |
 | Manual action | Sistem tepsisi yönlendirmesini yeniden göster | Show system tray guidance again |
 
+The settings window additionally shows the full explanation and, as a fallback
+for builds where dragging is unavailable, the route through
+**Windows Settings → Personalization → Taskbar → Other system tray icons**.
+
 `trayGuidanceVersionShown` is recorded only after the notification request was
 issued. A stored version equal to or newer than the current one does not show
 it again and is never rolled back; an older one shows the updated guidance once.
 The manual action always shows it, and recording the version leaves every other
 setting untouched — all asserted in `TrayGuidanceTests`.
+
+The current guidance version is **2**.
+
+#### Finding from physical testing
+
+**2026-07-26 — the icon moved successfully, but not next to the clock.**
+Dragging UsageBar out of the `^` overflow menu worked, and the icon settled in
+the visible tray area *beside the `^` button* rather than beside the clock.
+
+That is normal Windows behavior: the shell decides the ordering within the tray,
+and an application cannot and should not control it. The version 1 wording
+("drag UsageBar next to the clock" / "saat yanına sürükleyin") promised a
+position UsageBar does not control, so a correct outcome read like a failure.
+
+The acceptance criterion is simply that **the icon is present in the visible
+tray area**, wherever the shell places it within that area. The wording was
+changed to ask for exactly that, the detailed text in settings states outright
+that Windows may not put it next to the clock, and the guidance version was
+raised to 2 so everyone sees the correction once.
 
 ---
 
@@ -283,6 +307,33 @@ dotnet run --project windows/src/UsageBar.Windows.App/UsageBar.Windows.App.cspro
 **compile** on macOS or Linux (`EnableWindowsTargeting` is set) but the tests
 that need a real Windows kernel are marked `[WindowsFact]` / `[WindowsTheory]`
 and report as **skipped** — never as passed — anywhere else.
+
+### Panel layout
+
+The panel is not a fixed-size window. It uses `SizeToContent.WidthAndHeight`
+between a **380 DIP minimum** — sized for Turkish, which runs longer than
+English — and a maximum that is the smaller of 560 DIP and the monitor's
+working area. Height grows to fit and is capped by the working area, after which
+the usage list scrolls.
+
+The footer actions are docked, not scrolled, so they stay reachable no matter
+how long the list gets, and they live in a `WrapPanel` whose buttons measure to
+their own text. A longer translation therefore moves a button onto a second line
+rather than pushing it off the panel edge. The provider selector wraps for the
+same reason. Horizontal scrolling is disabled outright, so content wraps instead
+of hiding to the right.
+
+Placement converts the monitor's working area into device-independent pixels
+before use, which is what keeps the panel on screen at 125% and 150% scaling, on
+a second monitor with a different scale, and with the taskbar on any edge.
+
+#### Finding from physical testing
+
+**2026-07-26 — the Turkish footer was clipped.** At the original fixed 340 DIP
+width, `UsageBar'dan çık` ran past the panel edge and
+`Tanılama özetini kopyala` squeezed the row. The layout above replaced the fixed
+width and the single-line footer; nothing is tuned to the specific screen the
+issue was found on.
 
 ## 9. Packaging
 
@@ -392,14 +443,21 @@ to share — use that instead of describing your setup by hand.
 - [ ] No console window appears, not even briefly.
 - [ ] No normal taskbar button appears.
 - [ ] UsageBar appears in the notification area, or under the `^` overflow menu.
-- [ ] The first-run guidance notification appears **once**.
+- [ ] The first-run guidance notification appears **once**, and says to move the
+      icon to the *visible system tray area* — not "next to the clock".
 - [ ] Closing and reopening the app does **not** show the guidance again.
-- [ ] The icon can be dragged out of the `^` menu next to the clock, and stays
-      there after a restart.
+- [ ] The icon can be dragged out of the `^` menu into the visible tray area,
+      and stays there after a restart. **Windows deciding to place it beside the
+      `^` button rather than beside the clock is expected, not a failure.**
 
 ### Tray and panel
 
 - [ ] Left-click opens the panel; left-click again closes it.
+- [ ] **In Turkish, every footer button is fully visible** — `Ayarlar`,
+      `Tanılama özetini kopyala` and `UsageBar'dan çık` are all readable and
+      none is clipped by the panel edge.
+- [ ] In English the same holds for the longer labels.
+- [ ] No button sits on top of another or runs past the right edge.
 - [ ] Right-click opens the context menu.
 - [ ] Clicking outside the panel closes it.
 - [ ] Closing the panel leaves the app running in the tray.
@@ -451,7 +509,11 @@ Requires Codex installed and signed in.
 - [ ] On the primary monitor the panel opens near the notification area, fully
       on screen.
 - [ ] On a secondary monitor it opens on that monitor, fully on screen.
-- [ ] At 100%, 125% and 150% scaling nothing is clipped and text stays sharp.
+- [ ] At 100%, 125% and 150% scaling nothing is clipped and text stays sharp,
+      in both Turkish and English.
+- [ ] With a long error message, a stale-data warning, several usage windows and
+      the history chart all showing at once, the panel still fits the screen and
+      the footer actions stay visible.
 - [ ] With the taskbar moved to the top, left or right edge, the panel still
       lands inside the working area.
 - [ ] Dragging the panel's monitor between different scale factors does not

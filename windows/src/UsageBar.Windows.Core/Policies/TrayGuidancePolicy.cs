@@ -11,8 +11,16 @@ namespace UsageBar.Windows.Core.Policies;
 /// </summary>
 public static class TrayGuidancePolicy
 {
-    /// <summary>Current guidance version. Increment to re-show updated wording.</summary>
-    public const int CurrentGuidanceVersion = 1;
+    /// <summary>
+    /// Current guidance version. Increment whenever the wording changes, so
+    /// everyone sees the new text once.
+    ///
+    /// Version 2 followed physical testing: version 1 told the user to drag the
+    /// icon "next to the clock", but Windows placed it beside the `^` button
+    /// instead. That is normal Windows ordering, not a failure, so the wording
+    /// now asks for the visible tray area rather than an exact position.
+    /// </summary>
+    public const int CurrentGuidanceVersion = 2;
 
     /// <summary>
     /// Automatic guidance is shown when nothing has been recorded yet or when

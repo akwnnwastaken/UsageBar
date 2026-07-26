@@ -22,10 +22,26 @@ namespace UsageBar.Windows.App.Views;
 [SupportedOSPlatform("windows")]
 internal sealed class UsagePanelWindow : Window
 {
-    private const double PanelWidth = 340;
+    /// <summary>
+    /// Narrowest the panel may get. Sized for Turkish, which runs noticeably
+    /// longer than English — "Tanılama özetini kopyala" against "Copy
+    /// diagnostics" — and was what overflowed the original fixed 340.
+    /// </summary>
+    private const double MinimumPanelWidth = 380;
+
+    /// <summary>
+    /// Widest the panel grows before text wraps instead. The real cap is the
+    /// monitor's working area, applied in <see cref="ApplySizeConstraints"/>.
+    /// </summary>
+    private const double PreferredMaximumWidth = 560;
+
+    /// <summary>Gap kept between the panel and the edges of the working area.</summary>
+    private const double ScreenMargin = 12;
 
     private readonly UsageBarController _controller;
     private readonly StackPanel _content;
+    private readonly WrapPanel _footer;
+    private readonly ScrollViewer _scroller;
     private AppTheme _theme = AppTheme.Current();
 
     public UsagePanelWindow(UsageBarController controller)
@@ -36,26 +52,43 @@ internal sealed class UsagePanelWindow : Window
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         Topmost = true;
-        SizeToContent = SizeToContent.Height;
-        Width = PanelWidth;
+        // Both dimensions follow the content: the panel widens for long strings
+        // rather than clipping them, bounded by MinWidth/MaxWidth.
+        SizeToContent = SizeToContent.WidthAndHeight;
+        MinWidth = MinimumPanelWidth;
+        MaxWidth = PreferredMaximumWidth;
         AllowsTransparency = false;
         Title = "UsageBar";
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
         FontSize = 13;
 
-        _content = new StackPanel { Margin = new Thickness(14) };
-        var border = new Border
+        _content = new StackPanel();
+        _scroller = new ScrollViewer
         {
-            BorderThickness = new Thickness(1),
-            Child = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                MaxHeight = 620,
-                Content = _content
-            }
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            // Never scroll sideways: content wraps instead, so nothing is ever
+            // hidden off the right edge.
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = _content
         };
 
-        Content = border;
+        // Actions wrap onto further lines when they do not fit on one, so a
+        // long label can never push a button past the panel edge.
+        _footer = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+
+        // The footer is docked, not scrolled, so the actions stay reachable
+        // however long the usage list gets.
+        var layout = new DockPanel { LastChildFill = true, Margin = new Thickness(16, 14, 16, 14) };
+        DockPanel.SetDock(_footer, Dock.Bottom);
+        layout.Children.Add(_footer);
+        layout.Children.Add(_scroller);
+
+        Content = new Border
+        {
+            BorderThickness = new Thickness(1),
+            Child = layout
+        };
+
         Deactivated += OnDeactivated;
         // Closing the panel must never end the application.
         Closing += (_, e) =>
@@ -89,24 +122,27 @@ internal sealed class UsagePanelWindow : Window
     {
         _theme = AppTheme.Current();
         Rebuild();
-
-        // Measure before positioning so the panel can be placed by its real
-        // height, not an estimate.
         Show();
+
+        // Constrain first, then measure, then place: the position depends on the
+        // panel's real size, and its real size depends on how much room the
+        // monitor allows.
+        ApplySizeConstraints();
         UpdateLayout();
         PositionAboveTray();
         Activate();
     }
 
     /// <summary>
-    /// Places the panel inside the working area of the monitor that currently
-    /// holds the mouse, so it lands next to the notification area on that
-    /// display and never overlaps the taskbar.
+    /// The monitor's working area in device-independent pixels — the units
+    /// <see cref="Window.Left"/>, <see cref="Window.Width"/> and the layout
+    /// system use. Doing the conversion here is what keeps placement correct at
+    /// 125% and 150% scaling and on a second monitor with a different scale.
     /// </summary>
-    private void PositionAboveTray()
+    private Rect CurrentWorkArea()
     {
-        var source = PresentationSource.FromVisual(this);
-        var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var transform = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice
+                        ?? Matrix.Identity;
 
         var screen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
         var work = screen.WorkingArea;
@@ -114,17 +150,44 @@ internal sealed class UsagePanelWindow : Window
         var topLeft = transform.Transform(new Point(work.Left, work.Top));
         var bottomRight = transform.Transform(new Point(work.Right, work.Bottom));
 
-        const double margin = 12;
-        var width = ActualWidth > 0 ? ActualWidth : PanelWidth;
-        var height = ActualHeight > 0 ? ActualHeight : 200;
+        return new Rect(topLeft, bottomRight);
+    }
 
-        var left = bottomRight.X - width - margin;
-        var top = bottomRight.Y - height - margin;
+    /// <summary>
+    /// Bounds the panel to what the current monitor can actually show. Width is
+    /// capped so it never runs off the side; height is capped so a long usage
+    /// list scrolls inside the panel instead of growing past the screen.
+    /// </summary>
+    private void ApplySizeConstraints()
+    {
+        var work = CurrentWorkArea();
+        var available = ScreenMargin * 2;
 
-        // Clamp into the working area so a taskbar on the top or the left, or a
-        // panel taller than the screen, still lands somewhere visible.
-        Left = Math.Max(topLeft.X + margin, Math.Min(left, bottomRight.X - width - margin));
-        Top = Math.Max(topLeft.Y + margin, Math.Min(top, bottomRight.Y - height - margin));
+        MaxWidth = Math.Max(MinimumPanelWidth, Math.Min(PreferredMaximumWidth, work.Width - available));
+        MaxHeight = Math.Max(240, work.Height - available);
+    }
+
+    /// <summary>
+    /// Places the panel inside the working area of the monitor that currently
+    /// holds the mouse, so it lands near the notification area on that display
+    /// and never overlaps the taskbar — including when the taskbar is on the
+    /// top, left or right edge.
+    /// </summary>
+    private void PositionAboveTray()
+    {
+        var work = CurrentWorkArea();
+        var width = ActualWidth > 0 ? ActualWidth : MinimumPanelWidth;
+        var height = ActualHeight > 0 ? ActualHeight : 240;
+
+        // Preferred spot: the bottom-right of the working area, which is where
+        // the notification area sits in the default Windows layout.
+        var left = work.Right - width - ScreenMargin;
+        var top = work.Bottom - height - ScreenMargin;
+
+        // Clamped so a panel wider or taller than the working area still starts
+        // on screen rather than disappearing off the top-left.
+        Left = Math.Max(work.Left + ScreenMargin, Math.Min(left, work.Right - width - ScreenMargin));
+        Top = Math.Max(work.Top + ScreenMargin, Math.Min(top, work.Bottom - height - ScreenMargin));
     }
 
     private void OnDeactivated(object? sender, EventArgs e)
@@ -153,6 +216,7 @@ internal sealed class UsagePanelWindow : Window
         }
 
         _content.Children.Clear();
+        _footer.Children.Clear();
         _content.Children.Add(Header(text));
 
         var connected = _controller.ConnectedProviderNames;
@@ -182,7 +246,7 @@ internal sealed class UsagePanelWindow : Window
             _content.Children.Add(Muted(text.LastUpdated(text.FormattedTime(updated))));
         }
 
-        _content.Children.Add(FooterButtons(text));
+        BuildFooter(text);
     }
 
     private UIElement Header(Localizer text)
@@ -197,7 +261,10 @@ internal sealed class UsagePanelWindow : Window
             FontSize = 17,
             FontWeight = FontWeights.SemiBold,
             Foreground = _theme.Foreground,
-            VerticalAlignment = System.Windows.VerticalAlignment.Center
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            // The title yields before the refresh button does: losing a
+            // character of "UsageBar" is better than clipping an action.
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         Grid.SetColumn(title, 0);
         grid.Children.Add(title);
@@ -205,7 +272,9 @@ internal sealed class UsagePanelWindow : Window
         var refresh = new Button
         {
             Content = _controller.IsRefreshing ? text.Refreshing : text.RefreshNow,
-            Padding = new Thickness(10, 3, 10, 3),
+            MinWidth = 88,
+            Padding = new Thickness(12, 5, 12, 5),
+            Margin = new Thickness(8, 0, 0, 0),
             IsEnabled = !_controller.IsRefreshing && _controller.ConnectedProviderNames.Count > 0
         };
         refresh.Click += (_, _) => _ = _controller.RefreshAsync();
@@ -220,7 +289,9 @@ internal sealed class UsagePanelWindow : Window
         var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
         panel.Children.Add(Caption(text.ShowInTray));
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        // Wraps for the same reason the footer does: three provider names in
+        // Turkish can be wider than the panel.
+        var row = new WrapPanel();
         row.Children.Add(SelectorButton(
             text.Automatic,
             _controller.Settings.AutoRotateProviders,
@@ -385,21 +456,18 @@ internal sealed class UsagePanelWindow : Window
         return Section(panel);
     }
 
-    private UIElement FooterButtons(Localizer text)
+    /// <summary>
+    /// Fills the docked action area. The buttons live in a WrapPanel and size
+    /// themselves to their text, so a longer translation moves a button onto the
+    /// next line instead of pushing it off the panel.
+    /// </summary>
+    private void BuildFooter(Localizer text)
     {
-        var row = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 10, 0, 0)
-        };
-
-        row.Children.Add(ActionButton(text.Settings, () => SettingsRequested?.Invoke(this, EventArgs.Empty)));
-        row.Children.Add(ActionButton(
+        _footer.Children.Add(ActionButton(text.Settings, () => SettingsRequested?.Invoke(this, EventArgs.Empty)));
+        _footer.Children.Add(ActionButton(
             text.CopyDiagnostics,
             () => DiagnosticsRequested?.Invoke(this, EventArgs.Empty)));
-        row.Children.Add(ActionButton(text.ExitUsageBar, () => ExitRequested?.Invoke(this, EventArgs.Empty)));
-
-        return row;
+        _footer.Children.Add(ActionButton(text.ExitUsageBar, () => ExitRequested?.Invoke(this, EventArgs.Empty)));
     }
 
     private Button ActionButton(string label, Action action)
@@ -407,8 +475,12 @@ internal sealed class UsagePanelWindow : Window
         var button = new Button
         {
             Content = label,
-            Padding = new Thickness(10, 4, 10, 4),
-            Margin = new Thickness(0, 0, 6, 0)
+            // No fixed width: the button measures to its own text so nothing is
+            // ever trimmed. MinWidth only keeps short labels from looking
+            // cramped next to long ones.
+            MinWidth = 88,
+            Padding = new Thickness(12, 5, 12, 5),
+            Margin = new Thickness(0, 0, 8, 8)
         };
         button.Click += (_, _) => action();
         return button;
@@ -419,8 +491,9 @@ internal sealed class UsagePanelWindow : Window
         var button = new Button
         {
             Content = label,
-            Padding = new Thickness(12, 3, 12, 3),
-            Margin = new Thickness(0, 0, 6, 0),
+            MinWidth = 72,
+            Padding = new Thickness(12, 4, 12, 4),
+            Margin = new Thickness(0, 0, 8, 8),
             FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal,
             BorderBrush = isSelected ? _theme.Normal : _theme.Border,
             BorderThickness = new Thickness(isSelected ? 2 : 1)
@@ -486,7 +559,4 @@ internal sealed class UsagePanelWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr window, int index, int value);
-
-    internal static string FormatPercent(int value) =>
-        value.ToString(CultureInfo.InvariantCulture);
 }
