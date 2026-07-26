@@ -1,7 +1,7 @@
 name: Windows CI
 
-# Builds and tests the Windows port only. The macOS workflows (ci.yml,
-# release-candidate.yml) are untouched and keep their own triggers.
+# Builds, tests and packages the Windows port only. The macOS workflows
+# (ci.yml, release-candidate.yml) are untouched and keep their own triggers.
 #
 # The job is deliberately NOT called `build-and-test`: that context name is the
 # required status check for the macOS build on `main`, and a second job sharing
@@ -10,8 +10,8 @@ on:
   push:
     # Working branches are included so the Windows-only tests (Job Object
     # containment, process-tree teardown) actually run before the work reaches
-    # `main`. GitHub only offers workflow_dispatch for files already on the
-    # default branch, so the push trigger is what exercises a new branch.
+    # `main`. GitHub only offers workflow_dispatch for workflow files already on
+    # the default branch, so the push trigger is what exercises a new branch.
     branches:
       - main
       - 'agent/**'
@@ -41,7 +41,15 @@ env:
 jobs:
   windows-build-and-test:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+
+    # Every dotnet command runs from `windows/` so that windows/global.json is
+    # the SDK the CLI resolves. Without it the muxer silently picks the newest
+    # SDK on the runner, which is not the one this workflow installs.
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,27 +59,60 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Fails the run if anything other than .NET 8 is in effect, so a silent
+      # SDK drift can never be discovered only after shipping.
+      - name: Verify the SDK in use is .NET 8
+        run: |
+          $sdk = dotnet --version
+          Write-Host "dotnet --version: $sdk"
+          dotnet --list-sdks
+          if (-not $sdk.StartsWith('8.')) {
+            Write-Host "::error::Expected the .NET 8 SDK, resolved $sdk"
+            exit 1
+          }
+
       - name: Restore
-        run: dotnet restore windows/UsageBar.Windows.sln
+        run: dotnet restore UsageBar.Windows.sln
 
       - name: Build (Release)
-        run: dotnet build windows/UsageBar.Windows.sln --configuration Release --no-restore
+        run: dotnet build UsageBar.Windows.sln --configuration Release --no-restore
 
       # The Windows-only tests (Job Object containment, process-tree teardown,
-      # CreateProcessW argument round-trips, executable ACL validation) can only
-      # run here. Elsewhere they report as skipped, never as passed.
+      # CreateProcessW argument round-trips, executable ACL validation, registry
+      # auto-start) can only run here. Elsewhere they report as skipped, never
+      # as passed.
       - name: Test (Release)
         run: >
-          dotnet test windows/UsageBar.Windows.sln
+          dotnet test UsageBar.Windows.sln
           --configuration Release
           --no-build
           --logger "trx;LogFileName=windows-tests.trx"
           --results-directory artifacts/test-results
+
+      # -SkipTests because the step above just ran the whole suite against this
+      # exact tree; the script still does its own publish, staging and hashing.
+      - name: Package (portable ZIP)
+        run: ./scripts/package.ps1 -SkipTests
+
+      # Refuses to publish an archive that ships symbols, test assets, source,
+      # macOS output, leaked paths, a console-subsystem binary or a manifest
+      # asking for administrator rights.
+      - name: Verify the package
+        run: ./scripts/verify-package.ps1
+
+      - name: Upload the portable package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UsageBar-Windows-x64
+          path: |
+            windows/artifacts/UsageBar-Windows-x64.zip
+            windows/artifacts/UsageBar-Windows-x64.zip.sha256
+          if-no-files-found: error
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-test-results
-          path: artifacts/test-results
+          path: windows/artifacts/test-results
           if-no-files-found: warn

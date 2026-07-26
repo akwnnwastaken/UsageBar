@@ -272,6 +272,7 @@ internal sealed class UsageBarController : IDisposable
     /// </summary>
     public string BuildDiagnostics() => DiagnosticsReportBuilder.Build(new DiagnosticsInput(
         WindowsEnvironmentInfo.ApplicationVersion,
+        WindowsEnvironmentInfo.BuildId,
         WindowsEnvironmentInfo.Version,
         WindowsEnvironmentInfo.OsArchitecture,
         WindowsEnvironmentInfo.ProcessArchitecture,

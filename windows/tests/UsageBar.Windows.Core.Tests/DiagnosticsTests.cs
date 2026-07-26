@@ -26,9 +26,11 @@ public sealed class DiagnosticsTests
         string? issueCode = null,
         string? appVersion = null,
         string? windowsVersion = null,
-        IReadOnlyList<string>? windowKinds = null) =>
+        IReadOnlyList<string>? windowKinds = null,
+        string? buildId = null) =>
         new(
             AppVersion: appVersion ?? "1.9.0",
+            BuildId: buildId ?? "0a48c1e",
             WindowsVersion: windowsVersion ?? "10.0.22631",
             OsArchitecture: "X64",
             AppArchitecture: "X64",
@@ -65,6 +67,7 @@ public sealed class DiagnosticsTests
         var report = DiagnosticsReportBuilder.Build(Input());
 
         Assert.Contains("UsageBar 1.9.0", report, StringComparison.Ordinal);
+        Assert.Contains("build=0a48c1e", report, StringComparison.Ordinal);
         Assert.Contains("windows=10.0.22631", report, StringComparison.Ordinal);
         Assert.Contains("os_arch=X64", report, StringComparison.Ordinal);
         Assert.Contains("language=turkish", report, StringComparison.Ordinal);
@@ -90,7 +93,8 @@ public sealed class DiagnosticsTests
             issueCode: sensitive,
             appVersion: sensitive,
             windowsVersion: sensitive,
-            windowKinds: new[] { sensitive }));
+            windowKinds: new[] { sensitive },
+            buildId: sensitive));
 
         Assert.DoesNotContain(sensitive, report, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(DiagnosticsSanitizer.Redacted, report, StringComparison.Ordinal);

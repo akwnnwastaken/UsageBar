@@ -1,0 +1,16 @@
+{
+  "$comment": [
+    "Pins the Windows port to the .NET 8 SDK. Without this the muxer picks the",
+    "newest SDK installed on the machine — on the GitHub runner that is .NET 10,",
+    "which built net8.0 fine but meant the workflow was not using the SDK it",
+    "installed. The `dotnet` CLI resolves global.json from the current working",
+    "directory upward, so every command must run from `windows/`.",
+    "Scoped to windows/ on purpose: the macOS SwiftPM build at the repository",
+    "root is unaffected, and no global.json exists at the root."
+  ],
+  "sdk": {
+    "version": "8.0.100",
+    "rollForward": "latestFeature",
+    "allowPrerelease": false
+  }
+}

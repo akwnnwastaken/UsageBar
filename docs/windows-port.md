@@ -283,10 +283,50 @@ the tray behavior is confirmed on real machines.
 The published `UsageBar.exe` is a PE32+ **GUI**-subsystem binary, so no console
 window is ever created, with the PerMonitorV2 DPI manifest embedded.
 
+### Packaging locally
+
+```powershell
+pwsh windows/scripts/package.ps1          # restore, build, test, publish, ZIP, SHA-256
+pwsh windows/scripts/verify-package.ps1   # the same gate CI runs
+```
+
+`package.ps1` writes only inside `windows/artifacts/`, refuses to delete
+anything outside it, and is reproducible: assemblies build deterministically,
+no PDBs are produced, archive entries are added in sorted order and every entry
+timestamp is pinned to the source commit date. The same commit built with the
+same SDK produces a byte-identical ZIP — verified by building twice and
+comparing the SHA-256.
+
+### The package is not code signed
+
+There is no Authenticode signature and no Apple-style notarization equivalent.
+On first run Windows SmartScreen will show a "Windows protected your PC" prompt.
+
+Verify the SHA-256 before running it, then choose **More info → Run anyway** for
+that one file. **Do not disable SmartScreen or Windows Defender** — turning off
+a machine-wide protection to run one unsigned utility is a far worse trade than
+the warning it removes.
+
 ## 10. Continuous integration
 
-`.github/workflows/windows-ci.yml` runs on `windows-latest` and performs restore,
-Release build and the full test suite, uploading the `.trx` results.
+`.github/workflows/windows-ci.yml` runs on `windows-latest`:
+
+1. checkout
+2. install the .NET 8 SDK
+3. **verify the resolved SDK is 8.x** — the run fails otherwise
+4. restore
+5. Release build
+6. Release test (uploads `.trx`)
+7. `scripts/package.ps1 -SkipTests` (the suite just ran on the same tree)
+8. `scripts/verify-package.ps1` — the package security gate
+9. upload the artifact **`UsageBar-Windows-x64`**, containing
+   `UsageBar-Windows-x64.zip` and `UsageBar-Windows-x64.zip.sha256`
+
+Every step runs with `working-directory: windows` so `windows/global.json` is
+the SDK the CLI resolves. Without it the muxer picks the newest SDK on the
+runner, which is not the one the workflow installs.
+
+The workflow does not create a tag, publish a GitHub Release, or push anywhere.
 
 Its job is named **`windows-build-and-test`**, deliberately *not*
 `build-and-test`: that context name is the required status check the macOS
@@ -295,14 +335,123 @@ check ambiguous. The macOS workflows are untouched and keep their own triggers.
 
 ---
 
-## 11. Known limitations
+## 11. Physical Windows Test Checklist
+
+Everything below is **unverified**. It has been built, automatically tested and
+packaged on a GitHub Actions `windows-latest` runner; no human has run it on a
+physical Windows machine. This checklist is what turns that into real
+verification.
+
+Please do not paste tokens, credentials or full private file paths into any
+report. The **Copy diagnostics** action already produces a summary that is safe
+to share — use that instead of describing your setup by hand.
+
+### Download and verify
+
+- [ ] Open the green **Windows CI** run on the `agent/windows-port` branch and
+      download the **`UsageBar-Windows-x64`** artifact.
+- [ ] GitHub wraps artifacts in an outer ZIP — extract it to get
+      `UsageBar-Windows-x64.zip` and `UsageBar-Windows-x64.zip.sha256`.
+- [ ] Check the hash matches the `.sha256` file:
+      ```powershell
+      (Get-FileHash .\UsageBar-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+      Get-Content .\UsageBar-Windows-x64.zip.sha256
+      ```
+- [ ] Extract the ZIP. It contains a single `UsageBar\` folder.
+- [ ] Right-click `UsageBar-Windows-x64.zip` → Properties → **Unblock** before
+      extracting, if Windows marked it as downloaded.
+- [ ] Run `UsageBar\UsageBar.exe`. SmartScreen will warn because the build is
+      unsigned: **More info → Run anyway**. Do not disable SmartScreen or
+      Defender.
+
+### First launch
+
+- [ ] No console window appears, not even briefly.
+- [ ] No normal taskbar button appears.
+- [ ] UsageBar appears in the notification area, or under the `^` overflow menu.
+- [ ] The first-run guidance notification appears **once**.
+- [ ] Closing and reopening the app does **not** show the guidance again.
+- [ ] The icon can be dragged out of the `^` menu next to the clock, and stays
+      there after a restart.
+
+### Tray and panel
+
+- [ ] Left-click opens the panel; left-click again closes it.
+- [ ] Right-click opens the context menu.
+- [ ] Clicking outside the panel closes it.
+- [ ] Closing the panel leaves the app running in the tray.
+- [ ] The percentage inside the icon is legible at your display scale.
+- [ ] The tooltip shows the provider, the remaining percentage and — when the
+      reset countdown setting is on — the window and time remaining.
+- [ ] Switching Turkish ↔ English changes every visible string.
+- [ ] The panel is readable in both light and dark Windows appearance.
+- [ ] Opening **Settings** keeps the panel open rather than dismissing it.
+
+### Codex
+
+Requires Codex installed and signed in.
+
+- [ ] **Connect Codex** succeeds.
+- [ ] The percentage shown matches what `codex` itself reports.
+- [ ] The five-hour and weekly windows are both listed, with the right values.
+- [ ] The reset countdown is plausible and counts down.
+- [ ] **Refresh now** updates the value.
+- [ ] After ten refreshes in a row, Task Manager shows **no** leftover `codex`,
+      `node`, `cmd` or `conhost` processes.
+- [ ] With Codex not installed (or renamed), the panel shows a clear
+      "Codex not found" message rather than a crash or a blank value.
+- [ ] **Copy diagnostics** produces a summary with no path, token or raw output
+      in it.
+
+### Settings persistence
+
+- [ ] The refresh interval survives a restart.
+- [ ] The language choice survives a restart.
+- [ ] The threshold profile survives a restart.
+- [ ] The usage-colour toggle survives a restart.
+- [ ] **Show system tray guidance again** shows the notification on demand.
+- [ ] **Launch at startup** can be switched on and off without an administrator
+      prompt, and the app really does start after a sign-out/sign-in.
+- [ ] Usage history survives a restart, and **Clear history** empties the chart.
+
+### Exit and process cleanup
+
+- [ ] **Exit UsageBar** closes the application completely.
+- [ ] The tray icon disappears immediately rather than lingering as a ghost.
+- [ ] Task Manager shows no `UsageBar` process afterwards.
+- [ ] Task Manager shows no leftover `codex`, `node`, `powershell` or WSL helper
+      process.
+- [ ] Quitting **during** a refresh also leaves nothing behind.
+
+### Multiple monitors and DPI
+
+- [ ] On the primary monitor the panel opens near the notification area, fully
+      on screen.
+- [ ] On a secondary monitor it opens on that monitor, fully on screen.
+- [ ] At 100%, 125% and 150% scaling nothing is clipped and text stays sharp.
+- [ ] With the taskbar moved to the top, left or right edge, the panel still
+      lands inside the working area.
+- [ ] Dragging the panel's monitor between different scale factors does not
+      leave it mispositioned.
+
+### Reporting back
+
+For anything that fails, the most useful report is: which checkbox, what
+happened instead, and the output of **Copy diagnostics**.
+
+## 12. Known limitations
 
 1. **Claude Code is not implemented.** Codex is the only working provider.
-2. **No physical Windows verification.** Everything reported as verified was
-   verified on a GitHub Actions `windows-latest` runner. That is a real Windows
-   environment, but it is not a physical user machine: the tray icon, the popup
-   placement, DPI changes, multi-monitor behavior, the balloon notification and
-   the light/dark appearance have **not** been seen by a human on real hardware.
+2. **No physical Windows verification.** Three distinct levels apply, and they
+   must not be conflated:
+   - *Compiled and automatically tested on Windows CI* — the whole solution,
+     including the Job Object containment and process-tree teardown tests.
+   - *Packaged on Windows CI* — the ZIP is produced and passes the package
+     security gate.
+   - *Tested by a person on a physical Windows machine* — ***not done.***
+     Nobody has seen the tray icon, the popup placement, DPI or multi-monitor
+     behavior, the balloon notification, the light/dark appearance, or a real
+     signed-in Codex account being read. Section 11 is the checklist for it.
 3. **No signed-in Codex has been exercised.** The adapter is tested against
    fixtures and against stock Windows executables standing in for the app
    server. A real signed-in Codex installation has not been read from.
@@ -312,4 +461,9 @@ check ambiguous. The macOS workflows are untouched and keep their own triggers.
    and file-type checks still apply.
 6. Windows ARM64 is out of scope; the publish is x64 only.
 7. The panel uses an opaque background. Mica/Acrylic is deliberately deferred.
-8. `windows-ci.yml` does not yet publish or upload a ZIP artifact.
+8. **The package is unsigned.** No Authenticode certificate, so SmartScreen
+   warns on first run. Verify the SHA-256 rather than disabling protection.
+9. The portable ZIP is ~61 MB compressed / ~145 MB extracted because the .NET
+   runtime is bundled. That is the cost of not requiring a .NET installation.
+10. Reproducibility holds for the same commit **and** the same SDK feature band.
+    A different 8.0.x SDK can emit different IL and change the hash.

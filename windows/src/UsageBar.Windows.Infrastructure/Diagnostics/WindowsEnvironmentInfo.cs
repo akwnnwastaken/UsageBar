@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -41,6 +42,34 @@ public static class WindowsEnvironmentInfo
                 : string.Create(
                     CultureInfo.InvariantCulture,
                     $"{version.Major}.{version.Minor}.{version.Build}");
+        }
+    }
+
+    /// <summary>
+    /// Short commit SHA this build came from, so a physical test report can be
+    /// tied to an exact revision. Supplied at build time through MSBuild's
+    /// <c>SourceRevisionId</c>, which the compiler appends to the informational
+    /// version as <c>1.9.0+abc1234</c>. Only the hex id is exposed — never a
+    /// branch name, a path or a build machine.
+    /// </summary>
+    public static string BuildId
+    {
+        get
+        {
+            var informational = typeof(WindowsEnvironmentInfo).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+
+            var plus = informational?.IndexOf('+') ?? -1;
+            if (informational is null || plus < 0 || plus == informational.Length - 1)
+            {
+                return "unknown";
+            }
+
+            var revision = informational[(plus + 1)..].Trim();
+            return revision.Length is >= 7 and <= 40 && revision.All(Uri.IsHexDigit)
+                ? revision[..7]
+                : "unknown";
         }
     }
 

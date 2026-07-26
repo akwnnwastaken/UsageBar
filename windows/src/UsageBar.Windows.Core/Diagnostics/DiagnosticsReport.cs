@@ -46,6 +46,8 @@ public sealed record ProviderDiagnostics(
 /// <summary>Everything the copied diagnostic summary is allowed to contain.</summary>
 public sealed record DiagnosticsInput(
     string AppVersion,
+    /// <summary>Short commit SHA of the build, so a physical test can be tied to a source revision.</summary>
+    string BuildId,
     string WindowsVersion,
     string OsArchitecture,
     string AppArchitecture,
@@ -74,6 +76,7 @@ public static class DiagnosticsReportBuilder
 
         var builder = new StringBuilder();
         builder.Append("UsageBar ").AppendLine(DiagnosticsSanitizer.SafeToken(input.AppVersion));
+        builder.Append("build=").AppendLine(DiagnosticsSanitizer.SafeToken(input.BuildId));
         builder.Append("windows=").AppendLine(DiagnosticsSanitizer.SafeToken(input.WindowsVersion));
         builder.Append("os_arch=").AppendLine(DiagnosticsSanitizer.SafeToken(input.OsArchitecture));
         builder.Append("app_arch=").AppendLine(DiagnosticsSanitizer.SafeToken(input.AppArchitecture));
