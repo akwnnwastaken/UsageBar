@@ -7,8 +7,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UsageBar.Windows.Core", "sr
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UsageBar.Windows.Infrastructure", "src\UsageBar.Windows.Infrastructure\UsageBar.Windows.Infrastructure.csproj", "{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0002}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UsageBar.Windows.App", "src\UsageBar.Windows.App\UsageBar.Windows.App.csproj", "{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0003}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UsageBar.Windows.Core.Tests", "tests\UsageBar.Windows.Core.Tests\UsageBar.Windows.Core.Tests.csproj", "{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0004}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UsageBar.Windows.Infrastructure.Tests", "tests\UsageBar.Windows.Infrastructure.Tests\UsageBar.Windows.Infrastructure.Tests.csproj", "{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0005}"
@@ -27,10 +25,6 @@ Global
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0002}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0002}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0002}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0003}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0003}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0003}.Release|Any CPU.Build.0 = Release|Any CPU
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2C3C1A5E-6F1B-4D2E-9B23-7C1B0C0A0004}.Release|Any CPU.ActiveCfg = Release|Any CPU

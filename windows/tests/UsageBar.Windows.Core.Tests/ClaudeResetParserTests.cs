@@ -19,6 +19,11 @@ public sealed class ClaudeResetParserTests
         return new DateTimeOffset(wall, zone.GetUtcOffset(wall));
     }
 
+    /// <summary>
+    /// Resolves an IANA zone. .NET accepts IANA identifiers on Windows when ICU
+    /// is available; the conversion is the fallback for a machine without it, so
+    /// the expectations hold on any runner.
+    /// </summary>
     private static TimeZoneInfo FindZone(string zoneId)
     {
         try
@@ -27,6 +32,11 @@ public sealed class ClaudeResetParserTests
         }
         catch (TimeZoneNotFoundException)
         {
+            if (TimeZoneInfo.TryConvertIanaIdToWindowsId(zoneId, out var windowsId) && windowsId is not null)
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(windowsId);
+            }
+
             Assert.Fail($"Time zone {zoneId} is unavailable on this machine.");
             throw;
         }

@@ -1,0 +1,71 @@
+name: Windows CI
+
+# Builds and tests the Windows port only. The macOS workflows (ci.yml,
+# release-candidate.yml) are untouched and keep their own triggers.
+#
+# The job is deliberately NOT called `build-and-test`: that context name is the
+# required status check for the macOS build on `main`, and a second job sharing
+# it would make the protected check ambiguous.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'shared/**'
+      - '.github/workflows/windows-ci.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'shared/**'
+      - '.github/workflows/windows-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  windows-build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the .NET 8 SDK
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore windows/UsageBar.Windows.sln
+
+      - name: Build (Release)
+        run: dotnet build windows/UsageBar.Windows.sln --configuration Release --no-restore
+
+      # The Windows-only tests (Job Object containment, process-tree teardown,
+      # CreateProcessW argument round-trips, executable ACL validation) can only
+      # run here. Elsewhere they report as skipped, never as passed.
+      - name: Test (Release)
+        run: >
+          dotnet test windows/UsageBar.Windows.sln
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=windows-tests.trx"
+          --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-test-results
+          path: artifacts/test-results
+          if-no-files-found: warn

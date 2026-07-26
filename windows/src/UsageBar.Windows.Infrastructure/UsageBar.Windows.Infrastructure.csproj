@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-specific infrastructure: secure process launching with Job Object
+    containment, executable discovery and trust validation, provider adapters,
+    persistence and auto-start. All behavior decisions live in
+    UsageBar.Windows.Core; this project only supplies the platform mechanics.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>UsageBar.Windows.Infrastructure</AssemblyName>
+    <RootNamespace>UsageBar.Windows.Infrastructure</RootNamespace>
+    <!--
+      Plain `net8.0-windows` (no Windows SDK version suffix): UsageBar only uses
+      kernel32 P/Invoke and ACL APIs, never WinRT, so no Windows SDK targeting
+      pack is required and Windows 10 x64 stays supported.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UsageBar.Windows.Core\UsageBar.Windows.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageBar.Windows.Infrastructure.Tests" />
+  </ItemGroup>
+
+</Project>
