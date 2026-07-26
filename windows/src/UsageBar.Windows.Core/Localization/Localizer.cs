@@ -67,6 +67,21 @@ public sealed class Localizer
     public string Weekly => Pick("Haftalık", "Weekly");
     public string Connected => Pick("Bağlı", "Connected");
     public string NotConnected => Pick("Bağlı değil", "Not connected");
+    public string Close => Pick("Kapat", "Close");
+    public string HistoryDisabled => Pick("Geçmiş kapalı", "History is off");
+
+    /// <summary>
+    /// Shown instead of a Claude connect action while the Windows Claude
+    /// adapters do not exist yet. UsageBar never fabricates provider data, so
+    /// the option is disabled and labeled rather than shown as working.
+    /// </summary>
+    public string ClaudeNotSupportedYet => Pick(
+        "Claude Code — Windows'ta henüz desteklenmiyor",
+        "Claude Code — not supported on Windows yet");
+
+    public string ClaudeNotSupportedYetDetail => Pick(
+        "Claude Code okuyucusu Windows sürümüne henüz eklenmedi. Bu sürümde yalnızca Codex kullanılabilir.",
+        "The Claude Code reader has not been added to the Windows build yet. This build supports Codex only.");
 
     // MARK: - Tray visibility guidance
 
