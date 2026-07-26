@@ -125,9 +125,11 @@ public sealed class ProcessTreeContainmentTests
     {
         await WarmUpPowerShellAsync().ConfigureAwait(false);
 
-        // Long enough for the helper to report its child, short enough that the
-        // deadline is what ends the run.
-        var timeout = TimeSpan.FromSeconds(30);
+        // Long enough for the helper to report its child even on a slow, loaded
+        // runner — PowerShell start-up has been observed at over 25 seconds —
+        // and still far short of the helper's own 300-second sleep, so it is
+        // unambiguously the deadline that ends the run.
+        var timeout = TimeSpan.FromSeconds(60);
         var before = DateTimeOffset.UtcNow;
         var result = await ProviderProcessLauncher
             .RunAsync(ParentSpawningChildRequest(timeout))
