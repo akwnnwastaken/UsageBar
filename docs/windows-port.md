@@ -158,6 +158,7 @@ never used to pick a winner.
 
 | Format | Location | Adapter |
 | --- | --- | --- |
+| **Official native installer** | `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` | `native_exe` |
 | Native per-user | `%LOCALAPPDATA%\Programs\codex\codex.exe` | `native_exe` |
 | Native machine-wide | `%ProgramFiles%\codex\codex.exe` | `native_exe` |
 | ChatGPT desktop bundle | `%LOCALAPPDATA%\Programs\ChatGPT\resources\codex.exe` | `native_exe` |
@@ -170,6 +171,28 @@ never used to pick a winner.
 For the npm layout the `.cmd` shim is deliberately **ignored** — running it would
 mean invoking `cmd.exe`. The script and a real `node.exe` are validated
 separately and Node is started directly with the script as its first argument.
+
+#### Findings from physical testing
+
+**2026-07-26 — the official native installer was not discovered.**
+On a real machine running `codex-cli 0.145.0`, `where.exe codex` resolved to
+`C:\Users\<user>\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe`, but
+UsageBar reported
+`codex=connected:true,executable:missing,adapter:none,state:error,windows:none,issue:codex_not_found`.
+
+The candidate list had been written from the flatter per-user layouts and did
+not include the vendor/product/`bin` nesting the official installer uses, so a
+perfectly good installation looked absent. Fixed by adding that path as a
+documented candidate with `…\Programs\OpenAI\Codex` as its trusted root.
+
+The security model was **not** relaxed to fix it. There is still no PATH search,
+no `where.exe` fallback, no shell fallback and no skipped trust validation — the
+new location is validated exactly like every other candidate, and regression
+tests cover the positive layout, the reported adapter kind, and rejection of an
+identically named executable outside the trusted root.
+
+This is the kind of gap only a physical machine finds: every automated test
+passed both before and after, because no CI runner has Codex installed.
 
 ### Supported Claude installation formats
 

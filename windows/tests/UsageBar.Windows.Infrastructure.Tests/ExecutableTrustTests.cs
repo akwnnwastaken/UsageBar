@@ -176,11 +176,99 @@ public sealed class ExecutableTrustTests : IDisposable
         }
 
         // The documented formats are all represented.
+        Assert.Contains(
+            candidates,
+            candidate => candidate.Path.EndsWith(
+                @"Programs\OpenAI\Codex\bin\codex.exe",
+                StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, candidate => candidate.Path.Contains(@"Programs\codex", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, candidate => candidate.Path.Contains("ChatGPT", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, candidate => candidate.Path.Contains("WinGet", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, candidate => candidate.Path.Contains(".cargo", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, candidate => candidate.Path.Contains("scoop", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The official native Windows installer layout, as observed on a physical
+    /// machine running codex-cli 0.145.0:
+    /// <c>%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe</c>. Before this
+    /// candidate existed the locator reported <c>codex_not_found</c> on a
+    /// perfectly good installation.
+    /// </summary>
+    [WindowsFact]
+    public void TheOfficialNativeWindowsInstallLayoutIsDiscovered()
+    {
+        var localAppData = Path.Combine(_root, "Local");
+        var installRoot = Path.Combine(localAppData, "Programs", "OpenAI", "Codex");
+        var executable = Path.Combine(installRoot, "bin", "codex.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        File.WriteAllText(executable, "stub");
+
+        var locator = new CodexExecutableLocator(
+            folder => folder == Environment.SpecialFolder.LocalApplicationData ? localAppData : string.Empty,
+            _ => null);
+
+        var lookup = locator.Locate();
+
+        Assert.Equal(ExecutableLookupStatus.Found, lookup.Status);
+        Assert.Equal(executable, lookup.Executable?.Path);
+        Assert.Empty(lookup.Executable!.LeadingArguments);
+    }
+
+    /// <summary>
+    /// The same installation must be reported as a plain native executable, not
+    /// as a launcher — it is started directly, with no interpreter in front.
+    /// </summary>
+    [WindowsFact]
+    public void TheOfficialNativeWindowsInstallReportsTheNativeAdapter()
+    {
+        var localAppData = Path.Combine(_root, "Local");
+        var executable = Path.Combine(localAppData, "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        File.WriteAllText(executable, "stub");
+
+        var locator = new CodexExecutableLocator(
+            folder => folder == Environment.SpecialFolder.LocalApplicationData ? localAppData : string.Empty,
+            _ => null);
+
+        var lookup = locator.Locate();
+
+        Assert.Equal(ProviderAdapterKind.NativeExecutable, lookup.AdapterKind);
+        Assert.Equal(ProviderAdapterKind.NativeExecutable, lookup.Executable?.AdapterKind);
+        Assert.Equal(ProviderExecutableState.Trusted, lookup.DiagnosticState);
+        Assert.Equal(
+            new[] { "app-server", "--stdio" },
+            lookup.Executable?.BuildArguments(new[] { "app-server", "--stdio" }));
+    }
+
+    /// <summary>
+    /// Adding the OpenAI layout must not widen discovery: an executable with the
+    /// same name outside that installation root is still rejected, and one in an
+    /// undocumented location is not discovered at all.
+    /// </summary>
+    [WindowsFact]
+    public void AnIdenticallyNamedExecutableOutsideTheTrustedRootIsRejected()
+    {
+        var localAppData = Path.Combine(_root, "Local");
+        var installRoot = Path.Combine(localAppData, "Programs", "OpenAI", "Codex");
+        Directory.CreateDirectory(installRoot);
+
+        // Same file name, one level above the trusted install root.
+        var impostor = Path.Combine(localAppData, "Programs", "OpenAI", "codex.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(impostor)!);
+        File.WriteAllText(impostor, "stub");
+
+        // Validated against the install root, it is outside and must be refused.
+        Assert.Equal(
+            ExecutableLookupStatus.Untrusted,
+            ExecutableTrust.Validate(impostor, installRoot)?.Status);
+
+        // And the locator never looks there, so nothing is discovered at all.
+        var locator = new CodexExecutableLocator(
+            folder => folder == Environment.SpecialFolder.LocalApplicationData ? localAppData : string.Empty,
+            _ => null);
+
+        Assert.Equal(ExecutableLookupStatus.Missing, locator.Locate().Status);
     }
 
     [WindowsFact]

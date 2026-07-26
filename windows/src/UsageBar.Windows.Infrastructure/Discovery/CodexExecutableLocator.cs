@@ -104,6 +104,15 @@ public sealed class CodexExecutableLocator
         if (!string.IsNullOrEmpty(localAppData))
         {
             var programs = System.IO.Path.Combine(localAppData, "Programs");
+
+            // The official native Windows installer, found during physical
+            // testing against codex-cli 0.145.0. It nests the executable under
+            // a vendor folder and a `bin` directory, so neither the path nor
+            // the trusted root matches the flatter layouts below.
+            yield return new Candidate(
+                System.IO.Path.Combine(programs, "OpenAI", "Codex", "bin", "codex.exe"),
+                System.IO.Path.Combine(programs, "OpenAI", "Codex"));
+
             yield return new Candidate(
                 System.IO.Path.Combine(programs, "codex", "codex.exe"),
                 System.IO.Path.Combine(programs, "codex"));
