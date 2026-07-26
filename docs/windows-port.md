@@ -90,7 +90,7 @@ final line can never drop the weekly window.
 
 | # | Difference | Why |
 | --- | --- | --- |
-| 1 | The percentage is drawn **inside** the tray icon instead of shown as menu-bar text. | Windows has no persistent text label beside a notification-area icon. |
+| 1 | The percentage is drawn **inside** the tray icon instead of shown as menu-bar text, with no border or plate around it. | Windows has no persistent text label beside a notification-area icon, and at 16 px a border steals the room the number needs. |
 | 2 | The reset countdown appears in the tooltip rather than next to the icon. | Same reason; a 16 px icon cannot hold `42 · 1h 18m`. |
 | 3 | A popup **panel** replaces the macOS menu. | Windows tray menus cannot host rich content such as a chart. |
 | 4 | Settings are a separate child window. | Keeps the panel compact; the panel stays open while it has focus. |
@@ -349,6 +349,37 @@ dotnet run --project windows/src/UsageBar.Windows.App/UsageBar.Windows.App.cspro
 **compile** on macOS or Linux (`EnableWindowsTargeting` is set) but the tests
 that need a real Windows kernel are marked `[WindowsFact]` / `[WindowsTheory]`
 and report as **skipped** — never as passed — anywhere else.
+
+### Tray icon
+
+The number *is* the icon. There is no border, plate or chip around it: at 16 px
+that chrome costs more than it conveys, and it left no room for three digits.
+
+- **100** is drawn as `100`, at its own font size and compressed horizontally to
+  fit. It is never replaced by a dot or any other stand-in — that substitution
+  is what physical testing rejected.
+- One and two digit values are drawn larger, so they stay crisp.
+- The state is carried by a thin rule under the number, not by colour alone:
+  none for normal, a short rule for warning, a full-width rule for critical, and
+  a dashed rule for stale data. No-data (`—`) and refreshing (`↻`) have their own
+  glyphs.
+- Text uses grayscale anti-aliasing rather than ClearType. Subpixel rendering on
+  a transparent bitmap produces coloured fringes, which is what made the icon
+  look blurry once composited onto the taskbar.
+- The glyph is centred on its measured ink rather than the font's line box, so
+  it sits optically centred instead of high.
+
+The layout decision lives in `Core/Policies/TrayIconGlyph.cs` and is unit-tested
+there; the drawing lives in `Infrastructure/Tray/TrayIconRenderer.cs` and its
+pixels are asserted on Windows CI — corners clear, `100` spanning the icon, each
+state's rule distinguishable by shape.
+
+#### Finding from physical testing
+
+**2026-07-26 — the icon was a boxed chip, and 100 was a dot.** The renderer drew
+a rounded square around every value and, because three digits did not fit inside
+it, substituted `•` for 100. The box has been removed and 100 now renders as
+itself.
 
 ### Panel layout
 

@@ -22,6 +22,16 @@
     <ProjectReference Include="..\UsageBar.Windows.Core\UsageBar.Windows.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    GDI+ for the tray icon. Microsoft's own binding, and the same assembly the
+    Windows Forms interop in the App project already brings in — declaring it
+    here keeps the renderer testable without dragging the WPF framework into the
+    test host.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="UsageBar.Windows.Infrastructure.Tests" />
   </ItemGroup>

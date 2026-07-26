@@ -5,6 +5,7 @@ using UsageBar.Windows.Core.Localization;
 using UsageBar.Windows.Core.Policies;
 using UsageBar.Windows.Core.Providers;
 using UsageBar.Windows.Infrastructure.Startup;
+using UsageBar.Windows.Infrastructure.Tray;
 
 namespace UsageBar.Windows.App.Tray;
 
