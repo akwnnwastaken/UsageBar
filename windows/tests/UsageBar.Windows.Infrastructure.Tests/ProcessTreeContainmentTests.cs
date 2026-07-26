@@ -130,10 +130,23 @@ public sealed class ProcessTreeContainmentTests
         // and still far short of the helper's own 300-second sleep, so it is
         // unambiguously the deadline that ends the run.
         var timeout = TimeSpan.FromSeconds(60);
+        int? childId = null;
+
+        // The child id is captured as it streams in rather than from the final
+        // snapshot, so it is recorded even though the run is about to be cut
+        // short. Returning false keeps this from ending the run early — the
+        // deadline is what must end it.
+        var request = ParentSpawningChildRequest(timeout) with
+        {
+            IsComplete = output =>
+            {
+                childId ??= ParseFirstProcessId(output.ToArray());
+                return false;
+            }
+        };
+
         var before = DateTimeOffset.UtcNow;
-        var result = await ProviderProcessLauncher
-            .RunAsync(ParentSpawningChildRequest(timeout))
-            .ConfigureAwait(false);
+        var result = await ProviderProcessLauncher.RunAsync(request).ConfigureAwait(false);
         var elapsed = DateTimeOffset.UtcNow - before;
 
         Assert.True(result.Launched);
@@ -142,7 +155,6 @@ public sealed class ProcessTreeContainmentTests
 
         // The assertion is not allowed to pass vacuously: the child must have
         // been observed, and it must be gone.
-        var childId = ParseFirstProcessId(result.StandardOutput);
         Assert.True(childId is not null, "The helper never reported a child, so nothing was verified.");
         Assert.True(
             await WaitUntilGoneAsync(childId!.Value).ConfigureAwait(false),

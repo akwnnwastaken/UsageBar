@@ -103,23 +103,36 @@ internal sealed class ProviderProcessSession : IDisposable
     }
 
     /// <summary>
-    /// Waits in short slices so cancellation and the deadline are honored without
-    /// leaving a blocking wait behind.
+    /// Waits for the process to exit without occupying a thread.
+    ///
+    /// The check is a zero-timeout <c>WaitForSingleObject</c>, which returns
+    /// immediately, and the pause between checks is a timer. An earlier version
+    /// blocked a thread-pool thread on a 50 ms wait in a loop; because the
+    /// redirected pipes are synchronous, their <c>ReadAsync</c> also needs pool
+    /// threads, and on a two-core machine the waiting starved the draining —
+    /// output could sit unread for the whole run. Nothing blocks now, so the
+    /// readers always get a thread.
     /// </summary>
     public async Task<bool> WaitForExitAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var status = await Task.Run(
-                () => NativeMethods.WaitForSingleObject(_process, 50),
-                CancellationToken.None).ConfigureAwait(false);
-
+            var status = NativeMethods.WaitForSingleObject(_process, 0);
             if (status == NativeMethods.WAIT_OBJECT_0)
             {
                 return true;
             }
 
             if (status == NativeMethods.WAIT_FAILED)
+            {
+                return false;
+            }
+
+            try
+            {
+                await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
             {
                 return false;
             }
