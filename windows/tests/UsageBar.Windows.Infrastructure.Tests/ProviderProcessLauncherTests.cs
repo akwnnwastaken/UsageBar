@@ -99,14 +99,22 @@ public sealed class ProviderProcessLauncherTests
     public async Task IsCompleteStopsTheRunAsSoonAsTheAnswerArrives()
     {
         // Prints the answer, then would keep running for five minutes.
-        var script = "type \"" + Fixtures.Path("codex/five-hour-and-weekly.jsonl") +
-                     "\" & ping -n 300 127.0.0.1 > nul";
-
+        //
+        // The arguments stay separate rather than being packed into one quoted
+        // script string: the launcher escapes embedded quotes with the
+        // CommandLineToArgvW rules, and cmd.exe does not understand \" — so a
+        // hand-quoted script would arrive mangled.
         var before = DateTimeOffset.UtcNow;
         var result = await ProviderProcessLauncher.RunAsync(new ProviderProcessRequest
         {
             ExecutablePath = CmdPath,
-            Arguments = new[] { "/c", script },
+            Arguments = new[]
+            {
+                "/c",
+                "type", Fixtures.Path("codex/five-hour-and-weekly.jsonl"),
+                "&",
+                "ping", "-n", "300", "127.0.0.1", ">", "nul"
+            },
             Timeout = TimeSpan.FromSeconds(120),
             IsComplete = static output => CodexResponseParser.ParseStream(output.Span) is not null
         }).ConfigureAwait(false);

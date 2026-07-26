@@ -10,21 +10,31 @@ internal static class Fixtures
 
     public static byte[] ReadBytes(string relativePath) => File.ReadAllBytes(Path(relativePath));
 
+    /// <summary>
+    /// Resolves a fixture to a fully native path. The separators are normalized
+    /// on purpose: .NET accepts a mixed path like <c>...\fixtures\codex/a.jsonl</c>,
+    /// but a Windows command-line tool reads the <c>/a.jsonl</c> part as a switch,
+    /// so any fixture path handed to a child process must use backslashes only.
+    /// </summary>
     public static string Path(string relativePath)
     {
-        var candidate = System.IO.Path.Combine(AppContext.BaseDirectory, "fixtures", relativePath);
+        var segments = relativePath.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries);
+
+        var candidate = System.IO.Path.Combine(
+            new[] { AppContext.BaseDirectory, "fixtures" }.Concat(segments).ToArray());
         if (File.Exists(candidate))
         {
-            return candidate;
+            return System.IO.Path.GetFullPath(candidate);
         }
 
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var shared = System.IO.Path.Combine(directory.FullName, "shared", "fixtures", relativePath);
+            var shared = System.IO.Path.Combine(
+                new[] { directory.FullName, "shared", "fixtures" }.Concat(segments).ToArray());
             if (File.Exists(shared))
             {
-                return shared;
+                return System.IO.Path.GetFullPath(shared);
             }
 
             directory = directory.Parent;

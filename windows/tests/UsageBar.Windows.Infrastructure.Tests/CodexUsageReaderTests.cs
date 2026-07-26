@@ -241,7 +241,13 @@ public sealed class CodexUsageReaderTests
 
         var usage = CodexUsageReader.Interpret(result);
 
-        Assert.Null(usage.Error);
+        // Surfaces the child's own diagnostics when this fails, so a broken
+        // command line is visible in the CI log instead of just an error code.
+        Assert.True(
+            usage.Error is null,
+            $"issue={usage.Error?.DiagnosticCode} exit={result.ExitCode} " +
+            $"stdout={Encoding.UTF8.GetString(result.StandardOutput)} " +
+            $"stderr={Encoding.UTF8.GetString(result.StandardError)}");
         Assert.Equal(35, usage.Session?.UsedPercent);
         Assert.Equal(12, usage.Weekly?.UsedPercent);
     }

@@ -139,6 +139,21 @@ public sealed class CommandLineAndEnvironmentTests
             StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Regression guard: a fixture path handed to a child process must use
+    /// native separators only. .NET happily opens a mixed path, but a Windows
+    /// command-line tool reads a <c>/segment</c> as a switch and fails.
+    /// </summary>
+    [WindowsFact]
+    public void FixturePathsUseNativeSeparators()
+    {
+        var path = Fixtures.Path("codex/five-hour-and-weekly.jsonl");
+
+        Assert.DoesNotContain('/', path);
+        Assert.True(Path.IsPathFullyQualified(path));
+        Assert.True(File.Exists(path));
+    }
+
     [Fact]
     public void BoundedCaptureStopsAtItsLimit()
     {

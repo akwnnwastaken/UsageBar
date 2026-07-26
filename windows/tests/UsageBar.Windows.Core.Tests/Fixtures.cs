@@ -12,12 +12,16 @@ internal static class Fixtures
     public static byte[] ReadBytes(string relativePath) =>
         File.ReadAllBytes(Path(relativePath));
 
+    /// <summary>Resolves a fixture to a fully native path, separators normalized.</summary>
     public static string Path(string relativePath)
     {
-        var candidate = System.IO.Path.Combine(AppContext.BaseDirectory, "fixtures", relativePath);
+        var segments = relativePath.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries);
+
+        var candidate = System.IO.Path.Combine(
+            new[] { AppContext.BaseDirectory, "fixtures" }.Concat(segments).ToArray());
         if (File.Exists(candidate))
         {
-            return candidate;
+            return System.IO.Path.GetFullPath(candidate);
         }
 
         // Fall back to the repository layout so the tests also run from a plain
@@ -25,10 +29,11 @@ internal static class Fixtures
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var shared = System.IO.Path.Combine(directory.FullName, "shared", "fixtures", relativePath);
+            var shared = System.IO.Path.Combine(
+                new[] { directory.FullName, "shared", "fixtures" }.Concat(segments).ToArray());
             if (File.Exists(shared))
             {
-                return shared;
+                return System.IO.Path.GetFullPath(shared);
             }
 
             directory = directory.Parent;
