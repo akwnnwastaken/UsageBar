@@ -8,7 +8,13 @@ name: Windows CI
 # it would make the protected check ambiguous.
 on:
   push:
-    branches: [main]
+    # Working branches are included so the Windows-only tests (Job Object
+    # containment, process-tree teardown) actually run before the work reaches
+    # `main`. GitHub only offers workflow_dispatch for files already on the
+    # default branch, so the push trigger is what exercises a new branch.
+    branches:
+      - main
+      - 'agent/**'
     paths:
       - 'windows/**'
       - 'shared/**'
