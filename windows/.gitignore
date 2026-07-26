@@ -4,3 +4,11 @@ bin/
 obj/
 publish/
 *.user
+
+# The repository root ignores `*.app` for macOS application bundles. Git matches
+# ignore patterns case-insensitively on a case-insensitive filesystem, so that
+# rule also swallows the `UsageBar.Windows.App` project directory and silently
+# drops it from commits. Re-included here, scoped to `windows/` only — the root
+# .gitignore is never modified.
+!*.App/
+!*.App
