@@ -418,4 +418,114 @@ final class CorePolicyTests: XCTestCase {
         XCTAssertEqual(twoResets.displaySamples.map(\.remainingPercent), [95, 80])
         XCTAssertEqual(twoResets.delta, -15)
     }
+
+    // MARK: - Chart hover selection
+
+    private static let hoverBase = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// Samples at explicit offsets (seconds), so uneven spacing can be tested.
+    private func hoverSeries(_ points: [(offset: Double, percent: Int)]) -> [UsageHistorySample] {
+        points.map {
+            UsageHistorySample(
+                recordedAt: Self.hoverBase.addingTimeInterval($0.offset),
+                remainingPercent: $0.percent
+            )
+        }
+    }
+
+    func testHoverReturnsNilForEmptySeries() {
+        let empty = UsageHistoryChartModel(samples: [])
+        XCTAssertNil(empty.nearestDisplaySample(toNormalizedX: 0))
+        XCTAssertNil(empty.nearestDisplaySample(toNormalizedX: 0.5))
+        XCTAssertNil(empty.nearestDisplaySample(toNormalizedX: 1))
+    }
+
+    func testHoverAlwaysReturnsTheOnlySample() {
+        let single = UsageHistoryChartModel(samples: hoverSeries([(0, 42)]))
+        for x in [CGFloat(0), 0.5, 1, -3, 4] {
+            XCTAssertEqual(single.nearestDisplaySample(toNormalizedX: x)?.remainingPercent, 42)
+        }
+    }
+
+    func testHoverSelectsEndsAndClampsBeyondThem() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([(0, 50), (120, 46), (240, 44)]))
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 1)?.remainingPercent, 44)
+        // Outside the chart the value clamps rather than wrapping or failing.
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: -0.4)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: -1_000)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 1.4)?.remainingPercent, 44)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 1_000)?.remainingPercent, 44)
+    }
+
+    /// Samples are not evenly spaced in time, so the nearest one must be found
+    /// by timestamp. Index-based interpolation would answer 40 here.
+    func testHoverSelectsByTimestampNotArrayIndex() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([
+            (0, 50), (3_540, 40), (3_560, 39), (3_600, 38)
+        ]))
+        // A quarter of the way across is still 15 minutes from the cluster of
+        // late samples, so the first sample stays nearest in time.
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0.25)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0.4)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0.9)?.remainingPercent, 40)
+    }
+
+    /// A pointer exactly between two samples deterministically picks the
+    /// earlier one, and never invents an interpolated percentage.
+    func testHoverTieSelectsTheEarlierSampleAndNeverInterpolates() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([(0, 48), (300, 46)]))
+        let middle = model.nearestDisplaySample(toNormalizedX: 0.5)
+        XCTAssertEqual(middle?.remainingPercent, 48)
+        XCTAssertEqual(middle?.recordedAt, Self.hoverBase)
+        // Just past the midpoint the later sample wins.
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0.51)?.remainingPercent, 46)
+    }
+
+    func testHoverCannotSelectSamplesBeforeTheLatestReset() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([
+            (0, 80), (120, 50), (240, 30), (360, 100), (480, 90), (600, 70)
+        ]))
+        XCTAssertEqual(model.displaySamples.map(\.remainingPercent), [100, 90, 70])
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: 0)?.remainingPercent, 100)
+        // Sweeping the whole chart only ever reports drawn samples.
+        for step in -20...120 {
+            let selected = model.nearestDisplaySample(toNormalizedX: CGFloat(step) / 100)
+            XCTAssertNotNil(selected)
+            guard let selected else { continue }
+            XCTAssertTrue(model.displaySamples.contains(selected))
+            XCTAssertTrue([100, 90, 70].contains(selected.remainingPercent))
+        }
+    }
+
+    /// The hover value must agree with the visible line, so the smoothed
+    /// display value is reported for an isolated one-point spike.
+    func testHoverReportsSmoothedDisplayValueNotRawNoise() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([(0, 33), (120, 34), (240, 33)]))
+        XCTAssertEqual(model.samples.map(\.remainingPercent), [33, 34, 33])
+        let middle = model.nearestDisplaySample(toNormalizedX: 0.5)
+        XCTAssertEqual(middle?.recordedAt, Self.hoverBase.addingTimeInterval(120))
+        XCTAssertEqual(middle?.remainingPercent, 33)
+    }
+
+    func testHoverWithDuplicateTimestampsIsDeterministic() {
+        let duplicates = UsageHistoryChartModel(samples: [
+            UsageHistorySample(recordedAt: Self.hoverBase, remainingPercent: 50),
+            UsageHistorySample(recordedAt: Self.hoverBase, remainingPercent: 44)
+        ])
+        // Zero displayed duration must not divide by zero; the first displayed
+        // sample answers every position.
+        let expected = duplicates.displaySamples.first
+        XCTAssertNotNil(expected)
+        for x in [CGFloat(0), 0.25, 0.5, 1, -2, 3] {
+            XCTAssertEqual(duplicates.nearestDisplaySample(toNormalizedX: x), expected)
+        }
+    }
+
+    func testHoverHandlesNonFiniteInputSafely() {
+        let model = UsageHistoryChartModel(samples: hoverSeries([(0, 50), (120, 46), (240, 44)]))
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: .nan)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: -.infinity)?.remainingPercent, 50)
+        XCTAssertEqual(model.nearestDisplaySample(toNormalizedX: .infinity)?.remainingPercent, 44)
+    }
 }
