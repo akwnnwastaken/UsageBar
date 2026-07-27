@@ -1,0 +1,5 @@
+error: unexpected argument '--disable' found
+
+Usage: codex app-server [OPTIONS]
+
+For more information, try '--help'.

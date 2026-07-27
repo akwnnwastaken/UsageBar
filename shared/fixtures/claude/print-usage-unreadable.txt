@@ -1,0 +1,3 @@
+Usage: claude [options] [command]
+
+some unrelated output

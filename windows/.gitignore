@@ -1,0 +1,18 @@
+# Build output for the Windows port. Scoped to `windows/` so the repository
+# root .gitignore (macOS build) is left untouched.
+bin/
+obj/
+publish/
+*.user
+
+# Local packaging output: publish tree, staging tree, ZIP and its checksum.
+# Packages are produced by CI as a downloadable artifact, never committed.
+artifacts/
+
+# The repository root ignores `*.app` for macOS application bundles. Git matches
+# ignore patterns case-insensitively on a case-insensitive filesystem, so that
+# rule also swallows the `UsageBar.Windows.App` project directory and silently
+# drops it from commits. Re-included here, scoped to `windows/` only — the root
+# .gitignore is never modified.
+!*.App/
+!*.App

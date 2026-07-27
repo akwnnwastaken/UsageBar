@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-specific infrastructure: secure process launching with Job Object
+    containment, executable discovery and trust validation, provider adapters,
+    persistence and auto-start. All behavior decisions live in
+    UsageBar.Windows.Core; this project only supplies the platform mechanics.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>UsageBar.Windows.Infrastructure</AssemblyName>
+    <RootNamespace>UsageBar.Windows.Infrastructure</RootNamespace>
+    <!--
+      Plain `net8.0-windows` (no Windows SDK version suffix): UsageBar only uses
+      kernel32 P/Invoke and ACL APIs, never WinRT, so no Windows SDK targeting
+      pack is required and Windows 10 x64 stays supported.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UsageBar.Windows.Core\UsageBar.Windows.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    GDI+ for the tray icon. Microsoft's own binding, and the same assembly the
+    Windows Forms interop in the App project already brings in — declaring it
+    here keeps the renderer testable without dragging the WPF framework into the
+    test host.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageBar.Windows.Infrastructure.Tests" />
+  </ItemGroup>
+
+</Project>

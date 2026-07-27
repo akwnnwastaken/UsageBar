@@ -1,0 +1,2 @@
+Error: Claude Code could not find Git Bash.
+Set CLAUDE_CODE_GIT_BASH_PATH in your settings.json to the full path of bash.exe.

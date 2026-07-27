@@ -1,0 +1,3 @@
+Current session: 8.6% used · resets Jul 23 at 5pm (Europe/Istanbul)
+Current week (all models): 47% used
+Last 24h · 640 requests · 8 sessions
