@@ -390,6 +390,48 @@ public sealed class NativeProbeAndTokenTests : IDisposable
     }
 
     /// <summary>
+    /// The profile relation has to produce a real answer on a real machine.
+    /// A field that always reports "unknown" would look like a result and cost a
+    /// whole physical round trip to discover was empty.
+    /// </summary>
+    [WindowsFact]
+    public void TheTokenProfileIsActuallyReadableAndComparable()
+    {
+        var raw = ProcessTokenInspector.Current();
+
+        Assert.False(string.IsNullOrWhiteSpace(raw.ProfileDirectory));
+
+        // And it agrees with the folder discovery resolves, so the comparison is
+        // meaningful rather than reporting "differs" on every machine.
+        var resolved = new WindowsKnownFolderResolver().Resolve(WindowsKnownFolder.UserProfile);
+        Assert.NotEmpty(resolved);
+
+        Assert.Equal(
+            TokenProfileRelation.MatchesResolvedProfile,
+            ProcessTokenInspector.ProfileRelationFrom(raw.ProfileDirectory, resolved));
+    }
+
+    /// <summary>
+    /// The same for the native probe: a real file has to come back as
+    /// <c>exists</c> with an opened handle, or the fields cannot report the
+    /// failure they exist for.
+    /// </summary>
+    [WindowsFact]
+    public void TheNativeProbeAgreesWithTheManagedOneOnAHealthyFile()
+    {
+        var path = Path.Combine(_root, "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "stub");
+
+        var native = NativeCandidateProbe.Probe(path);
+
+        Assert.Equal(NativeProbeState.Exists, native.State);
+        Assert.Equal(HandleProbeState.Opened, native.HandleState);
+        Assert.Null(native.Win32ErrorCode);
+        Assert.Equal(CandidateProbeState.Exists, CandidateProbe.Probe(path));
+    }
+
+    /// <summary>
     /// Nothing identifying survives classification — not a SID, not the account
     /// name, not the profile path.
     /// </summary>
