@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using UsageBar.Windows.Core.Diagnostics;
+using UsageBar.Windows.Infrastructure.Diagnostics;
 
 namespace UsageBar.Windows.Infrastructure.Discovery;
 
@@ -33,6 +34,7 @@ public readonly record struct CodexDiscovery(ExecutableLookup Lookup, CodexDisco
 public sealed class CodexExecutableLocator
 {
     private readonly IKnownFolderResolver _folders;
+    private readonly Func<RawProcessToken> _token;
 
     public CodexExecutableLocator()
         : this(new WindowsKnownFolderResolver())
@@ -44,7 +46,16 @@ public sealed class CodexExecutableLocator
     /// framework. A context where one of those sources returns nothing no longer
     /// silently removes the official Codex candidate.
     /// </summary>
-    public CodexExecutableLocator(IKnownFolderResolver folders) => _folders = folders;
+    public CodexExecutableLocator(IKnownFolderResolver folders)
+        : this(folders, ProcessTokenInspector.Current)
+    {
+    }
+
+    internal CodexExecutableLocator(IKnownFolderResolver folders, Func<RawProcessToken> token)
+    {
+        _folders = folders;
+        _token = token;
+    }
 
     internal CodexExecutableLocator(
         Func<Environment.SpecialFolder, string> specialFolder,
@@ -333,7 +344,7 @@ public sealed class CodexExecutableLocator
     /// Describes the snapshot the search just ran against. Every value is a
     /// fixed classification; no root, path or user name is retained.
     /// </summary>
-    private static CodexDiscoveryTrace BuildTrace(FolderSnapshot folders, CodexLookupStage stage)
+    private CodexDiscoveryTrace BuildTrace(FolderSnapshot folders, CodexLookupStage stage)
     {
         var localAppData = folders.LocalAppData;
 
@@ -353,8 +364,20 @@ public sealed class CodexExecutableLocator
             shellProbe,
             frameworkProbe,
             ProbeProfileDerived(folders.UserProfile.Roots),
-            stage);
+            stage,
+            NativeProbe(localAppData.Roots),
+            ProcessTokenInspector.Classify(_token(), folders.UserProfile.Roots));
     }
+
+    /// <summary>
+    /// The same official candidate, asked of Win32 directly. The managed probe
+    /// can only say that something below it failed; this says which error, on the
+    /// root discovery would have used first.
+    /// </summary>
+    private static NativeProbeOutcome NativeProbe(IReadOnlyList<string> localAppDataRoots) =>
+        localAppDataRoots.Count == 0
+            ? NativeProbeOutcome.NotConstructed
+            : NativeCandidateProbe.Probe(OfficialCandidateIn(localAppDataRoots[0]));
 
     private static CandidateProbeState ProbeOfficial(KnownFolderSourceResult source)
     {

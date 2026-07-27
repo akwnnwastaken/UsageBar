@@ -80,7 +80,9 @@ public sealed class DiagnosticsTests
         CandidateProbeState frameworkProbe = CandidateProbeState.SameAsShell,
         CandidateProbeState profileDerivedProbe = CandidateProbeState.Exists,
         CodexLookupStage stage = CodexLookupStage.OfficialNative,
-        FolderResolutionState localAppData = FolderResolutionState.Available) =>
+        FolderResolutionState localAppData = FolderResolutionState.Available,
+        NativeProbeOutcome? native = null,
+        ProcessTokenSnapshot? token = null) =>
         new(
             localAppData,
             FolderResolutionState.Available,
@@ -90,7 +92,15 @@ public sealed class DiagnosticsTests
             shellProbe,
             frameworkProbe,
             profileDerivedProbe,
-            stage);
+            stage,
+            native ?? new NativeProbeOutcome(NativeProbeState.Exists, null, HandleProbeState.Opened),
+            token ?? new ProcessTokenSnapshot(
+                TokenProfileRelation.MatchesResolvedProfile,
+                TokenIntegrity.Medium,
+                TokenElevation.Default,
+                TokenFlagState.No,
+                TokenFlagState.No,
+                SessionRelation.ActiveConsole));
 
     [Fact]
     public void ReportContainsOnlySafeFacts()
@@ -164,8 +174,102 @@ public sealed class DiagnosticsTests
         "official_codex_shell_probe=",
         "official_codex_framework_probe=",
         "official_codex_profile_derived_probe=",
-        "codex_lookup_terminal_stage="
+        "codex_lookup_terminal_stage=",
+        "official_codex_native_probe=",
+        "official_codex_handle_probe=",
+        "process_token_profile_relation=",
+        "process_token_integrity=",
+        "process_token_elevation=",
+        "process_token_restricted=",
+        "process_token_appcontainer=",
+        "process_session_relation="
     };
+
+    /// <summary>
+    /// The native probe carries a number as well as a word. Everything else in a
+    /// report is a closed-set word, so this one line has its own shape and its
+    /// own bound: a decimal Win32 code, or nothing.
+    /// </summary>
+    [Fact]
+    public void TheWin32ErrorCodeIsANumberAndNothingElse()
+    {
+        Assert.Contains(
+            "official_codex_native_error_code=win32_32",
+            DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                native: new NativeProbeOutcome(
+                    NativeProbeState.SharingViolation, 32, HandleProbeState.SharingViolation)))),
+            StringComparison.Ordinal);
+
+        // Success carries no code, and neither does an absent one.
+        foreach (var absent in new int?[] { null, 0 })
+        {
+            Assert.Contains(
+                "official_codex_native_error_code=none",
+                DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                    native: new NativeProbeOutcome(NativeProbeState.Exists, absent, HandleProbeState.Opened)))),
+                StringComparison.Ordinal);
+        }
+
+        // A value that could not be a Win32 error is refused rather than echoed,
+        // so the field cannot become a channel for something else.
+        foreach (var absurd in new[] { -1, int.MinValue, 70000, int.MaxValue })
+        {
+            var line = Line(
+                DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                    native: new NativeProbeOutcome(
+                        NativeProbeState.OtherError, absurd, HandleProbeState.OtherError)))),
+                "official_codex_native_error_code=");
+
+            Assert.Equal("official_codex_native_error_code=" + DiagnosticsSanitizer.Redacted, line);
+            Assert.DoesNotContain(absurd.ToString(), line, StringComparison.Ordinal);
+        }
+
+        foreach (var code in new[] { 2, 3, 5, 32, 33, 1920, 4390, 65535 })
+        {
+            var line = Line(
+                DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                    native: new NativeProbeOutcome(NativeProbeState.OtherError, code, HandleProbeState.OtherError)))),
+                "official_codex_native_error_code=");
+
+            Assert.Matches("^official_codex_native_error_code=win32_[0-9]+$", line);
+        }
+    }
+
+    /// <summary>
+    /// The native and token fields, which exist because the managed probe could
+    /// only say "something below me failed".
+    /// </summary>
+    [Fact]
+    public void TheReportStatesTheNativeFailureAndTheSecurityContext()
+    {
+        var report = DiagnosticsReportBuilder.Build(Input(trace: Trace(
+            native: new NativeProbeOutcome(
+                NativeProbeState.SharingViolation, 32, HandleProbeState.Opened),
+            token: new ProcessTokenSnapshot(
+                TokenProfileRelation.DiffersFromResolvedProfile,
+                TokenIntegrity.Low,
+                TokenElevation.Limited,
+                TokenFlagState.Yes,
+                TokenFlagState.Yes,
+                SessionRelation.Other))));
+
+        Assert.Contains("official_codex_native_probe=sharing_violation", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_native_error_code=win32_32", report, StringComparison.Ordinal);
+
+        // The pair that matters: the attribute query failed and a metadata handle
+        // still opened, which is a filter-stack answer rather than a missing file.
+        Assert.Contains("official_codex_handle_probe=opened", report, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "process_token_profile_relation=differs_from_resolved_profile",
+            report,
+            StringComparison.Ordinal);
+        Assert.Contains("process_token_integrity=low", report, StringComparison.Ordinal);
+        Assert.Contains("process_token_elevation=limited", report, StringComparison.Ordinal);
+        Assert.Contains("process_token_restricted=yes", report, StringComparison.Ordinal);
+        Assert.Contains("process_token_appcontainer=yes", report, StringComparison.Ordinal);
+        Assert.Contains("process_session_relation=other", report, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// The exact-operation trace. The coarse candidate state says only that a
@@ -324,7 +428,65 @@ public sealed class DiagnosticsTests
                 Line(
                     DiagnosticsReportBuilder.Build(Input(trace: Trace(stage: stage))),
                     "codex_lookup_terminal_stage=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<NativeProbeState>().Select(state =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                        native: new NativeProbeOutcome(state, null, HandleProbeState.Opened)))),
+                    "official_codex_native_probe=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<HandleProbeState>().Select(state =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(
+                        native: new NativeProbeOutcome(NativeProbeState.Exists, null, state)))),
+                    "official_codex_handle_probe=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<TokenProfileRelation>().Select(relation =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(token: Token(profile: relation)))),
+                    "process_token_profile_relation=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<TokenIntegrity>().Select(integrity =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(token: Token(integrity: integrity)))),
+                    "process_token_integrity=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<TokenElevation>().Select(elevation =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(token: Token(elevation: elevation)))),
+                    "process_token_elevation=")));
+
+        foreach (var (prefix, build) in new (string, Func<TokenFlagState, ProcessTokenSnapshot>)[]
+                 {
+                     ("process_token_restricted=", flag => Token(restricted: flag)),
+                     ("process_token_appcontainer=", flag => Token(appContainer: flag))
+                 })
+        {
+            AssertDistinctLines(
+                Enum.GetValues<TokenFlagState>().Select(flag =>
+                    Line(DiagnosticsReportBuilder.Build(Input(trace: Trace(token: build(flag)))), prefix)));
+        }
+
+        AssertDistinctLines(
+            Enum.GetValues<SessionRelation>().Select(session =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(token: Token(session: session)))),
+                    "process_session_relation=")));
     }
+
+    private static ProcessTokenSnapshot Token(
+        TokenProfileRelation profile = TokenProfileRelation.MatchesResolvedProfile,
+        TokenIntegrity integrity = TokenIntegrity.Medium,
+        TokenElevation elevation = TokenElevation.Default,
+        TokenFlagState restricted = TokenFlagState.No,
+        TokenFlagState appContainer = TokenFlagState.No,
+        SessionRelation session = SessionRelation.ActiveConsole) =>
+        new(profile, integrity, elevation, restricted, appContainer, session);
 
     private static string Line(string report, string prefix)
     {

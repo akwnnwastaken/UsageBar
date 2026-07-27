@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using UsageBar.Windows.Core.Diagnostics;
 using UsageBar.Windows.Core.Providers;
+using UsageBar.Windows.Infrastructure.Diagnostics;
 using UsageBar.Windows.Infrastructure.Discovery;
 using UsageBar.Windows.Infrastructure.Providers;
 using Xunit;
@@ -428,11 +429,21 @@ public sealed class CodexDiscoveryTraceTests : IDisposable
         MakeExecutable(OfficialLayout("Local"));
 
         var counting = new CountingResolver(Resolver(localShell: local, localFramework: local));
-        var discovery = new CodexExecutableLocator(counting).LocateWithTrace();
+        var tokenReads = 0;
+        var discovery = new CodexExecutableLocator(
+            counting,
+            () =>
+            {
+                tokenReads++;
+                return ProcessTokenInspector.Current();
+            }).LocateWithTrace();
 
-        var duringLookup = counting.Calls;
-        Assert.True(duringLookup > 0);
+        var resolvesDuringLookup = counting.Calls;
+        var tokenReadsDuringLookup = tokenReads;
+        Assert.True(resolvesDuringLookup > 0);
+        Assert.True(tokenReadsDuringLookup > 0);
         Assert.Equal(CandidateProbeState.Exists, discovery.Trace.OfficialCodexShellProbe);
+        Assert.Equal(NativeProbeState.Exists, discovery.Trace.OfficialCodexNativeProbe.State);
 
         // Remove the installation the lookup just found. Anything that re-probed
         // while building the summary would now report it absent.
@@ -440,10 +451,16 @@ public sealed class CodexDiscoveryTraceTests : IDisposable
 
         var report = DiagnosticsReportBuilder.Build(Summary(discovery.Trace));
 
-        Assert.Equal(duringLookup, counting.Calls);
+        Assert.Equal(resolvesDuringLookup, counting.Calls);
+        Assert.Equal(tokenReadsDuringLookup, tokenReads);
         Assert.Contains("official_codex_shell_probe=exists", report, StringComparison.Ordinal);
         Assert.Contains("official_codex_candidate_state=exists", report, StringComparison.Ordinal);
         Assert.Contains("codex_lookup_terminal_stage=official_native", report, StringComparison.Ordinal);
+
+        // The native probe is part of the same retained operation, so it does not
+        // drift with the disk either.
+        Assert.Contains("official_codex_native_probe=exists", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_handle_probe=opened", report, StringComparison.Ordinal);
     }
 
     // MARK: - Nothing private escapes
@@ -479,18 +496,31 @@ public sealed class CodexDiscoveryTraceTests : IDisposable
             Assert.DoesNotContain(Environment.UserName, report, StringComparison.OrdinalIgnoreCase);
         }
 
+        // The token fields are built from a real token on a real machine, and
+        // carry none of it.
+        Assert.DoesNotContain("S-1-", report, StringComparison.OrdinalIgnoreCase);
+        if (ProcessTokenInspector.Current().ProfileDirectory is { Length: > 0 } tokenProfile)
+        {
+            Assert.DoesNotContain(tokenProfile, report, StringComparison.OrdinalIgnoreCase);
+        }
+
         // No drive letter, no separator, and every trace line a bare word.
         Assert.DoesNotContain(":\\", report, StringComparison.Ordinal);
         foreach (var prefix in TracePrefixes)
         {
-            var line = report
-                .Split('\n')
-                .Select(candidate => candidate.Trim('\r'))
-                .Single(candidate => candidate.StartsWith(prefix, StringComparison.Ordinal));
-
-            Assert.Matches("^[a-z_]+=[a-z_]+$", line);
+            Assert.Matches("^[a-z_]+=[a-z_]+$", Line(report, prefix));
         }
+
+        // The one line that carries a number carries only a number.
+        Assert.Matches(
+            "^official_codex_native_error_code=(none|redacted|win32_[0-9]+)$",
+            Line(report, "official_codex_native_error_code="));
     }
+
+    private static string Line(string report, string prefix) => report
+        .Split('\n')
+        .Select(candidate => candidate.Trim('\r'))
+        .Single(candidate => candidate.StartsWith(prefix, StringComparison.Ordinal));
 
     private static readonly string[] TracePrefixes =
     {
@@ -500,7 +530,15 @@ public sealed class CodexDiscoveryTraceTests : IDisposable
         "official_codex_shell_probe=",
         "official_codex_framework_probe=",
         "official_codex_profile_derived_probe=",
-        "codex_lookup_terminal_stage="
+        "codex_lookup_terminal_stage=",
+        "official_codex_native_probe=",
+        "official_codex_handle_probe=",
+        "process_token_profile_relation=",
+        "process_token_integrity=",
+        "process_token_elevation=",
+        "process_token_restricted=",
+        "process_token_appcontainer=",
+        "process_session_relation="
     };
 
     /// <summary>A summary shaped like the one the tray menu copies.</summary>

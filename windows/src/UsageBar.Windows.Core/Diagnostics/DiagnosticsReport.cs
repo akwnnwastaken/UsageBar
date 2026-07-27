@@ -171,6 +171,24 @@ public static class DiagnosticsReportBuilder
         builder.Append("codex_lookup_terminal_stage=").AppendLine(
             LookupStage(trace.TerminalStage));
 
+        // What Win32 said directly, and under what security context. The managed
+        // probe folds sharing violations, reparse faults and cloud-provider
+        // faults into one io_error, and File.Exists folds that into "absent" —
+        // which is how a live I/O failure reaches a report as "not installed".
+        var native = trace.OfficialCodexNativeProbe;
+        builder.Append("official_codex_native_probe=").AppendLine(NativeProbe(native.State));
+        builder.Append("official_codex_native_error_code=").AppendLine(Win32Error(native.Win32ErrorCode));
+        builder.Append("official_codex_handle_probe=").AppendLine(HandleProbe(native.HandleState));
+
+        var token = trace.ProcessToken;
+        builder.Append("process_token_profile_relation=").AppendLine(
+            TokenProfile(token.ProfileRelation));
+        builder.Append("process_token_integrity=").AppendLine(Integrity(token.Integrity));
+        builder.Append("process_token_elevation=").AppendLine(Elevation(token.Elevation));
+        builder.Append("process_token_restricted=").AppendLine(Flag(token.Restricted));
+        builder.Append("process_token_appcontainer=").AppendLine(Flag(token.AppContainer));
+        builder.Append("process_session_relation=").AppendLine(Session(token.SessionRelation));
+
         foreach (var provider in input.Providers)
         {
             builder
@@ -242,6 +260,89 @@ public static class DiagnosticsReportBuilder
         CodexLookupStage.Untrusted => "untrusted",
         CodexLookupStage.Unsupported => "unsupported",
         _ => "missing"
+    };
+
+    private static string NativeProbe(NativeProbeState state) => state switch
+    {
+        NativeProbeState.Exists => "exists",
+        NativeProbeState.FileNotFound => "file_not_found",
+        NativeProbeState.PathNotFound => "path_not_found",
+        NativeProbeState.AccessDenied => "access_denied",
+        NativeProbeState.SharingViolation => "sharing_violation",
+        NativeProbeState.LockViolation => "lock_violation",
+        NativeProbeState.CantAccessFile => "cant_access_file",
+        NativeProbeState.ReparseError => "reparse_error",
+        NativeProbeState.CloudUnavailable => "cloud_unavailable",
+        NativeProbeState.DeviceError => "device_error",
+        NativeProbeState.OtherError => "other_error",
+        _ => "not_constructed"
+    };
+
+    /// <summary>
+    /// The Win32 code as a decimal number. It is the one value here that is not a
+    /// closed-set word, and it is safe for the same reason the words are: a
+    /// number carries no path, identity, message, command line or credential.
+    /// Negative or absurd values are refused rather than echoed.
+    /// </summary>
+    private static string Win32Error(int? code)
+    {
+        if (code is not { } value || value == 0)
+        {
+            return DiagnosticsSanitizer.None;
+        }
+
+        return value is > 0 and <= 65535
+            ? "win32_" + value.ToString(CultureInfo.InvariantCulture)
+            : DiagnosticsSanitizer.Redacted;
+    }
+
+    private static string HandleProbe(HandleProbeState state) => state switch
+    {
+        HandleProbeState.Opened => "opened",
+        HandleProbeState.NotFound => "not_found",
+        HandleProbeState.AccessDenied => "access_denied",
+        HandleProbeState.SharingViolation => "sharing_violation",
+        HandleProbeState.ReparseError => "reparse_error",
+        HandleProbeState.OtherError => "other_error",
+        _ => "not_attempted"
+    };
+
+    private static string TokenProfile(TokenProfileRelation relation) => relation switch
+    {
+        TokenProfileRelation.MatchesResolvedProfile => "matches_resolved_profile",
+        TokenProfileRelation.DiffersFromResolvedProfile => "differs_from_resolved_profile",
+        _ => "unknown"
+    };
+
+    private static string Integrity(TokenIntegrity integrity) => integrity switch
+    {
+        TokenIntegrity.Low => "low",
+        TokenIntegrity.Medium => "medium",
+        TokenIntegrity.High => "high",
+        TokenIntegrity.System => "system",
+        _ => "unknown"
+    };
+
+    private static string Elevation(TokenElevation elevation) => elevation switch
+    {
+        TokenElevation.Default => "default",
+        TokenElevation.Limited => "limited",
+        TokenElevation.Full => "full",
+        _ => "unknown"
+    };
+
+    private static string Flag(TokenFlagState flag) => flag switch
+    {
+        TokenFlagState.Yes => "yes",
+        TokenFlagState.No => "no",
+        _ => "unknown"
+    };
+
+    private static string Session(SessionRelation relation) => relation switch
+    {
+        SessionRelation.ActiveConsole => "active_console",
+        SessionRelation.Other => "other",
+        _ => "unknown"
     };
 
     private static string ParentKind(ProcessParentKind kind) => kind switch

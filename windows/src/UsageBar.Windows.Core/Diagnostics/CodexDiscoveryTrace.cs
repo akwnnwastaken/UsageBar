@@ -73,6 +73,130 @@ public enum CandidateProbeState
     SameAsShell
 }
 
+/// <summary>
+/// What a direct Win32 metadata call made of the documented candidate.
+///
+/// The managed probe reported <c>io_error</c> in the Setup-launched session and
+/// <c>exists</c> from the Start Menu on the same file, which says only that
+/// something below the framework failed. .NET folds sharing violations, lock
+/// violations, reparse faults and cloud-provider faults into one
+/// <c>IOException</c>, and <c>File.Exists</c> then folds that into <c>false</c>.
+/// These states keep them apart.
+/// </summary>
+public enum NativeProbeState
+{
+    Exists,
+    FileNotFound,
+    PathNotFound,
+    AccessDenied,
+    SharingViolation,
+    LockViolation,
+    CantAccessFile,
+    ReparseError,
+    CloudUnavailable,
+    DeviceError,
+    OtherError,
+    NotConstructed
+}
+
+/// <summary>
+/// Whether a metadata-only handle could be opened on the candidate.
+///
+/// Separates a namespace or attribute failure from a handle-access failure: the
+/// attribute query and the open take different paths through the filter stack,
+/// so one succeeding while the other fails is itself the answer.
+/// </summary>
+public enum HandleProbeState
+{
+    Opened,
+    NotFound,
+    AccessDenied,
+    SharingViolation,
+    ReparseError,
+    OtherError,
+    NotAttempted
+}
+
+/// <summary>Whether the process token's own profile is the resolved one.</summary>
+public enum TokenProfileRelation
+{
+    MatchesResolvedProfile,
+    DiffersFromResolvedProfile,
+    Unknown
+}
+
+public enum TokenIntegrity
+{
+    Low,
+    Medium,
+    High,
+    System,
+    Unknown
+}
+
+public enum TokenElevation
+{
+    Default,
+    Limited,
+    Full,
+    Unknown
+}
+
+/// <summary>A token property that is either set, not set, or unreadable.</summary>
+public enum TokenFlagState
+{
+    Yes,
+    No,
+    Unknown
+}
+
+public enum SessionRelation
+{
+    ActiveConsole,
+    Other,
+    Unknown
+}
+
+/// <summary>
+/// One direct Win32 look at the documented candidate.
+///
+/// The numeric Win32 code is carried because it is the ground truth and contains
+/// no path, identity, message, command line or credential. The state beside it is
+/// a convenience bucket; where the two ever disagree, the number is what counts.
+/// </summary>
+public sealed record NativeProbeOutcome(
+    NativeProbeState State,
+    int? Win32ErrorCode,
+    HandleProbeState HandleState)
+{
+    public static NativeProbeOutcome NotConstructed { get; } =
+        new(NativeProbeState.NotConstructed, null, HandleProbeState.NotAttempted);
+}
+
+/// <summary>
+/// The current process's security context, as classifications only.
+///
+/// A token created by Setup can differ from one created by the shell in ways that
+/// change what the filesystem will answer. None of the underlying values — SIDs,
+/// account names, session ids, handles or the profile path — leave this type.
+/// </summary>
+public sealed record ProcessTokenSnapshot(
+    TokenProfileRelation ProfileRelation,
+    TokenIntegrity Integrity,
+    TokenElevation Elevation,
+    TokenFlagState Restricted,
+    TokenFlagState AppContainer,
+    SessionRelation SessionRelation)
+{
+    public static ProcessTokenSnapshot Unknown { get; } = new(
+        TokenProfileRelation.Unknown,
+        TokenIntegrity.Unknown,
+        TokenElevation.Unknown,
+        TokenFlagState.Unknown,
+        TokenFlagState.Unknown,
+        SessionRelation.Unknown);
+}
+
 /// <summary>Where a Codex lookup ended. Never which path it ended at.</summary>
 public enum CodexLookupStage
 {
@@ -110,7 +234,9 @@ public sealed record CodexDiscoveryTrace(
     CandidateProbeState OfficialCodexShellProbe,
     CandidateProbeState OfficialCodexFrameworkProbe,
     CandidateProbeState OfficialCodexProfileDerivedProbe,
-    CodexLookupStage TerminalStage)
+    CodexLookupStage TerminalStage,
+    NativeProbeOutcome OfficialCodexNativeProbe,
+    ProcessTokenSnapshot ProcessToken)
 {
     /// <summary>
     /// No lookup has run yet. A report carrying this also carries
@@ -125,7 +251,9 @@ public sealed record CodexDiscoveryTrace(
         CandidateProbeState.NotConstructed,
         CandidateProbeState.NotConstructed,
         CandidateProbeState.NotConstructed,
-        CodexLookupStage.Missing);
+        CodexLookupStage.Missing,
+        NativeProbeOutcome.NotConstructed,
+        ProcessTokenSnapshot.Unknown);
 
     /// <summary>
     /// The coarse candidate state, derived from the probes rather than measured

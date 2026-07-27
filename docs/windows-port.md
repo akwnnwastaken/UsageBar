@@ -446,6 +446,64 @@ visible but never runnable, the probe separating absence from refusal from
 failure, the retained trace not drifting after the disk changes, and no path,
 root or user name surviving into a report.
 
+### Native probe and process token
+
+The trace above was run physically. Shell and framework agreed on one Local
+AppData root under the correct profile, and **both** the Local AppData probe and
+the profile-derived probe returned `io_error` in the Setup-launched session,
+while the Start Menu session returned `exists` for both a minute later.
+
+That is the end of what managed code can say. .NET folds sharing violations,
+lock violations, reparse faults and cloud-provider faults into a single
+`IOException`; `File.Exists` — which `ExecutableTrust.Validate` reaches first —
+folds that into `false`; `Validate` then returns null, and the locator reports
+the provider missing before any trust rule is evaluated. **A live I/O failure
+arrives in a report as "Codex is not installed."**
+
+So the Win32 error is now taken directly, and the security context it was taken
+in is reported beside it.
+
+| Field | Values | Means |
+| --- | --- | --- |
+| `official_codex_native_probe` | `exists` / `file_not_found` / `path_not_found` / `access_denied` / `sharing_violation` / `lock_violation` / `cant_access_file` / `reparse_error` / `cloud_unavailable` / `device_error` / `other_error` / `not_constructed` | what `GetFileAttributesExW` returned |
+| `official_codex_native_error_code` | `none` / `win32_<decimal>` | the Win32 error, captured at the call site |
+| `official_codex_handle_probe` | `opened` / `not_found` / `access_denied` / `sharing_violation` / `reparse_error` / `other_error` / `not_attempted` | whether a metadata-only `CreateFileW` succeeded |
+| `process_token_profile_relation` | `matches_resolved_profile` / `differs_from_resolved_profile` / `unknown` | `GetUserProfileDirectoryW` for this process's token against the resolved profile |
+| `process_token_integrity` | `low` / `medium` / `high` / `system` / `unknown` | the token's integrity level |
+| `process_token_elevation` | `default` / `limited` / `full` / `unknown` | `TokenElevationType` |
+| `process_token_restricted` | `yes` / `no` / `unknown` | `IsTokenRestricted` |
+| `process_token_appcontainer` | `yes` / `no` / `unknown` | `TokenIsAppContainer` |
+| `process_session_relation` | `active_console` / `other` / `unknown` | the token's session against the active console session |
+
+`official_codex_native_error_code` is the only line in a report that is not a
+closed-set word. A decimal number carries no path, identity, message, command
+line or credential, and the emitter refuses anything outside `1..65535` rather
+than echoing it. **No `FormatMessage` output or exception text is ever emitted.**
+Where the bucket and the number disagree, the number is what counts.
+
+The two probes are asked separately on purpose: an attribute query and an open
+take different routes through the filter stack, so `native_probe` failing while
+`handle_probe=opened` is itself the answer — a namespace or attribute fault
+rather than a missing or locked file.
+
+The handle probe requests `FILE_READ_ATTRIBUTES` only, with
+`FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE` and `OPEN_EXISTING`. It
+cannot read a byte of the file and cannot start it, no flags are added, and the
+handle is closed immediately. Neither probe modifies the candidate, follows a
+link, reads an ACL or grants trust — `ExecutableTrust` is unchanged and remains
+the only thing that may accept an executable.
+
+Token facts are read once per process (they cannot change during its lifetime)
+and classified per lookup against the roots that lookup resolved. The raw
+values — SIDs, the account name, the session id, the token handle, the profile
+path — never leave `ProcessTokenInspector`.
+
+`NativeProbeAndTokenTests` covers every error classification, the error being
+captured at the call site rather than read back later, the handle probe's exact
+access and share flags with every content and execute right asserted absent, the
+candidate being byte-identical after probing, each integrity/elevation/flag/
+session classification, and no SID, path or user name surviving classification.
+
 ---
 
 ## 7. Tray-visibility guidance
@@ -959,16 +1017,39 @@ What the two summaries should show, and what each outcome means:
 | `official_codex_candidate_state=not_constructed` | no root resolved at all - report it, do not work around it |
 | Codex missing while `official_codex_candidate_state=exists` | the cause is *not* folder resolution; the failure is later, in validation or launch |
 
-The comparison already run returned `available` + `missing` in the Setup-launched
-session and `exists` from the Start Menu, so the trace fields decide it:
+Both comparisons above have now been run. The second returned
+`local_app_data_source_relation=agree`, `all_under_profile`, and **`io_error` on
+both the Local AppData probe and the profile-derived probe** in the
+Setup-launched session, against `exists` for both from the Start Menu. Folder
+resolution is therefore not the fault: the roots are right and the filesystem is
+refusing the file in that context.
 
-| Trace in the Setup-launched session | Reading |
+### Third physical comparison — three summaries
+
+Collect **three**, not two, so a fault that clears on its own is distinguishable
+from one that persists:
+
+1. The initial Setup-launched session.
+2. The **same still-running** Setup-launched process, after one manual Refresh.
+3. A genuine Start Menu process, after fully exiting the first.
+
+Summary 2 is the one that was missing before. If the native error is gone by then
+without the process restarting, the fault is transient and timing-related; if it
+persists, it belongs to the process.
+
+| Setup-launched session | Reading |
 | --- | --- |
-| `official_codex_profile_derived_probe=exists` while the two Local AppData probes say `not_found` | the roots are **wrong**; the fault is in what the folder resolves to, not in the file |
-| all three probes `not_found`, `local_app_data_profile_relation=all_under_profile` | the whole profile is wrong, or Codex is not where it is expected - report it |
-| a probe says `access_denied` or `io_error` | the roots are right and the file is not readable from that context; this is not a resolution problem |
-| `local_app_data_source_relation=differ` with one probe `exists` | one source is wrong and the other is right, and discovery already tries both |
-| the two sessions' traces are identical | the trace is still not narrow enough; add the next boundary rather than guessing |
+| `sharing_violation` / `lock_violation` | something holds the file. `File.Exists` is the wrong question; check whether a minimal shared metadata handle succeeds where the attribute query does not |
+| `access_denied` with `restricted=yes`, `appcontainer=yes`, or `differs_from_resolved_profile` | the Setup-created token is the cause |
+| `cant_access_file` / `reparse_error` | inspect the Codex executable's reparse-target handling, without weakening root containment |
+| `cloud_unavailable` / `device_error` | a filesystem-provider problem, not a resolver problem |
+| `native_probe` failing while `handle_probe=opened` | a namespace or attribute fault, not a missing or locked file |
+| identical token states in all three, native error only under Setup | investigate process mitigation and security-filter inheritance |
+| the error clears in summary 2 without a restart | transient; the fault is timing, not context |
+
+Every one of these is an investigation, not a workaround. **No production change —
+no retry, no delay, no fallback, no candidate change, no trust relaxation — until
+this result is in.**
 
 Send only the two copied summaries. Do not send tokens, credential files, raw
 provider output or full paths - none of them are needed, and none of them are
