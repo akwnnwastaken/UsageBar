@@ -280,8 +280,10 @@ public sealed class InstallerDefinitionTests
     [Fact]
     public void TheFinishedPageTellsTheUserToOpenItFromTheStartMenu()
     {
-        Assert.Matches(@"(?m)^en\.FinishedHeading=UsageBar is installed$", InstallerScript);
-        Assert.Matches(@"(?m)^tr\.FinishedHeading=UsageBar kuruldu$", InstallerScript);
+        // \s*$ rather than $: the script is checked out with CRLF on Windows and
+        // LF elsewhere, and the heading is the whole line either way.
+        Assert.Matches(@"(?m)^en\.FinishedHeading=UsageBar is installed\s*$", InstallerScript);
+        Assert.Matches(@"(?m)^tr\.FinishedHeading=UsageBar kuruldu\s*$", InstallerScript);
 
         var english = Regex.Match(InstallerScript, @"(?m)^en\.FinishedBody=.*$").Value;
         Assert.Contains("installed successfully", english, StringComparison.Ordinal);
