@@ -5,6 +5,7 @@ using UsageBar.Windows.Core.Diagnostics;
 using UsageBar.Windows.Core.Parsing;
 using UsageBar.Windows.Core.Policies;
 using UsageBar.Windows.Core.Providers;
+using UsageBar.Windows.Infrastructure.Diagnostics;
 using UsageBar.Windows.Infrastructure.Discovery;
 using UsageBar.Windows.Infrastructure.Process;
 
@@ -42,8 +43,21 @@ public sealed class CodexUsageReader
     public CodexUsageReader(CodexExecutableLocator? locator = null, string? clientVersion = null)
     {
         _locator = locator ?? new CodexExecutableLocator();
-        _clientVersion = clientVersion ?? "1.9.0";
+        _clientVersion = ResolveClientVersion(clientVersion);
     }
+
+    /// <summary>
+    /// The version UsageBar announces to the app server. It defaults to the
+    /// application's own assembly version rather than a literal, so a release
+    /// bump cannot leave the app introducing itself as a version it is not — a
+    /// hard-coded <c>"1.9.0"</c> survived here into the 2.0.0 preparation.
+    ///
+    /// <see cref="WindowsEnvironmentInfo.ApplicationVersion"/> is the clean
+    /// three-part product version; the informational version with its
+    /// <c>+commit</c> suffix is deliberately not sent.
+    /// </summary>
+    internal static string ResolveClientVersion(string? clientVersion) =>
+        clientVersion ?? WindowsEnvironmentInfo.ApplicationVersion;
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(15);
 
