@@ -506,6 +506,44 @@ public struct UsageHistoryChartModel {
         let clamped = Double(min(100, max(0, remainingPercent)))
         return CGFloat((clamped - lowerBound) / (upperBound - lowerBound))
     }
+
+    /// The recorded sample nearest a horizontal position on the chart, for
+    /// pointer hover.
+    ///
+    /// `normalizedX` is the pointer's progress across the chart rectangle
+    /// (0 = left edge, 1 = right edge) and is clamped into `0...1`; a `NaN`
+    /// value is treated as 0 so the result stays deterministic.
+    ///
+    /// The search runs over `displaySamples` — exactly what the chart draws —
+    /// so the reported value always agrees with the visible line. Selection is
+    /// by timestamp, not array index, because samples are not evenly spaced in
+    /// time. Nothing is interpolated: the answer is always a real recorded
+    /// sample. Two samples equally far from the target resolve to the earlier
+    /// one.
+    public func nearestDisplaySample(toNormalizedX normalizedX: CGFloat) -> UsageHistorySample? {
+        guard let first = displaySamples.first, let last = displaySamples.last else { return nil }
+        guard displaySamples.count > 1 else { return first }
+
+        let duration = last.recordedAt.timeIntervalSince(first.recordedAt)
+        guard duration > 0 else { return first }
+
+        let progress = normalizedX.isNaN ? 0 : min(1, max(0, normalizedX))
+        let target = first.recordedAt.addingTimeInterval(duration * Double(progress))
+
+        var best = first
+        var bestDistance = abs(target.timeIntervalSince(first.recordedAt))
+        // displaySamples is sorted ascending, and only a strictly smaller
+        // distance replaces the current best, so an exact tie keeps the
+        // earlier sample.
+        for sample in displaySamples.dropFirst() {
+            let distance = abs(target.timeIntervalSince(sample.recordedAt))
+            if distance < bestDistance {
+                best = sample
+                bestDistance = distance
+            }
+        }
+        return best
+    }
 }
 
 // MARK: - Usage summary

@@ -110,6 +110,20 @@ struct Localizer {
             "\(firstPercent) → \(lastPercent) · change \(signedDelta)"
         )
     }
+
+    /// Local time in the selected language's usual form: `19:22` in Turkish,
+    /// `7:22 PM` in English.
+    func localTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .turkish ? "tr_TR" : "en_US")
+        formatter.dateFormat = language == .turkish ? "HH:mm" : "h:mm a"
+        return formatter.string(from: date)
+    }
+
+    /// Replaces the history summary while the pointer hovers a recorded sample.
+    func usageHistoryHover(recordedAt: Date, remainingPercent: Int) -> String {
+        "\(localTime(recordedAt)) · \(remaining(remainingPercent))"
+    }
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
     var codexNotFoundMessage: String {
         pick(
@@ -754,6 +768,15 @@ final class ClaudeUsageFetcher {
 final class UsageSparklineView: NSView {
     private let model: UsageHistoryChartModel
     private let lineColor: NSColor
+    private var trackingArea: NSTrackingArea?
+    private var hoveredSample: UsageHistorySample?
+
+    /// Reports the sample the pointer snapped to, or `nil` when the pointer
+    /// leaves the chart. Assigned after construction so the menu row can update
+    /// its own summary label and this view's accessibility value without
+    /// capturing the view strongly. The chart reports samples only; the menu
+    /// layer decides how to localize them.
+    var onHoveredSampleChanged: ((UsageHistorySample?) -> Void)?
 
     init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor) {
         model = UsageHistoryChartModel(samples: samples)
@@ -768,22 +791,31 @@ final class UsageSparklineView: NSView {
         nil
     }
 
+    /// Derived from the current bounds on every use, so a resize or a
+    /// backing-scale change can never leave stale coordinates behind.
+    private var chartRect: NSRect { bounds.insetBy(dx: 1, dy: 2) }
+
+    /// The single time-to-x / percentage-to-y mapping shared by the line, the
+    /// latest-point marker, and the hover guide and point.
+    private func point(for sample: UsageHistorySample, in chartRect: NSRect) -> NSPoint {
+        guard let first = model.displaySamples.first, let last = model.displaySamples.last else {
+            return NSPoint(x: chartRect.midX, y: chartRect.midY)
+        }
+        let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
+        let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
+        let x = model.displaySamples.count == 1
+            ? chartRect.midX
+            : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
+        let y = chartRect.minY + model.normalizedY(for: sample.remainingPercent) * chartRect.height
+        return NSPoint(x: x, y: y)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let chartRect = bounds.insetBy(dx: 1, dy: 2)
+        let chartRect = self.chartRect
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
         NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
-        guard let first = model.displaySamples.first, let last = model.displaySamples.last else { return }
-
-        let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
-        let point: (Int, UsageHistorySample) -> NSPoint = { index, sample in
-            let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
-            let x = self.model.displaySamples.count == 1
-                ? chartRect.midX
-                : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
-            let y = chartRect.minY + self.model.normalizedY(for: sample.remainingPercent) * chartRect.height
-            return NSPoint(x: x, y: y)
-        }
+        guard let last = model.displaySamples.last else { return }
 
         NSColor.secondaryLabelColor.withAlphaComponent(0.12).setStroke()
         let guide = NSBezierPath()
@@ -792,9 +824,20 @@ final class UsageSparklineView: NSView {
         guide.lineWidth = 0.5
         guide.stroke()
 
+        // The hover guide is drawn under the line so the graph stays readable.
+        let hoveredPoint = hoveredSample.map { point(for: $0, in: chartRect) }
+        if let hoveredPoint {
+            NSColor.secondaryLabelColor.withAlphaComponent(0.4).setStroke()
+            let hoverGuide = NSBezierPath()
+            hoverGuide.move(to: NSPoint(x: hoveredPoint.x, y: chartRect.minY))
+            hoverGuide.line(to: NSPoint(x: hoveredPoint.x, y: chartRect.maxY))
+            hoverGuide.lineWidth = 0.75
+            hoverGuide.stroke()
+        }
+
         let path = NSBezierPath()
         for (index, sample) in model.displaySamples.enumerated() {
-            let samplePoint = point(index, sample)
+            let samplePoint = point(for: sample, in: chartRect)
             if index == 0 { path.move(to: samplePoint) } else { path.line(to: samplePoint) }
         }
         lineColor.setStroke()
@@ -803,10 +846,76 @@ final class UsageSparklineView: NSView {
         path.lineCapStyle = .round
         path.stroke()
 
-        let latestPoint = point(model.displaySamples.count - 1, last)
+        let latestPoint = point(for: last, in: chartRect)
         let dotRect = NSRect(x: latestPoint.x - 2, y: latestPoint.y - 2, width: 4, height: 4)
         lineColor.setFill()
         NSBezierPath(ovalIn: dotRect).fill()
+
+        if let hoveredPoint {
+            let hoverRect = NSRect(x: hoveredPoint.x - 3, y: hoveredPoint.y - 3, width: 6, height: 6)
+            lineColor.setFill()
+            NSBezierPath(ovalIn: hoverRect).fill()
+        }
+    }
+
+    // MARK: - Pointer hover
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateHover(with: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setHoveredSample(nil)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // The menu can close without delivering mouseExited; without this the
+        // summary would still show the hovered value when it reopens.
+        if window == nil {
+            setHoveredSample(nil)
+        }
+    }
+
+    func clearHover() {
+        setHoveredSample(nil)
+    }
+
+    private func updateHover(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        let chartRect = self.chartRect
+        guard chartRect.width > 0, !model.displaySamples.isEmpty, bounds.contains(location) else {
+            setHoveredSample(nil)
+            return
+        }
+        let progress = (location.x - chartRect.minX) / chartRect.width
+        setHoveredSample(model.nearestDisplaySample(toNormalizedX: progress))
+    }
+
+    private func setHoveredSample(_ sample: UsageHistorySample?) {
+        guard sample != hoveredSample else { return }
+        hoveredSample = sample
+        needsDisplay = true
+        onHoveredSampleChanged?(sample)
     }
 }
 
@@ -988,6 +1097,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         if UsageRefreshPolicy.shouldRefreshOnMenuOpen(lastUpdated: lastUpdated, now: Date()) {
             refresh()
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        // The menu is not rebuilt on every open, so a graph left hovered when
+        // the menu closed would otherwise reopen showing the hovered value
+        // instead of its range/change summary.
+        for item in menu.items {
+            guard let view = item.view else { continue }
+            for graph in view.subviews.compactMap({ $0 as? UsageSparklineView }) {
+                graph.clearHover()
+            }
         }
     }
 
@@ -1555,6 +1676,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             graph.setAccessibilityLabel(historyRange)
             graph.setAccessibilityValue(historySummary)
+            // Each graph owns its hover state and updates only its own sibling
+            // summary label. `localizer` is a value copy, so the closure holds
+            // neither this delegate nor the graph strongly.
+            let localizer = text
+            graph.onHoveredSampleChanged = { [weak graph, weak summaryLabel] sample in
+                let value: String
+                if let sample {
+                    value = localizer.usageHistoryHover(
+                        recordedAt: sample.recordedAt,
+                        remainingPercent: sample.remainingPercent
+                    )
+                } else {
+                    value = historySummary
+                }
+                summaryLabel?.stringValue = value
+                graph?.setAccessibilityValue(value)
+            }
             container.addSubview(graph)
         }
 
@@ -1921,10 +2059,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func formattedTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: language == .turkish ? "tr_TR" : "en_US")
-        formatter.dateFormat = language == .turkish ? "HH:mm" : "h:mm a"
-        return formatter.string(from: date)
+        text.localTime(date)
     }
 }
 
@@ -2015,6 +2150,17 @@ private func runSelfTest() -> Int32 {
             remainingPercent: $0.element
         )
     })
+    // Built from local components so the expected wall-clock text holds in any
+    // time zone. English keeps its 12-hour form; only the Turkish string is
+    // compared whole, because the system's am/pm separator is not stable.
+    var hoverComponents = DateComponents()
+    hoverComponents.year = 2026
+    hoverComponents.month = 7
+    hoverComponents.day = 27
+    hoverComponents.hour = 19
+    hoverComponents.minute = 22
+    let hoverSample = Calendar(identifier: .gregorian).date(from: hoverComponents) ?? historyOrigin
+    let englishHover = english.usageHistoryHover(recordedAt: hoverSample, remainingPercent: 47)
     guard
         prunedHistory.count == 2,
         replacedHistory.count == 2,
@@ -2032,7 +2178,17 @@ private func runSelfTest() -> Int32 {
         noisyChart.displaySamples.map(\.remainingPercent) == [33, 33, 33, 32, 31],
         turkish.usageHistoryRange(changingChart.recordedDuration) == "Son 35 dk",
         english.usageHistoryRange(changingChart.recordedDuration) == "Last 35m",
-        english.usageHistorySummary(changingChart) == "33% → 31% · change -2"
+        english.usageHistorySummary(changingChart) == "33% → 31% · change -2",
+        // Chart hover snaps to a drawn sample; it never interpolates.
+        changingChart.nearestDisplaySample(toNormalizedX: 0)?.remainingPercent == 33,
+        changingChart.nearestDisplaySample(toNormalizedX: 1)?.remainingPercent == 31,
+        changingChart.nearestDisplaySample(toNormalizedX: -4)?.remainingPercent == 33,
+        flatChart.nearestDisplaySample(toNormalizedX: 0.5)?.remainingPercent == 33,
+        // Pre-reset samples are not on the chart, so hover cannot reach them.
+        resetChart.nearestDisplaySample(toNormalizedX: 0)?.remainingPercent == 90,
+        turkish.usageHistoryHover(recordedAt: hoverSample, remainingPercent: 47) == "19:22 · %47 kaldı",
+        englishHover.hasPrefix("7:22"),
+        englishHover.hasSuffix("· 47% remaining")
     else {
         fputs("Yerel kullanım geçmişi testi başarısız\n", stderr)
         return 1

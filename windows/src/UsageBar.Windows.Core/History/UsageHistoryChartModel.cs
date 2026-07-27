@@ -120,4 +120,70 @@ public sealed class UsageHistoryChartModel
         var clamped = (double)Math.Clamp(remainingPercent, 0, 100);
         return (clamped - LowerBound) / (UpperBound - LowerBound);
     }
+
+    /// <summary>
+    /// The recorded sample nearest a horizontal position on the chart, for
+    /// pointer hover.
+    /// </summary>
+    /// <param name="normalizedX">
+    /// The pointer's progress across the plot rectangle: 0 is the left edge and
+    /// 1 the right edge. Finite values are clamped into 0...1. NaN and negative
+    /// infinity select the beginning; positive infinity selects the end.
+    /// </param>
+    /// <returns>
+    /// A sample from <see cref="DisplaySamples"/>, or <c>null</c> when nothing
+    /// is drawn.
+    /// </returns>
+    /// <remarks>
+    /// The search runs over <see cref="DisplaySamples"/> — the exact line drawn,
+    /// i.e. the current reset arc with isolated one-point noise flattened — so
+    /// the value shown above the graph always agrees with the visible line.
+    /// Selection is by <see cref="UsageHistorySample.RecordedAt"/>, not array
+    /// index, because samples are not evenly spaced in time. Nothing is
+    /// interpolated: the answer is always a real recorded sample. Two samples
+    /// equally far from the target resolve to the earlier one.
+    /// </remarks>
+    public UsageHistorySample? NearestDisplaySample(double normalizedX)
+    {
+        if (DisplaySamples.Count == 0)
+        {
+            return null;
+        }
+
+        var first = DisplaySamples[0];
+        if (DisplaySamples.Count == 1)
+        {
+            return first;
+        }
+
+        var durationSeconds = RecordedDuration.TotalSeconds;
+        if (durationSeconds <= 0)
+        {
+            return first;
+        }
+
+        // Math.Clamp maps ±infinity onto the ends but returns NaN unchanged, so
+        // NaN is decided first and deliberately selects the beginning.
+        var progress = double.IsNaN(normalizedX) ? 0 : Math.Clamp(normalizedX, 0, 1);
+        var target = first.RecordedAt.AddSeconds(durationSeconds * progress);
+
+        var nearest = first;
+        var nearestDistance = Math.Abs((target - first.RecordedAt).TotalSeconds);
+
+        // DisplaySamples is sorted ascending and only a strictly smaller
+        // distance replaces the current best, so an exact tie keeps the earlier
+        // sample.
+        for (var index = 1; index < DisplaySamples.Count; index++)
+        {
+            var candidate = DisplaySamples[index];
+            var distance = Math.Abs((target - candidate.RecordedAt).TotalSeconds);
+            if (distance < nearestDistance)
+            {
+                nearest = candidate;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
 }

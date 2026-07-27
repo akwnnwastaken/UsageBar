@@ -358,6 +358,14 @@ public sealed class Localizer
             $"{firstPercent} → {lastPercent} · change {signedDelta}");
     }
 
+    /// <summary>
+    /// Replaces the history summary while the pointer hovers a recorded sample:
+    /// `19:22 · %47 kaldı` / `7:22 PM · 47% remaining`. Time and percentage
+    /// formatting are the existing ones, so there is one rule per language.
+    /// </summary>
+    public string UsageHistoryHover(DateTimeOffset recordedAt, int remainingPercent) =>
+        $"{FormattedTime(recordedAt)} · {Remaining(remainingPercent)}";
+
     public string Issue(ProviderIssue issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
