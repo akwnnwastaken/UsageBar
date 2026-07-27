@@ -6,6 +6,7 @@ using UsageBar.Windows.Core.Policies;
 using UsageBar.Windows.Core.Providers;
 using UsageBar.Windows.Core.Settings;
 using UsageBar.Windows.Infrastructure.Diagnostics;
+using UsageBar.Windows.Infrastructure.Discovery;
 using UsageBar.Windows.Infrastructure.Providers;
 using UsageBar.Windows.Infrastructure.Startup;
 using UsageBar.Windows.Infrastructure.Storage;
@@ -392,7 +393,19 @@ internal sealed class UsageBarController : IDisposable
         {
             ProviderDiagnosticsFor(ProviderNames.Codex, Settings.CodexConnected),
             ProviderDiagnosticsFor(ProviderNames.ClaudeCode, Settings.ClaudeConnected)
-        }));
+        },
+        // Launch-context facts. Provider discovery was seen to depend on how
+        // UsageBar was started, so a report says which context it came from and
+        // whether the folders discovery builds on resolved at all.
+        FolderState(WindowsKnownFolder.LocalApplicationData),
+        FolderState(WindowsKnownFolder.UserProfile),
+        _codexReader.OfficialCandidateState(),
+        ProcessParentInspector.Classify()));
+
+    private static FolderResolutionState FolderState(WindowsKnownFolder folder) =>
+        new WindowsKnownFolderResolver().Resolve(folder).Count > 0
+            ? FolderResolutionState.Available
+            : FolderResolutionState.Empty;
 
     private ProviderDiagnostics ProviderDiagnosticsFor(string providerName, bool connected)
     {

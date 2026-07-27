@@ -33,20 +33,24 @@ public sealed class ClaudeExecutableLocator
     /// </summary>
     private const int MaximumProbeDepth = 2;
 
-    private readonly Func<Environment.SpecialFolder, string> _specialFolder;
-    private readonly Func<string, string?> _environmentVariable;
+    private readonly IKnownFolderResolver _folders;
 
     public ClaudeExecutableLocator()
-        : this(Environment.GetFolderPath, Environment.GetEnvironmentVariable)
+        : this(new WindowsKnownFolderResolver())
     {
     }
+
+    /// <summary>
+    /// Claude's roots come from the same resolver Codex uses, but the two stay
+    /// independent: neither provider's outcome can affect the other's.
+    /// </summary>
+    public ClaudeExecutableLocator(IKnownFolderResolver folders) => _folders = folders;
 
     internal ClaudeExecutableLocator(
         Func<Environment.SpecialFolder, string> specialFolder,
         Func<string, string?> environmentVariable)
+        : this(LegacyResolver.From(specialFolder, environmentVariable))
     {
-        _specialFolder = specialFolder;
-        _environmentVariable = environmentVariable;
     }
 
     public ExecutableLookup Locate(string? userSelectedPath = null)
@@ -107,10 +111,7 @@ public sealed class ClaudeExecutableLocator
 
     internal IEnumerable<Candidate> NativeCandidates()
     {
-        var userProfile = _specialFolder(Environment.SpecialFolder.UserProfile);
-        var localAppData = _specialFolder(Environment.SpecialFolder.LocalApplicationData);
-
-        if (!string.IsNullOrEmpty(userProfile))
+        foreach (var userProfile in _folders.Resolve(WindowsKnownFolder.UserProfile))
         {
             // The documented native installer location, and the one the
             // troubleshooting guide tells users to check first.
@@ -121,7 +122,7 @@ public sealed class ClaudeExecutableLocator
                 ProviderAdapterKind.NativeExecutable);
         }
 
-        if (!string.IsNullOrEmpty(localAppData))
+        foreach (var localAppData in _folders.Resolve(WindowsKnownFolder.LocalApplicationData))
         {
             var winGet = System.IO.Path.Combine(localAppData, "Microsoft", "WinGet");
             yield return new Candidate(
@@ -140,16 +141,15 @@ public sealed class ClaudeExecutableLocator
     /// </summary>
     internal IEnumerable<ProbeRoot> ProbeRoots()
     {
-        var appData = _environmentVariable("APPDATA");
-        if (!string.IsNullOrEmpty(appData))
+        foreach (var appData in _folders.Resolve(WindowsKnownFolder.RoamingApplicationData))
         {
-            var platformPackage = System.IO.Path.Combine(
-                appData, "npm", "node_modules", "@anthropic-ai", "claude-code-win32-x64");
-            yield return new ProbeRoot(platformPackage, ProviderAdapterKind.NativeExecutable);
+            yield return new ProbeRoot(
+                System.IO.Path.Combine(
+                    appData, "npm", "node_modules", "@anthropic-ai", "claude-code-win32-x64"),
+                ProviderAdapterKind.NativeExecutable);
         }
 
-        var userProfile = _specialFolder(Environment.SpecialFolder.UserProfile);
-        if (!string.IsNullOrEmpty(userProfile))
+        foreach (var userProfile in _folders.Resolve(WindowsKnownFolder.UserProfile))
         {
             yield return new ProbeRoot(
                 System.IO.Path.Combine(userProfile, ".claude", "local"),
@@ -249,6 +249,7 @@ public sealed class GitBashLocator
 
     internal GitBashLocator(Func<Environment.SpecialFolder, string> specialFolder) =>
         _specialFolder = specialFolder;
+
 
     /// <summary>The trusted bash.exe path, or null when none is installed.</summary>
     public string? Locate()

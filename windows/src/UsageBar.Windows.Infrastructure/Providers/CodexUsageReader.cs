@@ -52,6 +52,13 @@ public sealed class CodexUsageReader
 
     public ProviderExecutableState LastExecutableState { get; private set; } = ProviderExecutableState.Missing;
 
+    /// <summary>
+    /// Whether the documented native Codex path could be built and whether it is
+    /// there. Distinguishes "no Local AppData root resolved" from "Codex is not
+    /// installed" in diagnostics.
+    /// </summary>
+    public CandidateState OfficialCandidateState() => _locator.OfficialCandidateState();
+
     public async Task<ProviderUsage> ReadAsync(
         string? userSelectedPath = null,
         CancellationToken cancellationToken = default)

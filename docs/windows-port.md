@@ -160,6 +160,33 @@ A candidate is accepted only when it:
 The current working directory is never a candidate, and the user's `PATH` is
 never used to pick a winner.
 
+### Known-folder resolution
+
+Every candidate above is built from a user known folder — Local AppData, the
+user profile, or Roaming AppData. `WindowsKnownFolderResolver` supplies them:
+
+1. `SHGetKnownFolderPath` for the current user (`FOLDERID_LocalAppData`,
+   `FOLDERID_Profile`, `FOLDERID_RoamingAppData`) is asked first.
+2. `Environment.GetFolderPath` is asked second, as a **validated fallback** —
+   not as the single source of truth.
+3. Each answer must be fully qualified and name a directory that exists;
+   anything else is discarded.
+4. The surviving roots are de-duplicated case-insensitively, so a candidate is
+   validated once however many sources agree on it.
+5. Discovery iterates **every** resolved root, so one source pointing somewhere
+   wrong cannot shadow the source that is right.
+
+Nothing is cached. A folder that resolved to nothing once is asked about again
+on the next refresh rather than being remembered as permanently absent — the
+same reason `ClaudeNativeWindowsAdapter` caches only a *successful* lookup.
+
+The `LOCALAPPDATA` environment variable is deliberately **not** a source. It is
+inherited, so a parent process could point discovery anywhere. Trust comes from
+the shell or the framework, never from an inherited string. This is also not a
+PATH search: there is no `where.exe`, no `cmd.exe`, no PowerShell and no shell
+fallback anywhere in discovery, and every candidate still goes through the full
+`ExecutableTrust` validation described above.
+
 ### Supported Codex installation formats
 
 | Format | Location | Adapter |
@@ -199,6 +226,50 @@ identically named executable outside the trusted root.
 
 This is the kind of gap only a physical machine finds: every automated test
 passed both before and after, because no CI runner has Codex installed.
+
+**2026-07-27 — Codex discovery depended on how UsageBar was launched.**
+On the same machine, with the same files and the same installation:
+
+| Launch context | Codex | Claude |
+| --- | --- | --- |
+| Started by Setup's final-page checkbox | not found (`codex_not_found`) | works |
+| Started from the Start Menu shortcut | found | works |
+
+Claude working in both contexts is the discriminating detail. Claude's primary
+candidate is built from the **user profile**; Codex's official candidate is built
+from **Local AppData**. A launch context in which Local AppData resolves to
+nothing therefore removes the Codex candidate before it is ever validated — the
+provider does not look *untrusted*, it looks *absent*, which is exactly the code
+that was reported.
+
+Two things follow from that, and both are implemented:
+
+- Discovery no longer depends on a single folder API. `WindowsKnownFolderResolver`
+  (above) asks the shell first, keeps `Environment.GetFolderPath` as a validated
+  fallback, and tries every root either produces.
+- A diagnostics report now states the launch context it came from, so the
+  hypothesis is verifiable from a copied summary instead of inferred:
+  `local_app_data_state`, `user_profile_state`,
+  `official_codex_candidate_state` and `process_parent_kind` (see §6).
+  `official_codex_candidate_state=not_constructed` is the signature of this
+  failure and is distinguishable from `missing`, which means Codex genuinely is
+  not installed.
+
+The security model was again **not** relaxed. No PATH search, no `where.exe`, no
+shell, no trust bypass, and the inherited `LOCALAPPDATA` variable is still not a
+source. `KnownFolderResolutionTests` covers each source failing independently, a
+wrong source not shadowing a valid one, all sources failing yielding *missing*
+rather than a wrong answer, failed resolution not being cached, an untrusted
+executable still being rejected, Claude and Codex resolving independently, and
+the installer-launch-equivalent context finding both providers.
+
+The installer's **Launch UsageBar** option is deliberately kept while this is
+being verified: removing it would hide the very context under investigation.
+
+**Verification status:** the fix compiles on macOS and its tests run on GitHub
+Actions `windows-latest`. It has **not** yet been confirmed on the physical
+machine where the failure was observed — that is the next step, and no CI runner
+has the user's Codex installation.
 
 ### Supported Claude installation formats
 
@@ -271,11 +342,34 @@ unofficial web endpoints, no telemetry and no crash-reporting SDK.
 The copied diagnostic summary may contain only: UsageBar version, Windows build
 number, OS and process architecture, language, connection state, adapter kind,
 executable state, quota-window kinds, last refresh time, a fixed error code,
-tray-guidance version, auto-start state and history counts. Every emitted value
-passes through `DiagnosticsSanitizer`, which replaces anything resembling a
-path, URL, environment expansion, command line or secret with `redacted`, and
-issue codes are validated against a closed set. `DiagnosticsTests` feeds it real
-paths, tokens and command lines and asserts none survive.
+tray-guidance version, auto-start state, history counts, and the launch-context
+states below. Every emitted value passes through `DiagnosticsSanitizer`, which
+replaces anything resembling a path, URL, environment expansion, command line or
+secret with `redacted`, and issue codes are validated against a closed set.
+`DiagnosticsTests` feeds it real paths, tokens and command lines and asserts none
+survive.
+
+### Launch-context states
+
+Added because provider discovery was observed to depend on how UsageBar was
+started (§5). Each is a bare word from a closed set — never a path, a user name
+or an environment value, asserted by matching every one of these lines against
+`^[a-z_]+=[a-z_]+$`.
+
+| Field | Values | Means |
+| --- | --- | --- |
+| `local_app_data_state` | `available` / `empty` | whether Local AppData resolved to any root at all |
+| `user_profile_state` | `available` / `empty` | the same for the user profile |
+| `official_codex_candidate_state` | `exists` / `missing` / `not_constructed` | whether the documented Codex path could be built, and whether the file is there |
+| `process_parent_kind` | `setup` / `shell` / `other` / `unknown` | what kind of process started UsageBar |
+
+`not_constructed` means no Local AppData root resolved, so the candidate never
+existed to be checked — a different fault from `missing`, which means Codex is
+genuinely not installed there.
+
+`process_parent_kind` is a classification only. `ProcessParentInspector` reads
+the parent's executable name to derive it and keeps that name, its path and its
+process id inside the type; none of them can reach a report.
 
 ---
 
@@ -771,12 +865,28 @@ from a genuinely clean state.
 - [ ] In the app the installer just launched, **Codex is found immediately** -
       not `executable:missing` or `codex_not_found`.
 - [ ] Claude works in that same session.
+- [ ] **Copy diagnostics from this session** and keep it. It is the evidence for
+      or against the launch-context hypothesis, and it contains no paths, user
+      names or environment values - see §6.
 - [ ] Exit UsageBar completely (tray menu, Exit), and confirm no UsageBar process
       remains in Task Manager.
 - [ ] Launch from the Start Menu.
 - [ ] Codex and Claude both work there too.
+- [ ] **Copy diagnostics from this session too**, so the two can be compared.
 - [ ] Exactly one tray icon and one UsageBar process in each case.
 - [ ] Repeat the whole clean cycle at least once more.
+
+What the two summaries should show, and what each outcome means:
+
+| Setup-launched session | Reading |
+| --- | --- |
+| `process_parent_kind=setup`, `local_app_data_state=available`, `official_codex_candidate_state=exists`, Codex found | fixed, and the hypothesis was right |
+| `local_app_data_state=empty` or `official_codex_candidate_state=not_constructed` | the folder still does not resolve in that context - report it, do not work around it |
+| Codex missing while `official_codex_candidate_state=exists` | the cause is *not* folder resolution; the failure is later, in validation or launch |
+
+Send only the two copied summaries. Do not send tokens, credential files, raw
+provider output or full paths - none of them are needed, and none of them are
+in the summary.
 
 ### Upgrade
 

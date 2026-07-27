@@ -35,6 +35,35 @@ public enum ProviderExecutableState
     Trusted
 }
 
+/// <summary>Whether a known folder resolved to anything at all.</summary>
+public enum FolderResolutionState
+{
+    Available,
+    Empty
+}
+
+/// <summary>
+/// Whether a provider's documented candidate path could even be built, and
+/// whether the file is there. "NotConstructed" is the case physical testing
+/// pointed at: no root resolved, so the candidate never existed to be checked
+/// and the provider looked absent.
+/// </summary>
+public enum CandidateState
+{
+    Exists,
+    Missing,
+    NotConstructed
+}
+
+/// <summary>What kind of process started UsageBar. Never a name or a path.</summary>
+public enum ProcessParentKind
+{
+    Unknown,
+    Setup,
+    Shell,
+    Other
+}
+
 public enum ProviderDataState
 {
     NoData,
@@ -68,7 +97,12 @@ public sealed record DiagnosticsInput(
     int HistorySampleCount,
     int? TrayGuidanceVersionShown,
     bool AutoStartEnabled,
-    IReadOnlyList<ProviderDiagnostics> Providers);
+    IReadOnlyList<ProviderDiagnostics> Providers,
+    /// <summary>Whether Local AppData resolved. Never the path itself.</summary>
+    FolderResolutionState LocalAppDataState = FolderResolutionState.Available,
+    FolderResolutionState UserProfileState = FolderResolutionState.Available,
+    CandidateState OfficialCodexCandidateState = CandidateState.NotConstructed,
+    ProcessParentKind ProcessParentKind = ProcessParentKind.Unknown);
 
 /// <summary>
 /// Builds the privacy-safe diagnostic summary.
@@ -102,6 +136,14 @@ public static class DiagnosticsReportBuilder
             input.TrayGuidanceVersionShown is int version ? Count(version) : "none");
         builder.Append("autostart=").AppendLine(Boolean(input.AutoStartEnabled));
 
+        // Launch-context facts. These exist because provider discovery was seen
+        // to depend on how UsageBar was started; they are states, never paths.
+        builder.Append("local_app_data_state=").AppendLine(FolderState(input.LocalAppDataState));
+        builder.Append("user_profile_state=").AppendLine(FolderState(input.UserProfileState));
+        builder.Append("official_codex_candidate_state=").AppendLine(
+            Candidate(input.OfficialCodexCandidateState));
+        builder.Append("process_parent_kind=").AppendLine(ParentKind(input.ProcessParentKind));
+
         foreach (var provider in input.Providers)
         {
             builder
@@ -118,6 +160,24 @@ public static class DiagnosticsReportBuilder
     }
 
     private static string Boolean(bool value) => value ? "true" : "false";
+
+    private static string FolderState(FolderResolutionState state) =>
+        state == FolderResolutionState.Available ? "available" : "empty";
+
+    private static string Candidate(CandidateState state) => state switch
+    {
+        CandidateState.Exists => "exists",
+        CandidateState.Missing => "missing",
+        _ => "not_constructed"
+    };
+
+    private static string ParentKind(ProcessParentKind kind) => kind switch
+    {
+        ProcessParentKind.Setup => "setup",
+        ProcessParentKind.Shell => "shell",
+        ProcessParentKind.Other => "other",
+        _ => "unknown"
+    };
 
     private static string Count(int value) => Math.Max(0, value).ToString(CultureInfo.InvariantCulture);
 

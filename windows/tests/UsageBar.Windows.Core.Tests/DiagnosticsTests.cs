@@ -27,7 +27,11 @@ public sealed class DiagnosticsTests
         string? appVersion = null,
         string? windowsVersion = null,
         IReadOnlyList<string>? windowKinds = null,
-        string? buildId = null) =>
+        string? buildId = null,
+        FolderResolutionState localAppData = FolderResolutionState.Available,
+        FolderResolutionState userProfile = FolderResolutionState.Available,
+        CandidateState codexCandidate = CandidateState.Exists,
+        ProcessParentKind parentKind = ProcessParentKind.Shell) =>
         new(
             AppVersion: appVersion ?? "1.9.0",
             BuildId: buildId ?? "0a48c1e",
@@ -59,7 +63,11 @@ public sealed class DiagnosticsTests
                     ProviderDataState.Stale,
                     Array.Empty<string>(),
                     "claude_usage_timed_out")
-            });
+            },
+            LocalAppDataState: localAppData,
+            UserProfileState: userProfile,
+            OfficialCodexCandidateState: codexCandidate,
+            ProcessParentKind: parentKind);
 
     [Fact]
     public void ReportContainsOnlySafeFacts()
@@ -83,6 +91,95 @@ public sealed class DiagnosticsTests
             "claude=connected:true,executable:unsupported_installation,adapter:wsl,state:stale,windows:none,issue:claude_usage_timed_out",
             report,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The launch-context facts, which exist because provider discovery was seen
+    /// to depend on how UsageBar was started. Each is a state, never a path.
+    /// </summary>
+    [Fact]
+    public void TheReportStatesTheLaunchContext()
+    {
+        var shellLaunch = DiagnosticsReportBuilder.Build(Input());
+
+        Assert.Contains("local_app_data_state=available", shellLaunch, StringComparison.Ordinal);
+        Assert.Contains("user_profile_state=available", shellLaunch, StringComparison.Ordinal);
+        Assert.Contains("official_codex_candidate_state=exists", shellLaunch, StringComparison.Ordinal);
+        Assert.Contains("process_parent_kind=shell", shellLaunch, StringComparison.Ordinal);
+
+        // The context the physical test hit: Setup started UsageBar, Local
+        // AppData resolved to nothing, so the Codex candidate was never built.
+        var setupLaunch = DiagnosticsReportBuilder.Build(Input(
+            localAppData: FolderResolutionState.Empty,
+            codexCandidate: CandidateState.NotConstructed,
+            parentKind: ProcessParentKind.Setup));
+
+        Assert.Contains("local_app_data_state=empty", setupLaunch, StringComparison.Ordinal);
+        Assert.Contains("official_codex_candidate_state=not_constructed", setupLaunch, StringComparison.Ordinal);
+        Assert.Contains("process_parent_kind=setup", setupLaunch, StringComparison.Ordinal);
+
+        // Each is a bare word, so a drive letter, separator, user name or
+        // environment value could not survive in one even by accident.
+        foreach (var report in new[] { shellLaunch, setupLaunch })
+        {
+            foreach (var prefix in LaunchContextPrefixes)
+            {
+                Assert.Matches("^[a-z_]+=[a-z_]+$", Line(report, prefix));
+            }
+        }
+    }
+
+    private static readonly string[] LaunchContextPrefixes =
+    {
+        "local_app_data_state=",
+        "user_profile_state=",
+        "official_codex_candidate_state=",
+        "process_parent_kind="
+    };
+
+    /// <summary>
+    /// Every state of every launch-context field has to be tellable apart in a
+    /// report, or the field cannot answer the question it was added for.
+    /// </summary>
+    [Fact]
+    public void EveryLaunchContextStateIsDistinguishable()
+    {
+        AssertDistinctLines(
+            Enum.GetValues<FolderResolutionState>().Select(state =>
+                Line(DiagnosticsReportBuilder.Build(Input(localAppData: state)), "local_app_data_state=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<FolderResolutionState>().Select(state =>
+                Line(DiagnosticsReportBuilder.Build(Input(userProfile: state)), "user_profile_state=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<CandidateState>().Select(state =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(codexCandidate: state)),
+                    "official_codex_candidate_state=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<ProcessParentKind>().Select(kind =>
+                Line(DiagnosticsReportBuilder.Build(Input(parentKind: kind)), "process_parent_kind=")));
+    }
+
+    private static string Line(string report, string prefix)
+    {
+        var line = report
+            .Split('\n')
+            .Select(candidate => candidate.Trim('\r'))
+            .SingleOrDefault(candidate => candidate.StartsWith(prefix, StringComparison.Ordinal));
+
+        Assert.NotNull(line);
+        return line;
+    }
+
+    private static void AssertDistinctLines(IEnumerable<string> lines)
+    {
+        var reported = lines.ToArray();
+
+        Assert.All(reported, line => Assert.Matches("^[a-z_]+=[a-z_]+$", line));
+        Assert.Equal(reported.Length, reported.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Theory]

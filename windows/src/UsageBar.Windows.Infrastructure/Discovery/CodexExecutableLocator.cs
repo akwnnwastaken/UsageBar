@@ -24,20 +24,51 @@ namespace UsageBar.Windows.Infrastructure.Discovery;
 [SupportedOSPlatform("windows")]
 public sealed class CodexExecutableLocator
 {
-    private readonly Func<Environment.SpecialFolder, string> _specialFolder;
-    private readonly Func<string, string?> _environmentVariable;
+    private readonly IKnownFolderResolver _folders;
 
     public CodexExecutableLocator()
-        : this(Environment.GetFolderPath, Environment.GetEnvironmentVariable)
+        : this(new WindowsKnownFolderResolver())
     {
     }
+
+    /// <summary>
+    /// Candidate roots come from the resolver, which asks the shell before the
+    /// framework. A context where one of those sources returns nothing no longer
+    /// silently removes the official Codex candidate.
+    /// </summary>
+    public CodexExecutableLocator(IKnownFolderResolver folders) => _folders = folders;
 
     internal CodexExecutableLocator(
         Func<Environment.SpecialFolder, string> specialFolder,
         Func<string, string?> environmentVariable)
+        : this(LegacyResolver.From(specialFolder, environmentVariable))
     {
-        _specialFolder = specialFolder;
-        _environmentVariable = environmentVariable;
+    }
+
+    /// <summary>
+    /// The documented native Codex path, and whether it could even be built.
+    /// Reported in diagnostics so a machine where Local AppData does not resolve
+    /// is distinguishable from one where Codex is genuinely not installed.
+    /// </summary>
+    public CandidateState OfficialCandidateState()
+    {
+        var roots = _folders.Resolve(WindowsKnownFolder.LocalApplicationData);
+        if (roots.Count == 0)
+        {
+            return CandidateState.NotConstructed;
+        }
+
+        foreach (var root in roots)
+        {
+            var candidate = System.IO.Path.Combine(
+                root, "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+            if (File.Exists(candidate))
+            {
+                return CandidateState.Exists;
+            }
+        }
+
+        return CandidateState.Missing;
     }
 
     public ExecutableLookup Locate(string? userSelectedPath = null)
@@ -97,11 +128,9 @@ public sealed class CodexExecutableLocator
 
     internal IEnumerable<Candidate> NativeCandidates()
     {
-        var localAppData = _specialFolder(Environment.SpecialFolder.LocalApplicationData);
-        var programFiles = _specialFolder(Environment.SpecialFolder.ProgramFiles);
-        var userProfile = _specialFolder(Environment.SpecialFolder.UserProfile);
-
-        if (!string.IsNullOrEmpty(localAppData))
+        // Every resolved root is tried, so one source returning nothing cannot
+        // remove a candidate the other source can still build.
+        foreach (var localAppData in _folders.Resolve(WindowsKnownFolder.LocalApplicationData))
         {
             var programs = System.IO.Path.Combine(localAppData, "Programs");
 
@@ -128,6 +157,7 @@ public sealed class CodexExecutableLocator
                 System.IO.Path.Combine(localAppData, "Microsoft", "WinGet"));
         }
 
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         if (!string.IsNullOrEmpty(programFiles))
         {
             yield return new Candidate(
@@ -135,7 +165,7 @@ public sealed class CodexExecutableLocator
                 System.IO.Path.Combine(programFiles, "codex"));
         }
 
-        if (!string.IsNullOrEmpty(userProfile))
+        foreach (var userProfile in _folders.Resolve(WindowsKnownFolder.UserProfile))
         {
             yield return new Candidate(
                 System.IO.Path.Combine(userProfile, ".cargo", "bin", "codex.exe"),
@@ -154,7 +184,7 @@ public sealed class CodexExecutableLocator
     /// </summary>
     internal ExecutableLookup? LocateNodeLauncher()
     {
-        var appData = _environmentVariable("APPDATA");
+        var appData = _folders.Resolve(WindowsKnownFolder.RoamingApplicationData).FirstOrDefault();
         if (string.IsNullOrEmpty(appData))
         {
             return null;
@@ -194,8 +224,7 @@ public sealed class CodexExecutableLocator
 
     internal ExecutableLookup? LocateNode()
     {
-        var programFiles = _specialFolder(Environment.SpecialFolder.ProgramFiles);
-        var localAppData = _specialFolder(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
         var candidates = new List<Candidate>();
         if (!string.IsNullOrEmpty(programFiles))
@@ -205,7 +234,7 @@ public sealed class CodexExecutableLocator
                 System.IO.Path.Combine(programFiles, "nodejs")));
         }
 
-        if (!string.IsNullOrEmpty(localAppData))
+        foreach (var localAppData in _folders.Resolve(WindowsKnownFolder.LocalApplicationData))
         {
             candidates.Add(new Candidate(
                 System.IO.Path.Combine(localAppData, "Programs", "nodejs", "node.exe"),

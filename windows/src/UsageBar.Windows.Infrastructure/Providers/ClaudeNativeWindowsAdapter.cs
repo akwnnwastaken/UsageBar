@@ -56,7 +56,21 @@ public sealed class ClaudeNativeWindowsAdapter : IClaudeAdapter
     {
         lock (_gate)
         {
-            return _cachedLookup ??= _locator.Locate(_userSelectedPath);
+            // Only a successful lookup is remembered. Caching "missing" would
+            // make a provider that appears later — or a folder that resolved to
+            // nothing once — stay invisible until UsageBar restarts.
+            if (_cachedLookup is { Status: ExecutableLookupStatus.Found })
+            {
+                return _cachedLookup;
+            }
+
+            var lookup = _locator.Locate(_userSelectedPath);
+            if (lookup.Status == ExecutableLookupStatus.Found)
+            {
+                _cachedLookup = lookup;
+            }
+
+            return lookup;
         }
     }
 
