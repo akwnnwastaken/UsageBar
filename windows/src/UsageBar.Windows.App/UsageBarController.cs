@@ -376,36 +376,42 @@ internal sealed class UsageBarController : IDisposable
     /// The privacy-safe diagnostic summary. Everything it contains is a fixed
     /// code, a count or a version — never provider output, a path or a token.
     /// </summary>
-    public string BuildDiagnostics() => DiagnosticsReportBuilder.Build(new DiagnosticsInput(
-        WindowsEnvironmentInfo.ApplicationVersion,
-        WindowsEnvironmentInfo.BuildId,
-        WindowsEnvironmentInfo.Version,
-        WindowsEnvironmentInfo.OsArchitecture,
-        WindowsEnvironmentInfo.ProcessArchitecture,
-        Language.StorageValue(),
-        LastUpdated,
-        Settings.UsageHistoryEnabled ?? true,
-        _history.Count,
-        _history.Values.Sum(samples => samples.Count),
-        Settings.TrayGuidanceVersionShown,
-        AutoStartState.IsOn,
-        new[]
-        {
-            ProviderDiagnosticsFor(ProviderNames.Codex, Settings.CodexConnected),
-            ProviderDiagnosticsFor(ProviderNames.ClaudeCode, Settings.ClaudeConnected)
-        },
-        // Launch-context facts. Provider discovery was seen to depend on how
-        // UsageBar was started, so a report says which context it came from and
-        // whether the folders discovery builds on resolved at all.
-        FolderState(WindowsKnownFolder.LocalApplicationData),
-        FolderState(WindowsKnownFolder.UserProfile),
-        _codexReader.OfficialCandidateState(),
-        ProcessParentInspector.Classify()));
+    public string BuildDiagnostics()
+    {
+        // Every folder fact below comes from this one trace, captured during the
+        // Codex lookup that produced the executable state being reported.
+        // Resolving again here would describe the moment the summary was copied
+        // rather than the moment discovery ran — and the whole open question is
+        // whether those two moments resolve the same way.
+        var trace = _codexReader.LastDiscoveryTrace;
 
-    private static FolderResolutionState FolderState(WindowsKnownFolder folder) =>
-        new WindowsKnownFolderResolver().Resolve(folder).Count > 0
-            ? FolderResolutionState.Available
-            : FolderResolutionState.Empty;
+        return DiagnosticsReportBuilder.Build(new DiagnosticsInput(
+            WindowsEnvironmentInfo.ApplicationVersion,
+            WindowsEnvironmentInfo.BuildId,
+            WindowsEnvironmentInfo.Version,
+            WindowsEnvironmentInfo.OsArchitecture,
+            WindowsEnvironmentInfo.ProcessArchitecture,
+            Language.StorageValue(),
+            LastUpdated,
+            Settings.UsageHistoryEnabled ?? true,
+            _history.Count,
+            _history.Values.Sum(samples => samples.Count),
+            Settings.TrayGuidanceVersionShown,
+            AutoStartState.IsOn,
+            new[]
+            {
+                ProviderDiagnosticsFor(ProviderNames.Codex, Settings.CodexConnected),
+                ProviderDiagnosticsFor(ProviderNames.ClaudeCode, Settings.ClaudeConnected)
+            },
+            // Launch-context facts. Provider discovery was seen to depend on how
+            // UsageBar was started, so a report says which context it came from
+            // and how the folders discovery builds on resolved.
+            trace.LocalAppDataState,
+            trace.UserProfileState,
+            trace.OfficialCodexCandidateState,
+            ProcessParentInspector.Classify(),
+            trace));
+    }
 
     private ProviderDiagnostics ProviderDiagnosticsFor(string providerName, bool connected)
     {

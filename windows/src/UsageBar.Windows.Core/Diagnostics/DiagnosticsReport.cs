@@ -102,7 +102,13 @@ public sealed record DiagnosticsInput(
     FolderResolutionState LocalAppDataState = FolderResolutionState.Available,
     FolderResolutionState UserProfileState = FolderResolutionState.Available,
     CandidateState OfficialCodexCandidateState = CandidateState.NotConstructed,
-    ProcessParentKind ProcessParentKind = ProcessParentKind.Unknown);
+    ProcessParentKind ProcessParentKind = ProcessParentKind.Unknown,
+    /// <summary>
+    /// The account of the Codex lookup that produced the reported executable
+    /// state. Null means no lookup has run, which reads as
+    /// <see cref="CodexDiscoveryTrace.NotRun"/>.
+    /// </summary>
+    CodexDiscoveryTrace? DiscoveryTrace = null);
 
 /// <summary>
 /// Builds the privacy-safe diagnostic summary.
@@ -144,6 +150,27 @@ public static class DiagnosticsReportBuilder
             Candidate(input.OfficialCodexCandidateState));
         builder.Append("process_parent_kind=").AppendLine(ParentKind(input.ProcessParentKind));
 
+        // The exact-operation trace. The coarse candidate state above says a
+        // documented path could be built and the file was not there; these say
+        // which source built it, where that source pointed, and what the probe
+        // actually hit — the difference between a wrong root and an unreadable
+        // file, which the coarse field cannot express.
+        var trace = input.DiscoveryTrace ?? CodexDiscoveryTrace.NotRun;
+        builder.Append("local_app_data_source_relation=").AppendLine(
+            SourceRelation(trace.LocalAppDataSourceRelation));
+        builder.Append("local_app_data_root_count=").AppendLine(
+            RootCount(trace.LocalAppDataRootCount));
+        builder.Append("local_app_data_profile_relation=").AppendLine(
+            ProfileRelation(trace.LocalAppDataProfileRelation));
+        builder.Append("official_codex_shell_probe=").AppendLine(
+            Probe(trace.OfficialCodexShellProbe));
+        builder.Append("official_codex_framework_probe=").AppendLine(
+            Probe(trace.OfficialCodexFrameworkProbe));
+        builder.Append("official_codex_profile_derived_probe=").AppendLine(
+            Probe(trace.OfficialCodexProfileDerivedProbe));
+        builder.Append("codex_lookup_terminal_stage=").AppendLine(
+            LookupStage(trace.TerminalStage));
+
         foreach (var provider in input.Providers)
         {
             builder
@@ -169,6 +196,52 @@ public static class DiagnosticsReportBuilder
         CandidateState.Exists => "exists",
         CandidateState.Missing => "missing",
         _ => "not_constructed"
+    };
+
+    private static string SourceRelation(FolderSourceRelation relation) => relation switch
+    {
+        FolderSourceRelation.ShellOnly => "shell_only",
+        FolderSourceRelation.FrameworkOnly => "framework_only",
+        FolderSourceRelation.Agree => "agree",
+        FolderSourceRelation.Differ => "differ",
+        _ => "none"
+    };
+
+    private static string RootCount(FolderRootCount count) => count switch
+    {
+        FolderRootCount.One => "one",
+        FolderRootCount.Multiple => "multiple",
+        _ => "none"
+    };
+
+    private static string ProfileRelation(FolderProfileRelation relation) => relation switch
+    {
+        FolderProfileRelation.AllUnderProfile => "all_under_profile",
+        FolderProfileRelation.SomeOutsideProfile => "some_outside_profile",
+        FolderProfileRelation.NoneUnderProfile => "none_under_profile",
+        _ => "not_comparable"
+    };
+
+    private static string Probe(CandidateProbeState state) => state switch
+    {
+        CandidateProbeState.Exists => "exists",
+        CandidateProbeState.NotFound => "not_found",
+        CandidateProbeState.AccessDenied => "access_denied",
+        CandidateProbeState.IoError => "io_error",
+        CandidateProbeState.InvalidRoot => "invalid_root",
+        CandidateProbeState.SameAsFramework => "same_as_framework",
+        CandidateProbeState.SameAsShell => "same_as_shell",
+        _ => "not_constructed"
+    };
+
+    private static string LookupStage(CodexLookupStage stage) => stage switch
+    {
+        CodexLookupStage.OfficialNative => "official_native",
+        CodexLookupStage.OtherNative => "other_native",
+        CodexLookupStage.Node => "node",
+        CodexLookupStage.Untrusted => "untrusted",
+        CodexLookupStage.Unsupported => "unsupported",
+        _ => "missing"
     };
 
     private static string ParentKind(ProcessParentKind kind) => kind switch

@@ -22,6 +22,17 @@ public interface IKnownFolderResolver
     /// first. Empty when the folder cannot be resolved at all.
     /// </summary>
     IReadOnlyList<string> Resolve(WindowsKnownFolder folder);
+
+    /// <summary>
+    /// The same resolution with the source identities kept, for diagnostics.
+    /// Discovery uses <see cref="KnownFolderSources.Roots"/> and nothing else, so
+    /// this cannot change which candidates are tried.
+    ///
+    /// Implementations that only know roots fall back to attributing them in the
+    /// best-source-first order this interface already promises.
+    /// </summary>
+    KnownFolderSources ResolveSources(WindowsKnownFolder folder) =>
+        KnownFolderSources.FromRoots(Resolve(folder));
 }
 
 /// <summary>
@@ -75,35 +86,54 @@ public sealed class WindowsKnownFolderResolver : IKnownFolderResolver
     /// resolved once is never treated as permanently absent — a later refresh
     /// simply asks again.
     /// </summary>
-    public IReadOnlyList<string> Resolve(WindowsKnownFolder folder)
+    public IReadOnlyList<string> Resolve(WindowsKnownFolder folder) => ResolveSources(folder).Roots;
+
+    /// <summary>
+    /// The same resolution, with what each source individually returned kept
+    /// beside the de-duplicated result. Discovery reads only the roots; the
+    /// source identities exist so a diagnostic summary can say which source is
+    /// responsible when a context resolves the folder to the wrong place.
+    /// </summary>
+    public KnownFolderSources ResolveSources(WindowsKnownFolder folder)
     {
+        var shell = Ask(_shell, folder);
+        var framework = Ask(_framework, folder);
+
         var roots = new List<string>(2);
-
-        foreach (var source in new[] { _shell, _framework })
+        foreach (var source in new[] { shell, framework })
         {
-            string? candidate;
-            try
+            if (source.Root is { } root && !roots.Contains(root, StringComparer.OrdinalIgnoreCase))
             {
-                candidate = source(folder);
-            }
-            catch (Exception exception) when (
-                exception is InvalidOperationException or PlatformNotSupportedException or ExternalException)
-            {
-                continue;
-            }
-
-            if (Normalize(candidate) is not { } normalized)
-            {
-                continue;
-            }
-
-            if (!roots.Contains(normalized, StringComparer.OrdinalIgnoreCase))
-            {
-                roots.Add(normalized);
+                roots.Add(root);
             }
         }
 
-        return roots;
+        return new KnownFolderSources(shell, framework, roots);
+    }
+
+    private KnownFolderSourceResult Ask(Func<WindowsKnownFolder, string?> source, WindowsKnownFolder folder)
+    {
+        string? candidate;
+        try
+        {
+            candidate = source(folder);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or PlatformNotSupportedException or ExternalException)
+        {
+            return KnownFolderSourceResult.Silent;
+        }
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return KnownFolderSourceResult.Silent;
+        }
+
+        // The source named something. Whether that something survives validation
+        // is a different fact, and one worth being able to report.
+        return Normalize(candidate) is { } normalized
+            ? KnownFolderSourceResult.Accepted(normalized)
+            : KnownFolderSourceResult.Rejected;
     }
 
     /// <summary>A root only counts when it is fully qualified and really there.</summary>

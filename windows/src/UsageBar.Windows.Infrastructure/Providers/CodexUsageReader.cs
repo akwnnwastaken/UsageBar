@@ -53,17 +53,24 @@ public sealed class CodexUsageReader
     public ProviderExecutableState LastExecutableState { get; private set; } = ProviderExecutableState.Missing;
 
     /// <summary>
-    /// Whether the documented native Codex path could be built and whether it is
-    /// there. Distinguishes "no Local AppData root resolved" from "Codex is not
-    /// installed" in diagnostics.
+    /// The account of the last lookup: which known-folder sources answered,
+    /// where they pointed relative to each other and to the user profile, what
+    /// the documented candidates probed as, and where the lookup ended.
+    ///
+    /// It is retained from the lookup that produced <see cref="LastExecutableState"/>
+    /// rather than recomputed on demand. Asking the folders again when a summary
+    /// is copied would describe the state at that moment, which is not
+    /// necessarily the state that produced the result being explained.
     /// </summary>
-    public CandidateState OfficialCandidateState() => _locator.OfficialCandidateState();
+    public CodexDiscoveryTrace LastDiscoveryTrace { get; private set; } = CodexDiscoveryTrace.NotRun;
 
     public async Task<ProviderUsage> ReadAsync(
         string? userSelectedPath = null,
         CancellationToken cancellationToken = default)
     {
-        var lookup = _locator.Locate(userSelectedPath);
+        var discovery = _locator.LocateWithTrace(userSelectedPath);
+        var lookup = discovery.Lookup;
+        LastDiscoveryTrace = discovery.Trace;
         LastAdapterKind = lookup.AdapterKind;
         LastExecutableState = lookup.DiagnosticState;
 

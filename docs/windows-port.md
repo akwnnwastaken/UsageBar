@@ -262,9 +262,18 @@ Two things follow from that, and both are implemented:
   hypothesis is verifiable from a copied summary instead of inferred:
   `local_app_data_state`, `user_profile_state`,
   `official_codex_candidate_state` and `process_parent_kind` (see §6).
-  `official_codex_candidate_state=not_constructed` is the signature of this
-  failure and is distinguishable from `missing`, which means Codex genuinely is
-  not installed.
+
+**The hypothesis was tested physically and did not hold.** The Setup-launched
+session reported `local_app_data_state=available` with
+`official_codex_candidate_state=missing`, and the Start Menu session a minute
+later reported `exists` on the same files. Local AppData does resolve in that
+context; the candidate is constructed and the file is not found under it. So
+either the folder resolves to a wrong-but-existing directory, or it resolves
+correctly and the file is not visible from there.
+
+A second, narrower set of fields was added to separate those two — an
+exact-operation trace, described in §6. It is **diagnostic only**: no discovery
+behaviour, candidate list or trust rule changed with it.
 
 The security model was again **not** relaxed. No PATH search, no `where.exe`, no
 shell, no trust bypass, and the inherited `LOCALAPPDATA` variable is still not a
@@ -277,10 +286,11 @@ the installer-launch-equivalent context finding both providers.
 The installer's **Launch UsageBar** option is deliberately kept while this is
 being verified: removing it would hide the very context under investigation.
 
-**Verification status:** the fix compiles on macOS and its tests run on GitHub
-Actions `windows-latest`. It has **not** yet been confirmed on the physical
-machine where the failure was observed — that is the next step, and no CI runner
-has the user's Codex installation.
+**Verification status:** unresolved. The Setup-launched session still does not
+find Codex on the physical machine, and the known-folder resolver did not change
+that. The trace in §6 exists to narrow the cause; it is not a fix and must not be
+reported as one. No CI runner has the user's Codex installation, so CI cannot
+close this.
 
 ### Supported Claude installation formats
 
@@ -381,6 +391,60 @@ genuinely not installed there.
 `process_parent_kind` is a classification only. `ProcessParentInspector` reads
 the parent's executable name to derive it and keeps that name, its path and its
 process id inside the type; none of them can reach a report.
+
+### Exact-operation trace
+
+The first physical comparison returned `local_app_data_state=available` with
+`official_codex_candidate_state=missing` in the Setup-launched session, and
+`exists` from the Start Menu a minute later on the same files. That ruled the
+"Local AppData resolves to nothing" hypothesis out and left two explanations:
+the folder resolves to a **wrong but existing** directory, or it resolves
+**correctly** and the file is not visible from that context.
+
+The four fields above cannot separate those, and neither can a single "is Local
+AppData under the user profile" relation — both folders can resolve consistently
+into the same wrong profile and still read as healthy. These fields can.
+
+| Field | Values | Means |
+| --- | --- | --- |
+| `local_app_data_source_relation` | `none` / `shell_only` / `framework_only` / `agree` / `differ` | which sources answered, and whether they named the same folder |
+| `local_app_data_root_count` | `none` / `one` / `multiple` | distinct roots after de-duplication |
+| `local_app_data_profile_relation` | `all_under_profile` / `some_outside_profile` / `none_under_profile` / `not_comparable` | where the roots sit relative to the resolved profile |
+| `official_codex_shell_probe` | `exists` / `not_found` / `access_denied` / `io_error` / `invalid_root` / `not_constructed` / `same_as_framework` | the documented candidate built from the shell's root |
+| `official_codex_framework_probe` | the same, plus `same_as_shell` | the documented candidate built from the framework's root |
+| `official_codex_profile_derived_probe` | `exists` / `not_found` / `access_denied` / `io_error` / `invalid_root` / `not_constructed` | `<UserProfile>\AppData\Local\...\codex.exe`, reached without Local AppData |
+| `codex_lookup_terminal_stage` | `official_native` / `other_native` / `node` / `untrusted` / `unsupported` / `missing` | where the lookup ended |
+
+Reading them:
+
+- `not_constructed` — the source returned nothing, so no path existed to probe.
+  `invalid_root` — the source named a folder that is not there. Those are
+  different faults and the older `local_app_data_state=empty` conflated them.
+- When both sources name one folder it is probed once; the result is reported on
+  the shell field and the framework field says `same_as_shell`.
+- `official_codex_profile_derived_probe` is the discriminator. If it reports
+  `exists` while the Local AppData probes report `not_found`, the roots are
+  wrong. If it reports `not_found` too, the profile is wrong as well, or Codex
+  really is elsewhere. It is **diagnostic only** and is never offered to
+  `ExecutableTrust` as a discovery candidate.
+
+Two properties this trace has by construction:
+
+- It is captured **during** the lookup that produced the reported executable
+  state, and retained beside it (`CodexUsageReader.LastDiscoveryTrace`). Building
+  a summary resolves no folder and touches no disk — a second pass would describe
+  the moment the summary was copied rather than the moment discovery ran, and
+  whether those differ is the open question.
+- The probe is a bounded metadata read, not `File.Exists`, which answers `false`
+  for a file that is present but unreadable. It never opens, reads, starts or
+  follows links, and it grants no trust: `ExecutableTrust` remains the only thing
+  that may accept an executable.
+
+`CodexDiscoveryTraceTests` covers each source shape, a consistently wrong
+profile, one wrong root beside a correct one, the profile-derived candidate being
+visible but never runnable, the probe separating absence from refusal from
+failure, the retained trace not drifting after the disk changes, and no path,
+root or user name surviving into a report.
 
 ---
 
@@ -891,9 +955,20 @@ What the two summaries should show, and what each outcome means:
 
 | Setup-launched session | Reading |
 | --- | --- |
-| `process_parent_kind=setup`, `local_app_data_state=available`, `official_codex_candidate_state=exists`, Codex found | fixed, and the hypothesis was right |
-| `local_app_data_state=empty` or `official_codex_candidate_state=not_constructed` | the folder still does not resolve in that context - report it, do not work around it |
+| `official_codex_candidate_state=exists`, Codex found | the context resolves correctly after all |
+| `official_codex_candidate_state=not_constructed` | no root resolved at all - report it, do not work around it |
 | Codex missing while `official_codex_candidate_state=exists` | the cause is *not* folder resolution; the failure is later, in validation or launch |
+
+The comparison already run returned `available` + `missing` in the Setup-launched
+session and `exists` from the Start Menu, so the trace fields decide it:
+
+| Trace in the Setup-launched session | Reading |
+| --- | --- |
+| `official_codex_profile_derived_probe=exists` while the two Local AppData probes say `not_found` | the roots are **wrong**; the fault is in what the folder resolves to, not in the file |
+| all three probes `not_found`, `local_app_data_profile_relation=all_under_profile` | the whole profile is wrong, or Codex is not where it is expected - report it |
+| a probe says `access_denied` or `io_error` | the roots are right and the file is not readable from that context; this is not a resolution problem |
+| `local_app_data_source_relation=differ` with one probe `exists` | one source is wrong and the other is right, and discovery already tries both |
+| the two sessions' traces are identical | the trace is still not narrow enough; add the next boundary rather than guessing |
 
 Send only the two copied summaries. Do not send tokens, credential files, raw
 provider output or full paths - none of them are needed, and none of them are

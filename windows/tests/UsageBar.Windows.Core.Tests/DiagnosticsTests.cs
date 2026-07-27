@@ -31,7 +31,8 @@ public sealed class DiagnosticsTests
         FolderResolutionState localAppData = FolderResolutionState.Available,
         FolderResolutionState userProfile = FolderResolutionState.Available,
         CandidateState codexCandidate = CandidateState.Exists,
-        ProcessParentKind parentKind = ProcessParentKind.Shell) =>
+        ProcessParentKind parentKind = ProcessParentKind.Shell,
+        CodexDiscoveryTrace? trace = null) =>
         new(
             AppVersion: appVersion ?? "1.9.0",
             BuildId: buildId ?? "0a48c1e",
@@ -67,7 +68,29 @@ public sealed class DiagnosticsTests
             LocalAppDataState: localAppData,
             UserProfileState: userProfile,
             OfficialCodexCandidateState: codexCandidate,
-            ProcessParentKind: parentKind);
+            ProcessParentKind: parentKind,
+            DiscoveryTrace: trace);
+
+    /// <summary>A trace with every field set to something distinguishable.</summary>
+    private static CodexDiscoveryTrace Trace(
+        FolderSourceRelation sourceRelation = FolderSourceRelation.Agree,
+        FolderRootCount rootCount = FolderRootCount.One,
+        FolderProfileRelation profileRelation = FolderProfileRelation.AllUnderProfile,
+        CandidateProbeState shellProbe = CandidateProbeState.Exists,
+        CandidateProbeState frameworkProbe = CandidateProbeState.SameAsShell,
+        CandidateProbeState profileDerivedProbe = CandidateProbeState.Exists,
+        CodexLookupStage stage = CodexLookupStage.OfficialNative,
+        FolderResolutionState localAppData = FolderResolutionState.Available) =>
+        new(
+            localAppData,
+            FolderResolutionState.Available,
+            sourceRelation,
+            rootCount,
+            profileRelation,
+            shellProbe,
+            frameworkProbe,
+            profileDerivedProbe,
+            stage);
 
     [Fact]
     public void ReportContainsOnlySafeFacts()
@@ -134,8 +157,110 @@ public sealed class DiagnosticsTests
         "local_app_data_state=",
         "user_profile_state=",
         "official_codex_candidate_state=",
-        "process_parent_kind="
+        "process_parent_kind=",
+        "local_app_data_source_relation=",
+        "local_app_data_root_count=",
+        "local_app_data_profile_relation=",
+        "official_codex_shell_probe=",
+        "official_codex_framework_probe=",
+        "official_codex_profile_derived_probe=",
+        "codex_lookup_terminal_stage="
     };
+
+    /// <summary>
+    /// The exact-operation trace. The coarse candidate state says only that a
+    /// documented path was built and the file was not under it; these say which
+    /// source built it, where that source pointed, and what the probe hit.
+    /// </summary>
+    [Fact]
+    public void TheReportStatesHowTheCodexLookupWent()
+    {
+        var report = DiagnosticsReportBuilder.Build(Input(trace: Trace()));
+
+        Assert.Contains("local_app_data_source_relation=agree", report, StringComparison.Ordinal);
+        Assert.Contains("local_app_data_root_count=one", report, StringComparison.Ordinal);
+        Assert.Contains("local_app_data_profile_relation=all_under_profile", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_shell_probe=exists", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_framework_probe=same_as_shell", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_profile_derived_probe=exists", report, StringComparison.Ordinal);
+        Assert.Contains("codex_lookup_terminal_stage=official_native", report, StringComparison.Ordinal);
+
+        // The shape physical testing is trying to tell apart: Local AppData
+        // resolves, the sources disagree, one of them is wrong, and the same
+        // layout reached through the profile is there all along.
+        var wrongRoot = DiagnosticsReportBuilder.Build(Input(trace: Trace(
+            sourceRelation: FolderSourceRelation.Differ,
+            rootCount: FolderRootCount.Multiple,
+            profileRelation: FolderProfileRelation.SomeOutsideProfile,
+            shellProbe: CandidateProbeState.NotFound,
+            frameworkProbe: CandidateProbeState.AccessDenied,
+            profileDerivedProbe: CandidateProbeState.Exists,
+            stage: CodexLookupStage.Missing)));
+
+        Assert.Contains("local_app_data_source_relation=differ", wrongRoot, StringComparison.Ordinal);
+        Assert.Contains("local_app_data_root_count=multiple", wrongRoot, StringComparison.Ordinal);
+        Assert.Contains("official_codex_shell_probe=not_found", wrongRoot, StringComparison.Ordinal);
+        Assert.Contains("official_codex_framework_probe=access_denied", wrongRoot, StringComparison.Ordinal);
+        Assert.Contains("official_codex_profile_derived_probe=exists", wrongRoot, StringComparison.Ordinal);
+        Assert.Contains("codex_lookup_terminal_stage=missing", wrongRoot, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A report built without a trace still has every line, so the format does
+    /// not change shape between a lookup having run and not having run.
+    /// </summary>
+    [Fact]
+    public void AReportWithNoLookupYetStillStatesEveryField()
+    {
+        var report = DiagnosticsReportBuilder.Build(Input(trace: null));
+
+        foreach (var prefix in LaunchContextPrefixes)
+        {
+            Assert.Matches("^[a-z_]+=[a-z_]+$", Line(report, prefix));
+        }
+
+        Assert.Contains("local_app_data_source_relation=none", report, StringComparison.Ordinal);
+        Assert.Contains("official_codex_shell_probe=not_constructed", report, StringComparison.Ordinal);
+        Assert.Contains("codex_lookup_terminal_stage=missing", report, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The coarse candidate state is derived from the probes rather than
+    /// measured separately, so the two can never contradict each other.
+    /// </summary>
+    [Fact]
+    public void TheCandidateStateFollowsTheProbesItIsDerivedFrom()
+    {
+        Assert.Equal(
+            CandidateState.NotConstructed,
+            Trace(localAppData: FolderResolutionState.Empty).OfficialCodexCandidateState);
+
+        Assert.Equal(
+            CandidateState.Exists,
+            Trace(shellProbe: CandidateProbeState.Exists).OfficialCodexCandidateState);
+
+        // Found only by the framework source still counts as found.
+        Assert.Equal(
+            CandidateState.Exists,
+            Trace(
+                shellProbe: CandidateProbeState.NotFound,
+                frameworkProbe: CandidateProbeState.Exists).OfficialCodexCandidateState);
+
+        // A root that resolved, with nothing under it, is "missing" — and an
+        // unreadable file is not silently promoted to "exists".
+        foreach (var probe in new[]
+                 {
+                     CandidateProbeState.NotFound,
+                     CandidateProbeState.AccessDenied,
+                     CandidateProbeState.IoError,
+                     CandidateProbeState.InvalidRoot
+                 })
+        {
+            Assert.Equal(
+                CandidateState.Missing,
+                Trace(shellProbe: probe, frameworkProbe: probe).OfficialCodexCandidateState);
+        }
+    }
 
     /// <summary>
     /// Every state of every launch-context field has to be tellable apart in a
@@ -161,6 +286,44 @@ public sealed class DiagnosticsTests
         AssertDistinctLines(
             Enum.GetValues<ProcessParentKind>().Select(kind =>
                 Line(DiagnosticsReportBuilder.Build(Input(parentKind: kind)), "process_parent_kind=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<FolderSourceRelation>().Select(relation =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(sourceRelation: relation))),
+                    "local_app_data_source_relation=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<FolderRootCount>().Select(count =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(rootCount: count))),
+                    "local_app_data_root_count=")));
+
+        AssertDistinctLines(
+            Enum.GetValues<FolderProfileRelation>().Select(relation =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(profileRelation: relation))),
+                    "local_app_data_profile_relation=")));
+
+        // Every probe outcome has to be tellable apart on every probe field, or
+        // the fields cannot separate a wrong root from an unreadable file.
+        foreach (var (prefix, build) in new (string, Func<CandidateProbeState, CodexDiscoveryTrace>)[]
+                 {
+                     ("official_codex_shell_probe=", state => Trace(shellProbe: state)),
+                     ("official_codex_framework_probe=", state => Trace(frameworkProbe: state)),
+                     ("official_codex_profile_derived_probe=", state => Trace(profileDerivedProbe: state))
+                 })
+        {
+            AssertDistinctLines(
+                Enum.GetValues<CandidateProbeState>().Select(state =>
+                    Line(DiagnosticsReportBuilder.Build(Input(trace: build(state))), prefix)));
+        }
+
+        AssertDistinctLines(
+            Enum.GetValues<CodexLookupStage>().Select(stage =>
+                Line(
+                    DiagnosticsReportBuilder.Build(Input(trace: Trace(stage: stage))),
+                    "codex_lookup_terminal_stage=")));
     }
 
     private static string Line(string report, string prefix)
