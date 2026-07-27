@@ -152,6 +152,156 @@ public sealed class UsageHistoryTests
     }
 
     [Fact]
+    public void HoverReturnsNullForAnEmptySeries()
+    {
+        var empty = new UsageHistoryChartModel(Array.Empty<UsageHistorySample>());
+
+        Assert.Null(empty.NearestDisplaySample(0));
+        Assert.Null(empty.NearestDisplaySample(0.5));
+        Assert.Null(empty.NearestDisplaySample(1));
+    }
+
+    [Fact]
+    public void HoverAlwaysReturnsTheOnlySample()
+    {
+        var single = new UsageHistoryChartModel(Series(42));
+
+        foreach (var normalizedX in new[] { 0, 0.5, 1, -3, 4 })
+        {
+            Assert.Equal(42, single.NearestDisplaySample(normalizedX)?.RemainingPercent);
+        }
+    }
+
+    [Fact]
+    public void HoverSelectsTheEndsAndClampsBeyondThem()
+    {
+        var model = new UsageHistoryChartModel(Series(50, 46, 44));
+
+        Assert.Equal(50, model.NearestDisplaySample(0)?.RemainingPercent);
+        Assert.Equal(44, model.NearestDisplaySample(1)?.RemainingPercent);
+        // Outside the plot the position clamps rather than wrapping or throwing.
+        Assert.Equal(50, model.NearestDisplaySample(-0.4)?.RemainingPercent);
+        Assert.Equal(50, model.NearestDisplaySample(-1_000)?.RemainingPercent);
+        Assert.Equal(44, model.NearestDisplaySample(1.4)?.RemainingPercent);
+        Assert.Equal(44, model.NearestDisplaySample(1_000)?.RemainingPercent);
+    }
+
+    /// <summary>
+    /// Documented non-finite behaviour: NaN and negative infinity select the
+    /// beginning, positive infinity the end.
+    /// </summary>
+    [Fact]
+    public void HoverHandlesNonFiniteInputDeterministically()
+    {
+        var model = new UsageHistoryChartModel(Series(50, 46, 44));
+
+        Assert.Equal(50, model.NearestDisplaySample(double.NaN)?.RemainingPercent);
+        Assert.Equal(50, model.NearestDisplaySample(double.NegativeInfinity)?.RemainingPercent);
+        Assert.Equal(44, model.NearestDisplaySample(double.PositiveInfinity)?.RemainingPercent);
+    }
+
+    /// <summary>
+    /// Samples are not evenly spaced in time, so the nearest one must be found
+    /// by timestamp. Index-based interpolation would answer 40 at a quarter of
+    /// the way across.
+    /// </summary>
+    [Fact]
+    public void HoverSelectsByTimestampNotArrayIndex()
+    {
+        var model = new UsageHistoryChartModel(new[]
+        {
+            new UsageHistorySample(Base, 50),
+            new UsageHistorySample(Base.AddSeconds(3_540), 40),
+            new UsageHistorySample(Base.AddSeconds(3_560), 39),
+            new UsageHistorySample(Base.AddSeconds(3_600), 38)
+        });
+
+        Assert.Equal(50, model.NearestDisplaySample(0.25)?.RemainingPercent);
+        Assert.Equal(50, model.NearestDisplaySample(0.4)?.RemainingPercent);
+        Assert.Equal(40, model.NearestDisplaySample(0.9)?.RemainingPercent);
+    }
+
+    /// <summary>
+    /// A position exactly between two records picks the earlier one, and no
+    /// position ever invents the 47 that sits between 48 and 46.
+    /// </summary>
+    [Fact]
+    public void HoverBreaksTiesTowardsTheEarlierSampleAndNeverInterpolates()
+    {
+        var model = new UsageHistoryChartModel(new[]
+        {
+            new UsageHistorySample(Base, 48),
+            new UsageHistorySample(Base.AddSeconds(300), 46)
+        });
+
+        var middle = model.NearestDisplaySample(0.5);
+        Assert.Equal(48, middle?.RemainingPercent);
+        Assert.Equal(Base, middle?.RecordedAt);
+        // Just past the midpoint the later record wins.
+        Assert.Equal(46, model.NearestDisplaySample(0.51)?.RemainingPercent);
+
+        for (var step = -20; step <= 120; step++)
+        {
+            var selected = model.NearestDisplaySample(step / 100.0);
+            Assert.NotNull(selected);
+            Assert.Contains(selected!.RemainingPercent, new[] { 48, 46 });
+        }
+    }
+
+    [Fact]
+    public void HoverCannotSelectSamplesBeforeTheLatestReset()
+    {
+        var model = new UsageHistoryChartModel(Series(80, 50, 30, 100, 90, 70));
+
+        Assert.Equal(new[] { 100, 90, 70 }, model.DisplaySamples.Select(sample => sample.RemainingPercent));
+        Assert.Equal(100, model.NearestDisplaySample(0)?.RemainingPercent);
+
+        // Sweeping the whole plot only ever reports drawn samples.
+        for (var step = -20; step <= 120; step++)
+        {
+            var selected = model.NearestDisplaySample(step / 100.0);
+            Assert.NotNull(selected);
+            Assert.Contains(selected!, model.DisplaySamples);
+        }
+    }
+
+    /// <summary>
+    /// The hover value must agree with the visible line, so the flattened
+    /// display value is reported for an isolated one-point spike.
+    /// </summary>
+    [Fact]
+    public void HoverReportsTheFlattenedDisplayValueNotRawNoise()
+    {
+        var model = new UsageHistoryChartModel(Series(33, 34, 33));
+
+        Assert.Equal(new[] { 33, 34, 33 }, model.Samples.Select(sample => sample.RemainingPercent));
+        var middle = model.NearestDisplaySample(0.5);
+        Assert.Equal(Base.AddSeconds(120), middle?.RecordedAt);
+        Assert.Equal(33, middle?.RemainingPercent);
+    }
+
+    /// <summary>
+    /// Duplicate timestamps give a zero-length window: the first drawn sample
+    /// answers every position, and nothing divides by zero.
+    /// </summary>
+    [Fact]
+    public void HoverWithDuplicateTimestampsIsDeterministic()
+    {
+        var duplicates = new UsageHistoryChartModel(new[]
+        {
+            new UsageHistorySample(Base, 50),
+            new UsageHistorySample(Base, 44)
+        });
+
+        Assert.Equal(TimeSpan.Zero, duplicates.RecordedDuration);
+        var expected = duplicates.DisplaySamples[0];
+        foreach (var normalizedX in new[] { 0, 0.25, 0.5, 1, -2, 3 })
+        {
+            Assert.Equal(expected, duplicates.NearestDisplaySample(normalizedX));
+        }
+    }
+
+    [Fact]
     public void RecorderStoresRawValuesForEverySuccessfulWindow()
     {
         var usages = new Dictionary<string, ProviderUsage>(StringComparer.Ordinal)

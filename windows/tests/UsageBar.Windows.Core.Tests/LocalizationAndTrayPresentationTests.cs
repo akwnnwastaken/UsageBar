@@ -69,6 +69,31 @@ public sealed class LocalizationAndTrayPresentationTests
         Assert.Equal("Last 1d 2h", English.UsageHistoryRange(TimeSpan.FromHours(26)));
     }
 
+    /// <summary>
+    /// The hover line shown above a chart while the pointer selects a record.
+    /// The timestamp is built from local time so the expected wall clock holds
+    /// in any time zone, and English is checked by component: the exact AM/PM
+    /// separator is culture data, not something this app should pin down.
+    /// </summary>
+    [Fact]
+    public void HistoryHoverShowsLocalTimeAndRemaining()
+    {
+        var recordedAt = new DateTimeOffset(new DateTime(2026, 7, 27, 19, 22, 0, DateTimeKind.Local));
+
+        Assert.Equal("19:22 · %47 kaldı", Turkish.UsageHistoryHover(recordedAt, 47));
+
+        var englishHover = English.UsageHistoryHover(recordedAt, 47);
+        Assert.StartsWith("7:22", englishHover, StringComparison.Ordinal);
+        Assert.Contains("PM", englishHover, StringComparison.Ordinal);
+        Assert.EndsWith("· 47% remaining", englishHover, StringComparison.Ordinal);
+
+        // Composed from the existing formatters rather than a second rule.
+        Assert.Equal($"{English.FormattedTime(recordedAt)} · {English.Remaining(47)}", englishHover);
+        Assert.Equal(
+            $"{Turkish.FormattedTime(recordedAt)} · {Turkish.Remaining(47)}",
+            Turkish.UsageHistoryHover(recordedAt, 47));
+    }
+
     [Fact]
     public void EveryIssueHasBothTranslations()
     {

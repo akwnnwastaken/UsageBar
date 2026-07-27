@@ -416,22 +416,33 @@ internal sealed class UsagePanelWindow : Window
         var model = new UsageHistoryChartModel(samples);
         var panel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
 
-        panel.Children.Add(new TextBlock
+        var defaultSummary = $"{text.UsageHistoryRange(model.RecordedDuration)} · {text.UsageHistorySummary(model)}";
+        var summary = new TextBlock
         {
-            Text = $"{text.UsageHistoryRange(model.RecordedDuration)} · {text.UsageHistorySummary(model)}",
+            Text = defaultSummary,
             Foreground = _theme.SecondaryForeground,
             FontSize = 10,
             TextTrimming = TextTrimming.CharacterEllipsis
-        });
+        };
+        panel.Children.Add(summary);
 
-        panel.Children.Add(new UsageHistoryChart
+        var chart = new UsageHistoryChart
         {
             Samples = samples,
             Height = 34,
             LineBrush = _theme.ForLevel(level, colorsEnabled),
             PlotBackground = _theme.PlotBackground,
             Margin = new Thickness(0, 3, 0, 0)
-        });
+        };
+
+        // Each chart owns its hover state and updates only its own summary line;
+        // hovering one graph must not touch another. Rebuild() recreates both,
+        // so a reopened panel always starts from the normal summary.
+        chart.HoveredSampleChanged += sample =>
+            summary.Text = sample is null
+                ? defaultSummary
+                : text.UsageHistoryHover(sample.RecordedAt, sample.RemainingPercent);
+        panel.Children.Add(chart);
 
         return panel;
     }
