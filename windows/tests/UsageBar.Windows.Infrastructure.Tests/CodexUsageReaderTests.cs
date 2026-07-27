@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using UsageBar.Windows.Core.Providers;
+using UsageBar.Windows.Infrastructure.Diagnostics;
 using UsageBar.Windows.Infrastructure.Process;
 using UsageBar.Windows.Infrastructure.Providers;
 using Xunit;
@@ -194,6 +195,68 @@ public sealed class CodexUsageReaderTests
             using var document = JsonDocument.Parse(line);
             Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
         }
+    }
+
+    /// <summary>
+    /// The handshake version must follow the application, not a literal. A
+    /// hard-coded "1.9.0" survived here into the 2.0.0 preparation, which would
+    /// have introduced the 2.0.0 build to the app server as 1.9.0.
+    /// </summary>
+    [Fact]
+    public void TheDefaultClientVersionIsTheApplicationVersion()
+    {
+        Assert.Equal(
+            WindowsEnvironmentInfo.ApplicationVersion,
+            CodexUsageReader.ResolveClientVersion(null));
+    }
+
+    /// <summary>
+    /// Pinned on purpose: this assertion is the gate that makes a future version
+    /// bump notice the handshake. It is expected to be updated deliberately,
+    /// together with windows/Directory.Build.props, never silently.
+    /// </summary>
+    [Fact]
+    public void TheDefaultClientVersionIsTheCurrentProductVersion()
+    {
+        Assert.Equal("2.0.0", CodexUsageReader.ResolveClientVersion(null));
+    }
+
+    [Fact]
+    public void AnExplicitClientVersionIsUsedUnchanged()
+    {
+        Assert.Equal("9.9.9", CodexUsageReader.ResolveClientVersion("9.9.9"));
+        Assert.Equal("1.9.0", CodexUsageReader.ResolveClientVersion("1.9.0"));
+        Assert.Equal(string.Empty, CodexUsageReader.ResolveClientVersion(string.Empty));
+    }
+
+    [Fact]
+    public void TheHandshakeAnnouncesTheResolvedApplicationVersion()
+    {
+        var resolved = CodexUsageReader.ResolveClientVersion(null);
+        var lines = CodexUsageReader.HandshakeMessages(resolved)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        using var initialize = JsonDocument.Parse(lines[0]);
+        var clientInfo = initialize.RootElement.GetProperty("params").GetProperty("clientInfo");
+        var announced = clientInfo.GetProperty("version").GetString();
+
+        Assert.Equal(resolved, announced);
+        // The client identity itself is unchanged by the version fix.
+        Assert.Equal("usage_bar", clientInfo.GetProperty("name").GetString());
+        Assert.Equal("UsageBar", clientInfo.GetProperty("title").GetString());
+    }
+
+    /// <summary>
+    /// The informational version carries a <c>+commit</c> suffix for diagnostics.
+    /// That build id must never travel to the app server.
+    /// </summary>
+    [Fact]
+    public void TheAnnouncedVersionCarriesNoBuildSuffix()
+    {
+        var resolved = CodexUsageReader.ResolveClientVersion(null);
+
+        Assert.Matches(@"^\d+\.\d+\.\d+$", resolved);
+        Assert.DoesNotContain("+", resolved, StringComparison.Ordinal);
     }
 
     [Fact]
