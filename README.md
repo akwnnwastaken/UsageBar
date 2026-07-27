@@ -10,12 +10,12 @@ UsageBar, seçtiğiniz sağlayıcının **kalan kullanım oranını** simgesiyle
 
 ### Sürümler
 
-Sürüm **1.9.0** her iki platformda da güncel sürümdür. İki platformun kendi etiketi ve kendi Release sayfası vardır; aynı etiket değildirler.
+Sürüm **2.0.0** her iki platformda da güncel sürümdür. İki platformun kendi etiketi ve kendi Release sayfası vardır; aynı etiket değildirler.
 
 | Platform | Sürüm | İndirme |
 | --- | --- | --- |
-| macOS — Apple Silicon | 1.9.0 | [v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v1.9.0) |
-| Windows — x64 | 1.9.0 | [windows-v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v1.9.0) |
+| macOS — Apple Silicon | 2.0.0 | [v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) |
+| Windows — x64 | 2.0.0 | [windows-v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) |
 
 `main` dalı her iki sürümün de kaynak kodunu içerir.
 
@@ -30,6 +30,7 @@ Sürüm **1.9.0** her iki platformda da güncel sürümdür. İki platformun ken
 - Gösterilecek sağlayıcıyı `Codex | Claude` anahtarıyla değiştirir; iki sağlayıcı bağlıyken `Otomatik` moduyla 30 saniyede bir geçiş yapar.
 - Her bağlı sağlayıcıyı menüden bağlantıdan kaldırabilir; bu, kullanım geçmişini silmez.
 - Her kullanım penceresinin kalan yüzde geçmişini (24 saate kadar) ayrı bir **yerel** mini grafikte gösterir. Grafik, mevcut pencerenin arkını net göstermek için **son sıfırlamadan itibaren** çizilir: pencere her sıfırlandığında (kalan oran yaklaşık %100'e döndüğünde) grafik baştan başlar. Gösterilen kayıt aralığını, başlangıç/bitiş yüzdelerini ve değişimi yazar; küçük hareketleri uyarlanabilir ölçekle görünür kılar. Bir pencere içinde kalan oran gerçekte artamaz; yine de sağlayıcı yüzdeyi tam sayıya yuvarladığı için değer 41 ↔ 42 gibi oynayabilir ve yeni açılan bir okuma oturumu bazen sunucuda önbelleğe alınmış, canlı değerin gerisinde kalan eski bir anlık değer alıp 33 → 38 gibi sahte bir geri sıçrama gösterebilir. Arayüzdeki değer, sıfırlama eşiğinin altındaki bu yükselişleri birkaç ölçüm boyunca doğrulanmadıkça göstermez; böylece hem yuvarlama dalgalanmaları hem de eski anlık değer geri sıçramaları gizlenir. Sıfırlamalar (yaklaşık %100'e büyük sıçrama) anında yansır ve kaydedilen geçmiş her zaman ham kalır.
+- Grafiğin üzerinde imleç gezdirildiğinde, yatay konuma **zaman olarak en yakın gerçek kaydı** seçer: seçilen noktada ince bir dikey kılavuz ve büyütülmüş bir nokta çizer, grafiğin üstündeki özet satırında da o kaydın **yerel saatini ve kalan yüzdesini** gösterir (`19:22 · %47 kaldı`). İmleç ayrıldığında normal aralık/değişim özeti geri gelir. Ara değer üretilmez; gösterilen yüzde her zaman çizilen çizgi üzerindeki gerçek bir kayıttır. Her grafiğin durumu bağımsızdır: birinin üzerinde gezinmek diğerini etkilemez.
 - Sağlayıcı geçici olarak yanıt vermezse son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder; eski ölçüm geçmişe yeniden yazılmaz.
 - Sürüm, işletim sistemi sürümü, bağlantı durumu, pencere türleri ve güvenli hata kodlarından oluşan bir **tanılama özetini** panoya kopyalar. Ham CLI çıktısı, dosya yolu, kullanıcı adı veya kimlik bilgisi eklemez.
 - Oturum açıldığında otomatik başlatılabilir (isteğe bağlı).
@@ -52,7 +53,7 @@ Sürüm **1.9.0** her iki platformda da güncel sürümdür. İki platformun ken
 - Yerel bir **C# / .NET 8 / WPF** sistem tepsisi uygulamasıdır; görev çubuğu düğmesi veya ana pencere açmaz.
 - Codex'in resmî Windows kurulumu desteklenir.
 - Claude Code'un yerel Windows kurulumu desteklenir.
-- Claude Code'un **WSL** üzerinden okunması desteklenir, ancak 1.9.0 sürümünde fiziksel olarak doğrulanmamıştır.
+- Claude Code'un **WSL** üzerinden okunması desteklenir, ancak 2.0.0 sürümünde fiziksel olarak doğrulanmamıştır.
 - **Taşınabilir ZIP** ve **kullanıcıya özel kurulum paketi** olarak dağıtılır.
 - Kurulum paketi yönetici izni istemez.
 - Kurulum paketi UsageBar'ı **bilerek otomatik başlatmaz**; kurulumdan sonra uygulama Başlat menüsünden açılır.
@@ -87,13 +88,13 @@ Yalnızca kullanmak istediğiniz sağlayıcının kurulu olması yeterlidir.
 - x64 işlemci ve işletim sistemi
 - Codex için giriş yapılmış resmî Windows Codex kurulumu
 - Claude için giriş yapılmış yerel Claude Code kurulumu
-- WSL Claude desteği mevcut ancak 1.9.0 sürümünde fiziksel olarak doğrulanmadı
+- WSL Claude desteği mevcut ancak 2.0.0 sürümünde fiziksel olarak doğrulanmadı
 - Son kullanıcı için ayrıca .NET Runtime kurulumu gerekmez; paket self-contained'dır
 - Kaynak koddan derlemek için .NET 8 SDK
 
 ### İndir ve kur — macOS
 
-1. [v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v1.9.0) sürümünden `macOS-arm64.zip` dosyasını indirin.
+1. [v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) sürümünden `macOS-arm64.zip` dosyasını indirin.
 2. ZIP dosyasını açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
 3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
 
@@ -120,13 +121,13 @@ Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç**
 İndirdiğiniz dosyanın SHA-256 değerini Release sayfasındaki değerle karşılaştırmak isterseniz:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip
 ```
 
 CI tarafından üretilen paketlerde GitHub build provenance kaydını da doğrulayabilirsiniz:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -139,7 +140,7 @@ Apple'ın resmi açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yap
 
 #### Kurulum paketi (önerilen)
 
-1. [windows-v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v1.9.0) sürümünü açın.
+1. [windows-v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) sürümünü açın.
 2. `UsageBar-Setup-x64.exe` dosyasını indirin.
 3. İsterseniz yanındaki `.sha256` dosyasıyla doğrulayın (aşağıya bakın).
 4. Kurulum paketini çalıştırın. Yönetici izni istenmez; kurulum yalnızca geçerli kullanıcı içindir.
@@ -334,12 +335,12 @@ UsageBar shows the **remaining usage percentage** for the selected provider, tog
 
 ### Releases
 
-Version **1.9.0** is current on both platforms. Each platform has its own tag and its own Release page; they are not the same tag.
+Version **2.0.0** is current on both platforms. Each platform has its own tag and its own Release page; they are not the same tag.
 
 | Platform | Version | Download |
 | --- | --- | --- |
-| macOS — Apple Silicon | 1.9.0 | [v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v1.9.0) |
-| Windows — x64 | 1.9.0 | [windows-v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v1.9.0) |
+| macOS — Apple Silicon | 2.0.0 | [v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) |
+| Windows — x64 | 2.0.0 | [windows-v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) |
 
 The `main` branch contains the source for both.
 
@@ -354,6 +355,7 @@ The `main` branch contains the source for both.
 - Switches the displayed provider with the `Codex | Claude` selector, and rotates between them every 30 seconds when `Auto` is selected and both are connected.
 - Can disconnect any connected provider from the menu; this does not delete the usage history.
 - Shows remaining-percentage history (up to 24 hours) separately for every usage window, in a **local** mini chart. To make the current window a clean arc, the chart is drawn **from the last reset onward**: each time the window resets (remaining returns to ~100%), the chart starts over. It labels the shown span, start/end values, and change, and adaptive scaling exposes small movements. Remaining cannot genuinely rise inside a window, yet the value can flicker between 41 and 42 because the provider rounds to a whole number, and a freshly spawned reader session can occasionally return a server-cached snapshot that lags the live value, showing a spurious rebound such as 33 → 38. The interface withholds any rise below the reset threshold until it persists across several readings, hiding both the rounding flicker and the stale-snapshot rebound; resets (a large jump back toward ~100%) appear immediately, and the recorded history always stays raw.
+- Hovering a chart selects the **recorded sample nearest in time** to that horizontal position: it draws a thin vertical guide and a larger point there, and the summary above the chart shows that sample's **local time and remaining percentage** (`7:22 PM · 47% remaining`). Leaving the chart restores the normal range/change summary. Nothing is interpolated — the percentage shown is always a real record on the drawn line. Each chart keeps its own state, so hovering one never affects another.
 - Keeps showing the last successful value with its timestamp and failure reason when a provider is temporarily unavailable; stale values are not recorded as new history samples.
 - Copies a **diagnostic summary** containing only version, operating-system version, connection state, window kinds, and safe error codes. It excludes raw CLI output, file paths, user names, and credentials.
 - Can start automatically when you log in (optional).
@@ -376,7 +378,7 @@ Both platforms share the same rules, but implement them differently.
 - A native **C# / .NET 8 / WPF** system-tray application; it creates no taskbar button and no main window.
 - Codex's official Windows installation is supported.
 - Claude Code's native Windows installation is supported.
-- Reading Claude Code through **WSL** is supported, but was not physically validated for the 1.9.0 release.
+- Reading Claude Code through **WSL** is supported, but was not physically validated for the 2.0.0 release.
 - Distributed as a **portable ZIP** and a **per-user installer**.
 - The installer does not require administrator permission.
 - The installer **deliberately does not start UsageBar automatically**; after installation the app is opened from the Start Menu.
@@ -411,13 +413,13 @@ You only need to install the provider you want to track.
 - An x64 processor and operating system
 - A signed-in official Windows Codex installation for Codex tracking
 - A signed-in native Claude Code installation for Claude tracking
-- WSL Claude support exists but was not physically validated for the 1.9.0 release
+- WSL Claude support exists but was not physically validated for the 2.0.0 release
 - End users do not need to install the .NET Runtime separately; the package is self-contained
 - The .NET 8 SDK only when building from source
 
 ### Download and install — macOS
 
-1. Download `macOS-arm64.zip` from the [v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v1.9.0) release.
+1. Download `macOS-arm64.zip` from the [v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) release.
 2. Extract the ZIP and move `UsageBar.app` to the **Applications** folder.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
@@ -444,13 +446,13 @@ This approval is required only on the first launch of the same app. If **Open An
 To compare the downloaded file's SHA-256 value with the value published on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip
 ```
 
 For CI-produced packages, you can also verify GitHub build provenance:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-1.9.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -463,7 +465,7 @@ Apple's official instructions: [Open an app Apple cannot check for malicious sof
 
 #### Installer — recommended
 
-1. Open the [windows-v1.9.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v1.9.0) release.
+1. Open the [windows-v2.0.0](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) release.
 2. Download `UsageBar-Setup-x64.exe`.
 3. Optionally verify it against the `.sha256` file beside it (see below).
 4. Run the installer. It does not ask for administrator permission and installs for the current user only.

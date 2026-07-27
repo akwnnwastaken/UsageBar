@@ -9,6 +9,21 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-27
+
+### Added
+- Usage-history charts on macOS and Windows now support native hover inspection:
+  the pointer snaps by timestamp to the nearest displayed recorded sample,
+  displays its local time and remaining percentage, and draws a vertical guide
+  and highlighted point. Leaving the chart restores the normal range/change
+  summary. Values are never interpolated, and each graph has independent hover
+  state.
+
+### Fixed
+- The Windows Codex JSON-RPC handshake now derives its client version from the
+  authoritative application assembly version instead of retaining a stale
+  1.9.0 fallback.
+
 ### Internal
 - The security acceptance gate scans `Sources` for forbidden patterns with
   `grep` (POSIX-guaranteed) instead of `rg`, through a helper that fails closed
@@ -108,7 +123,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.9.0...v2.0.0
 [1.9.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.6.0...v1.7.0
