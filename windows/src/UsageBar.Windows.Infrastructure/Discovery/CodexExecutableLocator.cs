@@ -157,8 +157,7 @@ public sealed class CodexExecutableLocator
                 System.IO.Path.Combine(localAppData, "Microsoft", "WinGet"));
         }
 
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        if (!string.IsNullOrEmpty(programFiles))
+        foreach (var programFiles in _folders.Resolve(WindowsKnownFolder.ProgramFiles))
         {
             yield return new Candidate(
                 System.IO.Path.Combine(programFiles, "codex", "codex.exe"),
@@ -184,17 +183,27 @@ public sealed class CodexExecutableLocator
     /// </summary>
     internal ExecutableLookup? LocateNodeLauncher()
     {
-        var appData = _folders.Resolve(WindowsKnownFolder.RoamingApplicationData).FirstOrDefault();
-        if (string.IsNullOrEmpty(appData))
+        string? npmRoot = null;
+        string? script = null;
+
+        // Every resolved root is tried, as with the native candidates: one
+        // source returning nothing must not remove an installation the other
+        // source can still reach.
+        foreach (var appData in _folders.Resolve(WindowsKnownFolder.RoamingApplicationData))
         {
-            return null;
+            var root = System.IO.Path.Combine(appData, "npm");
+            var candidate = System.IO.Path.Combine(
+                root, "node_modules", "@openai", "codex", "bin", "codex.js");
+
+            if (File.Exists(candidate))
+            {
+                npmRoot = root;
+                script = candidate;
+                break;
+            }
         }
 
-        var npmRoot = System.IO.Path.Combine(appData, "npm");
-        var script = System.IO.Path.Combine(
-            npmRoot, "node_modules", "@openai", "codex", "bin", "codex.js");
-
-        if (!File.Exists(script))
+        if (script is null || npmRoot is null)
         {
             return null;
         }
@@ -224,10 +233,8 @@ public sealed class CodexExecutableLocator
 
     internal ExecutableLookup? LocateNode()
     {
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-
         var candidates = new List<Candidate>();
-        if (!string.IsNullOrEmpty(programFiles))
+        foreach (var programFiles in _folders.Resolve(WindowsKnownFolder.ProgramFiles))
         {
             candidates.Add(new Candidate(
                 System.IO.Path.Combine(programFiles, "nodejs", "node.exe"),

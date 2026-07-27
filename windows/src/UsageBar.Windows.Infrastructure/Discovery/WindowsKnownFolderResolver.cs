@@ -7,7 +7,8 @@ public enum WindowsKnownFolder
 {
     LocalApplicationData,
     UserProfile,
-    RoamingApplicationData
+    RoamingApplicationData,
+    ProgramFiles
 }
 
 /// <summary>
@@ -48,6 +49,7 @@ public sealed class WindowsKnownFolderResolver : IKnownFolderResolver
     private static readonly Guid LocalAppDataId = new("F1B32785-6FBA-4FCF-9D55-7B8E7F157091");
     private static readonly Guid ProfileId = new("5E6C858F-0E22-4760-9AFE-EA3317B67173");
     private static readonly Guid RoamingAppDataId = new("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D");
+    private static readonly Guid ProgramFilesId = new("905E63B6-C1BF-494E-B29C-65B732D3D21A");
 
     private readonly Func<WindowsKnownFolder, string?> _shell;
     private readonly Func<WindowsKnownFolder, string?> _framework;
@@ -135,6 +137,7 @@ public sealed class WindowsKnownFolderResolver : IKnownFolderResolver
         {
             WindowsKnownFolder.UserProfile => ProfileId,
             WindowsKnownFolder.RoamingApplicationData => RoamingAppDataId,
+            WindowsKnownFolder.ProgramFiles => ProgramFilesId,
             _ => LocalAppDataId
         };
 
@@ -171,6 +174,7 @@ public sealed class WindowsKnownFolderResolver : IKnownFolderResolver
         WindowsKnownFolder.UserProfile => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         WindowsKnownFolder.RoamingApplicationData =>
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        WindowsKnownFolder.ProgramFiles => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         _ => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
     };
 
@@ -222,6 +226,8 @@ internal static class LegacyResolver
                 Single(specialFolder(Environment.SpecialFolder.LocalApplicationData)),
             [WindowsKnownFolder.UserProfile] =
                 Single(specialFolder(Environment.SpecialFolder.UserProfile)),
+            [WindowsKnownFolder.ProgramFiles] =
+                Single(specialFolder(Environment.SpecialFolder.ProgramFiles)),
             [WindowsKnownFolder.RoamingApplicationData] = Single(environmentVariable("APPDATA"))
         });
     }

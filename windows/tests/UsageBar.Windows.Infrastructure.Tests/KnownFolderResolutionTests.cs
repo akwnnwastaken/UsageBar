@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using UsageBar.Windows.Core.Diagnostics;
 using UsageBar.Windows.Infrastructure.Diagnostics;
 using UsageBar.Windows.Infrastructure.Discovery;
+using UsageBar.Windows.Infrastructure.Storage;
 using Xunit;
 
 namespace UsageBar.Windows.Infrastructure.Tests;
@@ -157,6 +158,26 @@ public sealed class KnownFolderResolutionTests : IDisposable
         Assert.Empty(resolver.Resolve(WindowsKnownFolder.LocalApplicationData));
         Assert.Equal(ExecutableLookupStatus.Missing, new CodexExecutableLocator(resolver).Locate().Status);
         Assert.Equal(CandidateState.NotConstructed, new CodexExecutableLocator(resolver).OfficialCandidateState());
+
+        // Every candidate comes from a resolved root, so none is left. Reading
+        // a folder around the resolver would leak the real machine in here.
+        Assert.Empty(new CodexExecutableLocator(resolver).NativeCandidates());
+        Assert.Empty(new ClaudeExecutableLocator(resolver).NativeCandidates());
+    }
+
+    /// <summary>
+    /// The storage root has to come out absolute even when nothing resolves. A
+    /// bare relative "UsageBar" would put settings and history beside whichever
+    /// process started UsageBar, so they would look lost on the next launch.
+    /// </summary>
+    [WindowsFact]
+    public void TheStorageRootIsAlwaysAbsolute()
+    {
+        var root = UsageBarStorage.DefaultRootDirectory();
+
+        Assert.True(Path.IsPathFullyQualified(root));
+        Assert.EndsWith("UsageBar", root, StringComparison.Ordinal);
+        Assert.Equal(root, new UsageBarStorage().RootDirectory);
     }
 
     /// <summary>

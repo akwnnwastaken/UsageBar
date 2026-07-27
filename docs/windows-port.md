@@ -162,11 +162,13 @@ never used to pick a winner.
 
 ### Known-folder resolution
 
-Every candidate above is built from a user known folder — Local AppData, the
-user profile, or Roaming AppData. `WindowsKnownFolderResolver` supplies them:
+Every candidate above is built from a known folder — Local AppData, the user
+profile, Roaming AppData or Program Files. `WindowsKnownFolderResolver` supplies
+them:
 
 1. `SHGetKnownFolderPath` for the current user (`FOLDERID_LocalAppData`,
-   `FOLDERID_Profile`, `FOLDERID_RoamingAppData`) is asked first.
+   `FOLDERID_Profile`, `FOLDERID_RoamingAppData`, `FOLDERID_ProgramFiles`) is
+   asked first.
 2. `Environment.GetFolderPath` is asked second, as a **validated fallback** —
    not as the single source of truth.
 3. Each answer must be fully qualified and name a directory that exists;
@@ -186,6 +188,15 @@ the shell or the framework, never from an inherited string. This is also not a
 PATH search: there is no `where.exe`, no `cmd.exe`, no PowerShell and no shell
 fallback anywhere in discovery, and every candidate still goes through the full
 `ExecutableTrust` validation described above.
+
+The same resolver decides where UsageBar keeps its own data
+(`UsageBarStorage.DefaultRootDirectory`) and where a provider process is started
+from. Both were previously assembled from `Environment.GetFolderPath` directly,
+which yields a *relative* path when that call returns nothing — settings, history
+and the provider working directory would then land beside whichever process
+launched UsageBar. The resolved form is always absolute: Local AppData, else the
+same directory derived from the user profile, else a directory under the
+temporary folder.
 
 ### Supported Codex installation formats
 

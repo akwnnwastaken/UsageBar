@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Text;
+using UsageBar.Windows.Infrastructure.Storage;
 
 namespace UsageBar.Windows.Infrastructure.Process;
 
@@ -114,13 +115,18 @@ public static class ProviderProcessEnvironment
         return builder.ToString().ToCharArray();
     }
 
+    /// <summary>
+    /// The directory a provider is started in. It is resolved rather than
+    /// assembled from a possibly empty folder path, so it can never come out
+    /// relative — a relative working directory would put it beside whatever
+    /// process started UsageBar.
+    /// </summary>
     private static string CreateWorkingDirectory()
     {
         try
         {
             var directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "UsageBar",
+                UsageBarStorage.DefaultRootDirectory(),
                 "provider-run");
             Directory.CreateDirectory(directory);
             return directory;
