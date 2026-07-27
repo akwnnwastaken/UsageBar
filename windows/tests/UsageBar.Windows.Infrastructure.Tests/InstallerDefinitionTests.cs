@@ -180,9 +180,12 @@ public sealed class InstallerDefinitionTests
         Assert.Contains("Name: \"tr\"; MessagesFile: \"compiler:Languages\\Turkish.isl\"", InstallerScript, StringComparison.Ordinal);
 
         // And the custom strings exist in both.
-        Assert.Contains("en.LaunchAfterInstall=", InstallerScript, StringComparison.Ordinal);
-        Assert.Contains("tr.LaunchAfterInstall=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("en.CreateDesktopIcon=", InstallerScript, StringComparison.Ordinal);
         Assert.Contains("tr.CreateDesktopIcon=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("en.FinishedHeading=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("tr.FinishedHeading=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("en.FinishedBody=", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("tr.FinishedBody=", InstallerScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -195,104 +198,146 @@ public sealed class InstallerDefinitionTests
     }
 
     /// <summary>
-    /// The regression physical testing isolated: an application started straight
-    /// from Setup inherits Setup's process context, and in that context UsageBar
-    /// failed to find an installed Codex it located immediately when started from
-    /// the Start Menu. The final page must launch the shortcut, so the first
-    /// launch uses the same path as every later one.
+    /// Setup does not start UsageBar. Physical testing traced the Setup-launched
+    /// failure to Inno's RedirectionGuard: the launched process hit Win32 448,
+    /// ERROR_REDIRECTION_NOT_ALLOWED, reading the installed Codex executable, and
+    /// running Setup with /NOREDIRECTIONGUARD made Codex work immediately.
+    ///
+    /// Turning the guard off was the rejected fix — it protects the installer
+    /// against file-system redirection attacks, and it is not worth a checkbox.
+    /// The launch went instead.
     /// </summary>
     [Fact]
-    public void TheFinalPageLaunchesTheStartMenuShortcutNotTheExecutable()
+    public void SetupNeverLaunchesAnything()
     {
-        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
+        Assert.DoesNotMatch(@"(?m)^\s*\[Run\]", InstallerScript);
+        Assert.DoesNotMatch(@"(?m)^\s*\[UninstallRun\]", InstallerScript);
+        Assert.DoesNotContain("postinstall", InstallerScript, StringComparison.OrdinalIgnoreCase);
 
-        // The script uses the {#AppName} define, so match what is actually written.
-        Assert.Contains(@"{autoprograms}\{#AppName}.lnk", run, StringComparison.Ordinal);
-        // The old direct-execution entry must be gone. Only [Run] lines start
-        // with Filename:, so this cannot be confused with the [Icons] entries,
-        // which legitimately point at {app}\{#AppExeName}.
-        Assert.DoesNotMatch(@"(?m)^Filename:.*\{app\}.*postinstall", InstallerScript);
-        Assert.DoesNotContain("nowait postinstall", InstallerScript, StringComparison.Ordinal);
-    }
+        // Only [Run] lines start with Filename:, so no line may.
+        Assert.DoesNotMatch(@"(?m)^Filename:", InstallerScript);
 
-    /// <summary>
-    /// shellexec is what makes it a shell launch rather than a Setup-context
-    /// CreateProcess — and it is required at all, because a .lnk is not directly
-    /// executable.
-    /// </summary>
-    [Fact]
-    public void TheLaunchUsesShellExecuteSemanticsAsTheOriginalUser()
-    {
-        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
-
-        Assert.Contains("shellexec", run, StringComparison.Ordinal);
-        Assert.Contains("runasoriginaluser", run, StringComparison.Ordinal);
-        Assert.Contains("skipifsilent", run, StringComparison.Ordinal);
-
-        // Never elevated, and never waiting for a window a tray app never opens.
+        // Neither the executable nor the shortcut is started by any route.
+        Assert.DoesNotContain("shellexec", InstallerScript, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("runasoriginaluser", InstallerScript, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("runascurrentuser", InstallerScript, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("waituntilterminated", InstallerScript, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("waituntilidle", InstallerScript, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Exec(", InstallerScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShellExec(", InstallerScript, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// The shortcut the final page launches is created by [Icons], which Setup
-    /// processes before [Run], and it points at the installed executable with the
-    /// application directory as its working directory.
+    /// Every trace of the launch feature is gone, not merely disabled. A dormant
+    /// gate or message is an invitation to switch it back on without revisiting
+    /// why it was removed.
+    /// </summary>
+    [Theory]
+    [InlineData("LaunchAfterInstall")]
+    [InlineData("LaunchShortcutAvailable")]
+    [InlineData("ShortcutMissing")]
+    [InlineData("LaunchUnavailable")]
+    [InlineData("skipifsilent")]
+    public void NoRemnantOfTheLaunchFeatureSurvives(string remnant)
+    {
+        Assert.DoesNotContain(remnant, InstallerScript, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// RedirectionGuard is a security property, not a tunable. Leaving the
+    /// directive out entirely keeps Inno's secure default; naming it at all would
+    /// be the first step toward turning it off.
     /// </summary>
     [Fact]
-    public void TheShortcutIsCreatedBeforeLaunchAndPointsAtTheInstalledExecutable()
+    public void RedirectionGuardIsLeftAtItsSecureDefault()
+    {
+        Assert.DoesNotMatch(@"(?i)RedirectionGuard\s*=\s*no", InstallerScript);
+        Assert.DoesNotMatch(@"(?im)^\s*RedirectionGuard\s*=", InstallerScript);
+        Assert.DoesNotContain("NOREDIRECTIONGUARD", InstallerScript, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The Start Menu shortcut is the recommended — and only — first-launch path,
+    /// so it must point at the installed executable and carry a working
+    /// directory. Without one the application would start in whatever directory
+    /// the shell happened to be using.
+    /// </summary>
+    [Fact]
+    public void TheStartMenuShortcutIsTheFirstLaunchPath()
     {
         var icon = Regex.Match(InstallerScript, @"(?m)^Name: ""\{autoprograms\}.*$").Value;
 
         Assert.Contains(@"Filename: ""{app}\{#AppExeName}""", icon, StringComparison.Ordinal);
         Assert.Contains(@"WorkingDir: ""{app}""", icon, StringComparison.Ordinal);
+        Assert.Contains(@"IconFilename: ""{app}\{#AppExeName}""", icon, StringComparison.Ordinal);
 
-        // [Icons] must appear before [Run] in the script, matching Setup's order.
-        Assert.True(
-            InstallerScript.IndexOf("[Icons]", StringComparison.Ordinal) <
-            InstallerScript.IndexOf("[Run]", StringComparison.Ordinal));
+        // It is created unconditionally — no task gates it.
+        Assert.DoesNotContain("Tasks:", icon, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// A missing shortcut skips the launch and says so; Setup never falls back to
-    /// starting the executable itself, which is the context being avoided.
+    /// Because nothing starts on its own, the finished page has to say how to
+    /// start it — in both languages, and specifically enough to follow.
     /// </summary>
     [Fact]
-    public void AFailedLaunchIsReportedRatherThanFakedOrRetriedDirectly()
+    public void TheFinishedPageTellsTheUserToOpenItFromTheStartMenu()
     {
-        Assert.Contains("Check: LaunchShortcutAvailable", InstallerScript, StringComparison.Ordinal);
-        Assert.Contains("function LaunchShortcutAvailable", InstallerScript, StringComparison.Ordinal);
-        Assert.Contains("en.LaunchUnavailable=", InstallerScript, StringComparison.Ordinal);
-        Assert.Contains("tr.LaunchUnavailable=", InstallerScript, StringComparison.Ordinal);
-        Assert.Contains("Start Menu", InstallerScript, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^en\.FinishedHeading=UsageBar is installed$", InstallerScript);
+        Assert.Matches(@"(?m)^tr\.FinishedHeading=UsageBar kuruldu$", InstallerScript);
 
-        // Exactly one postinstall entry: no direct-execution fallback alongside it.
-        Assert.Single(Regex.Matches(InstallerScript, @"(?m)^Filename:.*postinstall"));
+        var english = Regex.Match(InstallerScript, @"(?m)^en\.FinishedBody=.*$").Value;
+        Assert.Contains("installed successfully", english, StringComparison.Ordinal);
+        Assert.Contains("open the Start menu", english, StringComparison.Ordinal);
+        Assert.Contains("search for \"UsageBar\"", english, StringComparison.Ordinal);
+        Assert.Contains("system tray", english, StringComparison.Ordinal);
+
+        var turkish = Regex.Match(InstallerScript, @"(?m)^tr\.FinishedBody=.*$").Value;
+        Assert.Contains("başarıyla kuruldu", turkish, StringComparison.Ordinal);
+        Assert.Contains("Başlat menüsünü açın", turkish, StringComparison.Ordinal);
+        Assert.Contains("\"UsageBar\" yazın", turkish, StringComparison.Ordinal);
+        Assert.Contains("sistem tepsisinde", turkish, StringComparison.Ordinal);
+
+        // Both are single-line with Inno's %n%n paragraph breaks, so neither can
+        // silently lose its later paragraphs to a line break in the script.
+        foreach (var body in new[] { english, turkish })
+        {
+            Assert.Equal(2, Regex.Matches(body, "%n%n").Count);
+        }
     }
 
-    /// <summary>No shell, task or helper was smuggled in to work around the launch.</summary>
+    /// <summary>
+    /// The standard finished page carries it. A custom page would have to
+    /// reimplement layout, theming and localisation that already work.
+    /// </summary>
+    [Fact]
+    public void TheStandardFinishedPageIsUsedAndAllowedToWrap()
+    {
+        Assert.Contains("WizardForm.FinishedHeadingLabel", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("WizardForm.FinishedLabel", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("CurPageID = wpFinished", InstallerScript, StringComparison.Ordinal);
+
+        // Turkish is the longer of the two and has to wrap rather than clip.
+        Assert.Contains("WordWrap := True", InstallerScript, StringComparison.Ordinal);
+        Assert.Contains("AutoSize := False", InstallerScript, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("CreateCustomPage", InstallerScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreateOutputMsgPage", InstallerScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>No shell, task or helper was smuggled in to replace the launch.</summary>
     [Theory]
     [InlineData("cmd.exe")]
     [InlineData("powershell")]
+    [InlineData("pwsh")]
     [InlineData("explorer.exe")]
     [InlineData("schtasks")]
     [InlineData("wscript")]
+    [InlineData("cscript")]
+    [InlineData("rundll32")]
     [InlineData("Sleep(")]
+    [InlineData("{userstartup}")]
+    [InlineData("{commonstartup}")]
     public void NoLaunchWorkaroundWasAdded(string forbidden)
     {
         Assert.DoesNotContain(forbidden, InstallerScript, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>The checkbox stays, and stays ticked.</summary>
-    [Fact]
-    public void TheLaunchCheckboxRemainsCheckedByDefault()
-    {
-        var run = Regex.Match(InstallerScript, @"(?m)^Filename:.*postinstall.*$").Value;
-
-        Assert.Contains("Description: \"{cm:LaunchAfterInstall", run, StringComparison.Ordinal);
-        // `unchecked` would clear it; only the desktop shortcut task uses that.
-        Assert.DoesNotContain("unchecked", run, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -57,6 +57,8 @@ $settingsPath = Join-Path $dataDir 'settings.json'
 $historyPath = Join-Path $dataDir 'history.json'
 $unrelatedPath = Join-Path $env:LOCALAPPDATA 'UsageBarSmokeTestUnrelated.txt'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UsageBar.lnk'
+$startupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'UsageBar.lnk'
+$installerSource = Join-Path (Split-Path -Parent $PSScriptRoot) 'installer\UsageBar.iss'
 
 $settingsBackup = $null
 $historyBackup = $null
@@ -107,8 +109,8 @@ try {
     Test-Requirement 'The destination is inside the user profile' ($installDir.StartsWith($env:USERPROFILE, [StringComparison]::OrdinalIgnoreCase)) "($installDir)"
     Test-Requirement 'Nothing was installed into Program Files' (-not (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'UsageBar')))
 
-    # The final page launches this shortcut, so it must exist and point at the
-    # installed executable. Setup creates [Icons] before running [Run].
+    # The Start Menu shortcut is the only first-launch path, so it must exist and
+    # point at the installed executable.
     Test-Requirement 'The Start Menu shortcut was created' (Test-Path -LiteralPath $startMenu)
     if (Test-Path -LiteralPath $startMenu) {
         $shell = New-Object -ComObject WScript.Shell
@@ -124,9 +126,29 @@ try {
         }
     }
 
-    # /VERYSILENT carries skipifsilent, so nothing should have been launched.
+    # Setup has no [Run] section, so nothing should have been launched — and
+    # nothing should appear a moment later either, which is what a delayed or
+    # detached launch would look like.
     Test-Requirement 'A silent install does not launch UsageBar' (
         @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
+    Start-Sleep -Seconds 3
+    Test-Requirement 'Nothing starts a moment after the install either' (
+        @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
+
+    # The rejected alternative. If a build ever ships with the guard disabled to
+    # make an auto-launch work, this fails rather than passing quietly.
+    Test-Requirement 'Setup was not built with RedirectionGuard disabled' (
+        (Test-Path -LiteralPath $installerSource) -and
+        -not ((Get-Content -LiteralPath $installerSource -Raw) -match '(?i)RedirectionGuard\s*=\s*no'))
+
+    # No other launch mechanism took its place.
+    Test-Requirement 'No Startup-folder shortcut was created' (
+        -not (Test-Path -LiteralPath $startupShortcut))
+
+    if (Get-Command -Name 'Get-ScheduledTask' -ErrorAction SilentlyContinue) {
+        $tasks = @(Get-ScheduledTask -TaskName 'UsageBar*' -ErrorAction SilentlyContinue)
+        Test-Requirement 'No scheduled task was created' ($tasks.Count -eq 0) "(found $($tasks.Count))"
+    }
 
     $entry = Get-ItemProperty -Path $uninstallKey -ErrorAction SilentlyContinue
     Test-Requirement 'One uninstall entry exists under the current user' ($null -ne $entry)
@@ -166,7 +188,14 @@ try {
     Test-Requirement 'The autostart preference was not overwritten' (
         $runAfter -and $runAfter.UsageBar -eq $autoStartValue) "(got '$($runAfter.UsageBar)')"
     Test-Requirement 'The installer added no second autostart entry' (
-        -not (Test-Path -LiteralPath (Join-Path ([Environment]::GetFolderPath('Startup')) 'UsageBar.lnk')))
+        -not (Test-Path -LiteralPath $startupShortcut))
+
+    # An upgrade must not start UsageBar either, silently or a moment later.
+    Test-Requirement 'An upgrade does not launch UsageBar' (
+        @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
+    Start-Sleep -Seconds 3
+    Test-Requirement 'Nothing starts a moment after the upgrade either' (
+        @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
 
     # --- uninstall ----------------------------------------------------------
 

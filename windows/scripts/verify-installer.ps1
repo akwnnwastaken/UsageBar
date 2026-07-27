@@ -124,15 +124,60 @@ Test-Requirement 'A stable AppId is declared' ($iss -match '(?m)^\s*AppId=\{\{[0
 Test-Requirement 'Uninstall support is enabled' ($iss -match '(?m)^\s*Uninstallable\s*=\s*yes\s*$')
 Test-Requirement 'A Start Menu shortcut is created' ($iss -match '\{autoprograms\}')
 Test-Requirement 'The desktop shortcut is optional and unchecked' ($iss -match 'Name:\s*"desktopicon".*Flags:\s*unchecked')
-Test-Requirement 'The launch-after-install option uses the Start Menu shortcut' (
-    $iss -match '(?m)^Filename: "\{autoprograms\}\\\{#AppName\}\.lnk".*postinstall')
-Test-Requirement 'The launch uses ShellExecute as the original user' (
-    $iss -match '(?m)^Filename:.*postinstall.*shellexec.*runasoriginaluser')
-Test-Requirement 'Setup never launches the executable directly' (
-    -not ($iss -match '(?m)^Filename: "\{app\}.*postinstall'))
+Test-Requirement 'The Start Menu shortcut targets the installed executable' (
+    $iss -match '(?m)^Name: "\{autoprograms\}\\\{#AppName\}";\s*Filename: "\{app\}\\\{#AppExeName\}"')
 Test-Requirement 'The shortcut has a working directory' ($iss -match 'WorkingDir: "\{app\}"')
-Test-Requirement 'A skipped launch is reported rather than faked' (
-    $iss -match 'Check: LaunchShortcutAvailable')
+Test-Requirement 'The shortcut uses the application icon' (
+    $iss -match '(?m)^Name: "\{autoprograms\}.*IconFilename: "\{app\}\\\{#AppExeName\}"')
+
+# Setup does not start UsageBar. Physically, a Setup-launched process inherits
+# Setup's context and hits Win32 448 (ERROR_REDIRECTION_NOT_ALLOWED) reading the
+# installed Codex; RedirectionGuard is the cause and stays on, so the launch goes
+# rather than the protection.
+Test-Requirement 'There is no [Run] section at all' (-not ($iss -match '(?m)^\s*\[Run\]'))
+Test-Requirement 'Nothing is flagged postinstall' (-not ($iss -match 'postinstall'))
+Test-Requirement 'No launch-after-install message survives' (-not ($iss -match 'LaunchAfterInstall'))
+Test-Requirement 'No launch gate survives' (-not ($iss -match 'LaunchShortcutAvailable'))
+Test-Requirement 'No shortcut-missing fallback survives' (
+    -not ($iss -match 'ShortcutMissing') -and -not ($iss -match 'LaunchUnavailable'))
+Test-Requirement 'Setup never launches the executable' (-not ($iss -match '(?m)^Filename:\s*"\{app\}'))
+Test-Requirement 'Setup never launches the shortcut' (-not ($iss -match '(?m)^Filename:.*\.lnk"'))
+Test-Requirement 'No shell is used to launch anything' (
+    -not ($iss -match '(?i)(cmd\.exe|powershell|pwsh\.exe|explorer\.exe|wscript|cscript|rundll32)'))
+Test-Requirement 'No [UninstallRun] launch was added instead' (
+    -not ($iss -match '(?m)^\s*\[UninstallRun\]'))
+
+# RedirectionGuard is a security property of the installer, not a tunable. It
+# must stay at its secure default; disabling it was the rejected alternative.
+Test-Requirement 'RedirectionGuard is not disabled' (-not ($iss -match '(?i)RedirectionGuard\s*=\s*no'))
+Test-Requirement 'RedirectionGuard is left at its secure default' (
+    -not ($iss -match '(?im)^\s*RedirectionGuard\s*='))
+Test-Requirement 'The Setup EXE carries no RedirectionGuard opt-out' (
+    -not ($text -match '(?i)RedirectionGuard=no'))
+
+# The finished page has to carry the instructions, in both languages, because
+# nothing starts on its own any more.
+Test-Requirement 'The finished heading is localized' (
+    ($iss -match '(?m)^en\.FinishedHeading=') -and ($iss -match '(?m)^tr\.FinishedHeading='))
+Test-Requirement 'The finished body is localized' (
+    ($iss -match '(?m)^en\.FinishedBody=') -and ($iss -match '(?m)^tr\.FinishedBody='))
+Test-Requirement 'The English finished text names the Start menu' (
+    $iss -match '(?m)^en\.FinishedBody=.*Start menu')
+Test-Requirement 'The English finished text says to search for UsageBar' (
+    $iss -match '(?m)^en\.FinishedBody=.*search for "UsageBar"')
+Test-Requirement 'The Turkish finished text names the Start menu' (
+    $iss -match '(?m)^tr\.FinishedBody=.*Başlat menüsünü')
+Test-Requirement 'The Turkish finished text says to search for UsageBar' (
+    $iss -match '(?m)^tr\.FinishedBody=.*"UsageBar" yazın')
+Test-Requirement 'Both finished bodies mention the tray' (
+    ($iss -match '(?m)^en\.FinishedBody=.*system tray') -and
+    ($iss -match '(?m)^tr\.FinishedBody=.*sistem tepsisinde'))
+Test-Requirement 'The finished labels are set on the standard page' (
+    ($iss -match 'WizardForm\.FinishedHeadingLabel') -and ($iss -match 'WizardForm\.FinishedLabel'))
+Test-Requirement 'The finished body is allowed to wrap' (
+    ($iss -match 'WordWrap\s*:=\s*True') -and ($iss -match 'AutoSize\s*:=\s*False'))
+Test-Requirement 'No custom wizard page was created for it' (
+    -not ($iss -match 'CreateCustomPage') -and -not ($iss -match 'CreateOutputMsgPage'))
 Test-Requirement 'The application icon is used for setup' ($iss -match '(?m)^\s*SetupIconFile\s*=')
 Test-Requirement 'A running instance is detected by mutex' ($iss -match '(?m)^\s*AppMutex\s*=\s*Local\\UsageBar')
 

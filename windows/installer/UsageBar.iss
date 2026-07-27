@@ -95,12 +95,15 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
 
 [CustomMessages]
-en.LaunchAfterInstall=Launch %1
 en.CreateDesktopIcon=Create a &desktop shortcut
-en.LaunchUnavailable=UsageBar was installed, but its Start Menu shortcut could not be found, so it was not started. Open UsageBar from the Start Menu.
-tr.LaunchAfterInstall=%1 uygulamasını başlat
 tr.CreateDesktopIcon=&Masaüstü kısayolu oluştur
-tr.LaunchUnavailable=UsageBar kuruldu, ancak Başlat menüsü kısayolu bulunamadığı için başlatılmadı. UsageBar'ı Başlat menüsünden açın.
+
+; The finished page. Setup does not start UsageBar, so the page has to say
+; plainly how to. %n%n is Inno's paragraph break.
+en.FinishedHeading=UsageBar is installed
+en.FinishedBody=UsageBar was installed successfully.%n%nTo open the app, open the Start menu, search for "UsageBar", and select the UsageBar app.%n%nUsageBar runs in the system tray. If the icon is hidden, check the ^ menu on the taskbar.
+tr.FinishedHeading=UsageBar kuruldu
+tr.FinishedBody=UsageBar başarıyla kuruldu.%n%nUygulamayı açmak için Başlat menüsünü açın, "UsageBar" yazın ve UsageBar uygulamasını seçin.%n%nUsageBar sistem tepsisinde çalışacaktır. Simge görünmüyorsa görev çubuğundaki ^ menüsünü kontrol edin.
 
 [Tasks]
 ; Unchecked by default: a tray application does not need a desktop icon.
@@ -111,56 +114,54 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-; WorkingDir matters: the Start Menu shortcut is also what the final page
-; launches, and a shortcut with no working directory would start the
+; The Start Menu shortcut is the recommended — and only — first-launch path.
+; WorkingDir matters: a shortcut with no working directory would start the
 ; application in whatever directory the shell happened to be using.
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
-[Run]
-; Launches the Start Menu shortcut, not the executable directly.
+; There is deliberately no launch section here.
 ;
-; Physical testing found that an application started straight from Setup
-; inherits Setup's process context rather than the shell's, and in that context
-; UsageBar failed to find an installed Codex that it located immediately when
-; started from the Start Menu — on the same files, with no other difference.
-; Going through the shortcut means the very first launch uses exactly the launch
-; path every later one does.
+; Physical testing found that UsageBar started by Setup — whether started
+; directly or by way of the Start Menu shortcut — inherits Setup's process
+; context and hits Win32 error 448, ERROR_REDIRECTION_NOT_ALLOWED, reading the
+; installed Codex executable. Running Setup with the redirection guard turned
+; off made Codex work immediately, which identified that guard as the cause.
 ;
-; shellexec is required because a .lnk is not directly executable, and it also
-; means Setup does not wait for the process — right for a tray application that
-; never opens a main window. runasoriginaluser is explicit rather than implied.
-; Check: skips the entry when the shortcut is somehow absent, so Setup never
-; reports a launch that did not happen.
-Filename: "{autoprograms}\{#AppName}.lnk"; Description: "{cm:LaunchAfterInstall,{#AppName}}"; Flags: postinstall shellexec skipifsilent runasoriginaluser; Check: LaunchShortcutAvailable
-
-; Nothing else runs. UsageBar's autostart preference lives in HKCU and is owned
-; by the application, so the installer neither creates nor removes a Run entry,
-; a Startup shortcut or a scheduled task.
+; The guard stays on. It protects the installer against file-system redirection
+; attacks, and turning it off so that one convenience feature works would trade
+; a real security property for a checkbox. So Setup does not start UsageBar at
+; all, and the finished page says how to start it.
+;
+; Nothing else runs either. UsageBar's autostart preference lives in HKCU and is
+; owned by the application, so the installer neither creates nor removes a Run
+; entry, a Startup shortcut or a scheduled task.
 
 [Code]
-var
-  ShortcutMissing: Boolean;
-
-{ Evaluated once, after the files and icons are in place and before the final
-  page. If the shortcut is not there the launch entry is skipped and the user is
-  told where to find UsageBar — Setup never falls back to starting the
-  executable itself, because that is the context the fix exists to avoid. }
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-    ShortcutMissing := not FileExists(ExpandConstant('{autoprograms}\{#AppName}.lnk'));
-end;
-
-function LaunchShortcutAvailable: Boolean;
-begin
-  Result := not ShortcutMissing;
-end;
-
+{ The finished page carries the instructions, because Setup no longer starts
+  anything. AutoSize lets both the Turkish and the English body wrap instead of
+  clipping at higher display scaling, and the label is grown downwards into the
+  space the removed "Launch UsageBar" checkbox used to occupy. }
 procedure CurPageChanged(CurPageID: Integer);
+var
+  Available: Integer;
 begin
-  if (CurPageID = wpFinished) and ShortcutMissing then
-    MsgBox(ExpandConstant('{cm:LaunchUnavailable}'), mbInformation, MB_OK);
+  if CurPageID = wpFinished then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption := ExpandConstant('{cm:FinishedHeading}');
+
+    WizardForm.FinishedLabel.AutoSize := False;
+    WizardForm.FinishedLabel.WordWrap := True;
+
+    { Grow the label into the space the removed "Launch UsageBar" checkbox used
+      to occupy, so three paragraphs of Turkish still fit at higher display
+      scaling. Only ever grown — never shrunk below what Inno laid out. }
+    Available := WizardForm.FinishedLabel.Parent.Height - WizardForm.FinishedLabel.Top;
+    if Available > WizardForm.FinishedLabel.Height then
+      WizardForm.FinishedLabel.Height := Available;
+
+    WizardForm.FinishedLabel.Caption := ExpandConstant('{cm:FinishedBody}');
+  end;
 end;
 
 [UninstallDelete]

@@ -283,14 +283,15 @@ rather than a wrong answer, failed resolution not being cached, an untrusted
 executable still being rejected, Claude and Codex resolving independently, and
 the installer-launch-equivalent context finding both providers.
 
-The installer's **Launch UsageBar** option is deliberately kept while this is
-being verified: removing it would hide the very context under investigation.
+**Resolved — and not here.** The fault was never in discovery. It was Inno
+Setup's redirection guard, inherited by any process Setup starts, surfacing as
+Win32 448 (`ERROR_REDIRECTION_NOT_ALLOWED`) when UsageBar read the Codex
+executable. The full account is in §9, *Finding from physical testing*.
 
-**Verification status:** unresolved. The Setup-launched session still does not
-find Codex on the physical machine, and the known-folder resolver did not change
-that. The trace in §6 exists to narrow the cause; it is not a fix and must not be
-reported as one. No CI runner has the user's Codex installation, so CI cannot
-close this.
+The installer no longer launches UsageBar at all, and the guard stays enabled.
+Nothing in this section changed as a result: the resolver, the candidate list and
+`ExecutableTrust` are exactly as described above. The diagnostics that found it
+are kept — they cost nothing and would find the next one.
 
 ### Supported Claude installation formats
 
@@ -639,6 +640,19 @@ involved.
 - **Autostart stays the application's.** The installer creates no Run entry, no
   Startup shortcut and no scheduled task, so the preference the application owns
   survives an upgrade untouched.
+- **Setup never starts UsageBar.** There is no launch section and no "Launch
+  UsageBar" checkbox. A process Setup starts inherits Inno's redirection guard
+  and cannot read the installed Codex executable (Win32 448); the guard is worth
+  more than the checkbox, so the checkbox went. See the finding below.
+- **The finished page carries the instructions instead.** The standard Inno
+  finished page, with `FinishedHeadingLabel` and `FinishedLabel` set at
+  `wpFinished` in English and Turkish, telling the user to open Start and search
+  for UsageBar. No custom wizard page - the standard one already handles layout,
+  theming and localisation. The body is set to wrap so the longer Turkish text
+  does not clip at higher display scaling.
+- **The Start Menu shortcut is the first-launch path.** Created unconditionally,
+  targeting the installed `UsageBar.exe` with `{app}` as its working directory.
+  The desktop shortcut stays optional and unchecked.
 - **Unsigned.** See the note in the physical checklist.
 
 The portable ZIP remains available and unchanged for users who prefer not to
@@ -655,19 +669,36 @@ Start Menu found Codex immediately. A second clean install with the checkbox
 **unchecked** also found Codex on its first-ever Start Menu launch.
 
 So this was never first-run behaviour, settings initialisation, a missing Codex,
-or a gap in the candidate list - it was the launch context. The old entry started
-`{app}\UsageBar.exe` directly from Setup, so the application became a child of
-the Setup process and inherited its context instead of the shell's.
+or a gap in the candidate list - it was the launch context.
 
-The fix removes the difference rather than working around it: the final page now
-launches the Start Menu shortcut with ShellExecute semantics, so the first launch
-uses exactly the path every later launch uses. Provider discovery was not
-touched - no retries, no delays, no change to `CodexExecutableLocator`, no
-relaxed trust check.
+**Resolved 2026-07-27. The cause was Inno Setup's redirection guard.** Three
+rounds of narrowing got there:
 
-The precise Win32 difference between the two contexts was not isolated further,
-because the fix eliminates the inheritance entirely. **CI cannot confirm this
-fix**: no runner has the user's Codex installation, so only physical testing can.
+1. Routing the launch through the Start Menu shortcut instead of
+   `{app}\UsageBar.exe` changed nothing, so the launch verb was not the problem.
+2. An exact-operation trace showed both sources agreeing on one correct Local
+   AppData root under the correct profile, and the candidate probe returning
+   `io_error` where a Start Menu session returned `exists`. Folder resolution was
+   not the problem either.
+3. A direct Win32 probe returned **error 448, `ERROR_REDIRECTION_NOT_ALLOWED`**.
+   Running Setup with the redirection guard disabled made Codex work
+   immediately, which identified the guard as the cause.
+
+The guard is a real protection - it stops the installer being tricked through
+file-system redirection - and a process Setup launches inherits it. Disabling it
+would have restored the launch checkbox at the cost of that protection.
+
+**The chosen fix keeps the protection and removes the launch.** Setup no longer
+starts UsageBar by any route; there is no launch section, no checkbox, and no
+substitute mechanism. The finished page tells the user, in English and Turkish,
+to open the Start menu and search for UsageBar - which is the path every later
+launch uses anyway.
+
+Not changed, in any of the three rounds: `CodexExecutableLocator`, the candidate
+list, `ClaudeExecutableLocator`, `ExecutableTrust`, and the absence of retries,
+delays and fallbacks. The whole resolution is in the installer.
+
+**This is the final product decision for the installer launch issue.**
 
 ### Panel layout
 
@@ -981,79 +1012,45 @@ private paths. **Copy diagnostics** produces a summary that is safe to send.
       from your Windows language).
 - [ ] The destination shown is under `%LOCALAPPDATA%\Programs\UsageBar`.
 - [ ] Leave the desktop shortcut unchecked the first time; check it the second.
-- [ ] Finish with **Launch UsageBar** ticked.
 - [ ] A Start Menu entry for UsageBar exists.
 - [ ] The desktop shortcut appears only when you asked for it.
-- [ ] UsageBar starts, and there is **exactly one** tray icon.
 - [ ] Your settings, history, language and provider choices are as they were.
 
-### Installer-launched provider discovery
+### Installation and first launch
 
-This is the check the previous physical round failed. Run it at least **twice**
-from a genuinely clean state.
+Setup no longer starts UsageBar. This is the check that the removal is complete
+and that the genuine Start Menu path works - run it from a clean state.
 
-- [ ] Uninstall UsageBar and delete `%LOCALAPPDATA%\UsageBar` so no settings or
-      history remain.
-- [ ] Install again and leave **Launch UsageBar** ticked.
-- [ ] In the app the installer just launched, **Codex is found immediately** -
-      not `executable:missing` or `codex_not_found`.
-- [ ] Claude works in that same session.
-- [ ] **Copy diagnostics from this session** and keep it. It is the evidence for
-      or against the launch-context hypothesis, and it contains no paths, user
-      names or environment values - see §6.
-- [ ] Exit UsageBar completely (tray menu, Exit), and confirm no UsageBar process
-      remains in Task Manager.
-- [ ] Launch from the Start Menu.
-- [ ] Codex and Claude both work there too.
-- [ ] **Copy diagnostics from this session too**, so the two can be compared.
-- [ ] Exactly one tray icon and one UsageBar process in each case.
-- [ ] Repeat the whole clean cycle at least once more.
+1. - [ ] Uninstall UsageBar, and delete `%LOCALAPPDATA%\UsageBar` so no settings
+        or history remain.
+2. - [ ] Install by double-clicking `UsageBar-Setup-x64.exe` and stepping through
+        the wizard normally.
+3. - [ ] **UsageBar does not start on its own** - no tray icon appears, and Task
+        Manager shows no UsageBar process.
+4. - [ ] There is **no "Launch UsageBar" checkbox** anywhere on the final page.
+5. - [ ] The completion page shows the localized instructions: the heading
+        (*UsageBar is installed* / *UsageBar kuruldu*) and a body telling you to
+        open Start, search for UsageBar, and select it. Check both languages, and
+        check the text **wraps rather than clipping** at 100%, 125% and 150%
+        display scaling.
+6. - [ ] Click **Finish**. Still nothing starts.
+7. - [ ] Open the Start menu.
+8. - [ ] Type `UsageBar`.
+9. - [ ] Select the UsageBar app to launch it.
+10. - [ ] **Codex and Claude are both `fresh`** - not `executable:missing`, not
+         `codex_not_found`. This is the launch path that always worked; it is now
+         the only one.
+11. - [ ] **Exactly one** tray icon, and one UsageBar process.
 
-What the two summaries should show, and what each outcome means:
+If Codex is missing here, copy the diagnostic summary and report it - it contains
+no paths, user names or environment values (see §6). `official_codex_native_probe`
+and `official_codex_native_error_code` say what the filesystem actually returned;
+a `win32_448` there would mean the redirection guard is somehow still in play,
+which after this change it should not be.
 
-| Setup-launched session | Reading |
-| --- | --- |
-| `official_codex_candidate_state=exists`, Codex found | the context resolves correctly after all |
-| `official_codex_candidate_state=not_constructed` | no root resolved at all - report it, do not work around it |
-| Codex missing while `official_codex_candidate_state=exists` | the cause is *not* folder resolution; the failure is later, in validation or launch |
-
-Both comparisons above have now been run. The second returned
-`local_app_data_source_relation=agree`, `all_under_profile`, and **`io_error` on
-both the Local AppData probe and the profile-derived probe** in the
-Setup-launched session, against `exists` for both from the Start Menu. Folder
-resolution is therefore not the fault: the roots are right and the filesystem is
-refusing the file in that context.
-
-### Third physical comparison — three summaries
-
-Collect **three**, not two, so a fault that clears on its own is distinguishable
-from one that persists:
-
-1. The initial Setup-launched session.
-2. The **same still-running** Setup-launched process, after one manual Refresh.
-3. A genuine Start Menu process, after fully exiting the first.
-
-Summary 2 is the one that was missing before. If the native error is gone by then
-without the process restarting, the fault is transient and timing-related; if it
-persists, it belongs to the process.
-
-| Setup-launched session | Reading |
-| --- | --- |
-| `sharing_violation` / `lock_violation` | something holds the file. `File.Exists` is the wrong question; check whether a minimal shared metadata handle succeeds where the attribute query does not |
-| `access_denied` with `restricted=yes`, `appcontainer=yes`, or `differs_from_resolved_profile` | the Setup-created token is the cause |
-| `cant_access_file` / `reparse_error` | inspect the Codex executable's reparse-target handling, without weakening root containment |
-| `cloud_unavailable` / `device_error` | a filesystem-provider problem, not a resolver problem |
-| `native_probe` failing while `handle_probe=opened` | a namespace or attribute fault, not a missing or locked file |
-| identical token states in all three, native error only under Setup | investigate process mitigation and security-filter inheritance |
-| the error clears in summary 2 without a restart | transient; the fault is timing, not context |
-
-Every one of these is an investigation, not a workaround. **No production change —
-no retry, no delay, no fallback, no candidate change, no trust relaxation — until
-this result is in.**
-
-Send only the two copied summaries. Do not send tokens, credential files, raw
-provider output or full paths - none of them are needed, and none of them are
-in the summary.
+Send only the copied summary. Do not send tokens, credential files, raw provider
+output or full paths - none of them are needed, and none of them are in the
+summary.
 
 ### Upgrade
 
