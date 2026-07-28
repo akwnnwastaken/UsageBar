@@ -11,6 +11,11 @@ permissions:
 jobs:
   # Required status check on `main`. Keep this job name stable — branch
   # protection references the `build-and-test` context.
+  #
+  # Deliberately floating: this lane follows `macos-latest` wherever GitHub
+  # points it, so a future macOS generation or Xcode default that breaks the
+  # build shows up here as advance warning rather than as a surprise at release
+  # time. It is not the environment releases are built with.
   build-and-test:
     runs-on: macos-latest
     timeout-minutes: 25
@@ -23,16 +28,41 @@ jobs:
       - name: Reject whitespace errors
         run: git diff --check
 
-  # Same checks on a pinned macOS runner version so a macos-latest bump cannot
-  # silently change behavior. Not a required check; advisory coverage.
-  build-and-test-macos14:
-    runs-on: macos-14
+  # The exact environment `release-candidate.yml` builds a release from, run on
+  # every push and pull request so a toolchain problem is found here rather than
+  # after a tag is pushed. Both jobs select the toolchain the same way — a
+  # job-level DEVELOPER_DIR plus the shared guard — so the two definitions
+  # cannot drift apart.
+  #
+  # This replaced an advisory `macos-14` lane: those images entered deprecation
+  # in July 2026 and are unsupported from November 2026, so they could not be
+  # the long-term release pin. Advisory only; the required check above is
+  # unchanged.
+  build-and-test-release-toolchain:
+    runs-on: macos-15
     timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require pinned macOS release toolchain
+        run: ./tests/release_toolchain_guard.sh
       - name: Unit tests (XCTest)
         run: swift test
       - name: Security acceptance suite
         run: ./tests/security_acceptance.sh
       - name: Reject whitespace errors
         run: git diff --check
+      # Nothing cross-compiles, so the runner architecture decides what the
+      # published `-arm64` archive would actually contain. Assert it against the
+      # binary the packaging gate just produced.
+      - name: Verify the built executable is arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable="build/UsageBar.app/Contents/MacOS/UsageBar"
+          test -x "$executable"
+          file "$executable"
+          archs="$(lipo -archs "$executable")"
+          echo "lipo -archs: $archs"
+          test "$archs" = "arm64"
