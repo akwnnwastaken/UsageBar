@@ -9,3 +9,8 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: nuget
+    directory: /windows
+    schedule:
+      interval: weekly
