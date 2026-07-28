@@ -29,7 +29,7 @@
     test host.
   -->
   <ItemGroup>
-    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
