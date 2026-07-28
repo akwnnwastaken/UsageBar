@@ -235,6 +235,97 @@ final class CorePolicyTests: XCTestCase {
         XCTAssertFalse(ProviderConnectionTransition.autoRotateStaysEnabled(remainingCount: 2, wasEnabled: false))
     }
 
+    // MARK: - Codex handshake
+
+    private func handshakeLines(appVersion: String) -> [String] {
+        CodexHandshake.requestPayload(appVersion: appVersion)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+    }
+
+    private func jsonObject(_ line: String) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+    }
+
+    private func announcedVersion(appVersion: String) -> String? {
+        let initialize = jsonObject(handshakeLines(appVersion: appVersion).first ?? "")
+        let clientInfo = (initialize?["params"] as? [String: Any])?["clientInfo"] as? [String: Any]
+        return clientInfo?["version"] as? String
+    }
+
+    /// Bütün el sıkışma satırları geçerli JSON kalmalı ve JSON-RPC sözleşmesi
+    /// (initialize id 1, initialized, kota isteği id 2) korunmalı.
+    func testCodexHandshakeKeepsItsJSONRPCContract() {
+        let lines = handshakeLines(appVersion: "9.9.9-test")
+
+        // Üç mesaj ve sondaki satır sonu.
+        XCTAssertEqual(lines.count, 4)
+        XCTAssertEqual(lines.last, "")
+
+        for line in lines.dropLast() {
+            XCTAssertNotNil(jsonObject(line), "Geçersiz JSON satırı: \(line)")
+        }
+
+        let initialize = jsonObject(lines[0])
+        XCTAssertEqual(initialize?["method"] as? String, CodexHandshake.initializeMethod)
+        XCTAssertEqual(initialize?["method"] as? String, "initialize")
+        XCTAssertEqual(initialize?["id"] as? Int, 1)
+
+        XCTAssertEqual(jsonObject(lines[1])?["method"] as? String, "initialized")
+
+        let rateLimits = jsonObject(lines[2])
+        XCTAssertEqual(rateLimits?["method"] as? String, "account/rateLimits/read")
+        XCTAssertEqual(rateLimits?["id"] as? Int, 2)
+    }
+
+    /// Beyan edilen sürüm çağıranın verdiği sürüm olmalı. İki farklı sürüm aynı
+    /// sonucu verirse üretim kodu sabit bir sürüm yazıyor demektir; bu test tam
+    /// olarak o gerilemede kırılır.
+    func testCodexHandshakeAnnouncesTheGivenApplicationVersion() {
+        XCTAssertEqual(announcedVersion(appVersion: "2.0.0"), "2.0.0")
+        XCTAssertEqual(announcedVersion(appVersion: "1.9.0"), "1.9.0")
+        XCTAssertEqual(announcedVersion(appVersion: "9.9.9-sentinel"), "9.9.9-sentinel")
+        XCTAssertNotEqual(
+            announcedVersion(appVersion: "2.0.1"),
+            announcedVersion(appVersion: "2.0.0")
+        )
+        // Sabit bir sürüm sızmamalı: 2.0.1 yükü 2.0.0'ı hiç içermemeli.
+        XCTAssertFalse(CodexHandshake.requestPayload(appVersion: "2.0.1").contains("2.0.0"))
+    }
+
+    /// Sürüm düzeltmesi istemci kimliğini değiştirmemeli; app server UsageBar'ı
+    /// bu ad ve başlıkla tanıyor.
+    func testCodexHandshakeClientIdentityIsUnchanged() {
+        let initialize = jsonObject(handshakeLines(appVersion: "2.0.0").first ?? "")
+        let clientInfo = (initialize?["params"] as? [String: Any])?["clientInfo"] as? [String: Any]
+
+        XCTAssertEqual(clientInfo?["name"] as? String, "usage_bar")
+        XCTAssertEqual(clientInfo?["title"] as? String, "UsageBar")
+        XCTAssertEqual(clientInfo?.count, 3)
+        XCTAssertEqual(CodexHandshake.clientName, "usage_bar")
+        XCTAssertEqual(CodexHandshake.clientTitle, "UsageBar")
+    }
+
+    /// Tel üzerindeki biçim 2.0.0 ile aynı kalmalı: `initializeMessage` yükün ilk
+    /// satırıdır ve tüm yük bayt bayt bu dizedir.
+    func testCodexHandshakeWireFormatIsUnchanged() {
+        let payload = CodexHandshake.requestPayload(appVersion: "2.0.0")
+
+        XCTAssertEqual(
+            handshakeLines(appVersion: "2.0.0").first,
+            CodexHandshake.initializeMessage(appVersion: "2.0.0")
+        )
+        XCTAssertEqual(
+            payload,
+            """
+            {"method":"initialize","id":1,"params":{"clientInfo":{"name":"usage_bar","title":"UsageBar","version":"2.0.0"}}}
+            {"method":"initialized"}
+            {"method":"account/rateLimits/read","id":2}
+
+            """
+        )
+    }
+
     // MARK: - Codex parsing
 
     func testCodexResponseParsesAndClassifiesWindows() {
