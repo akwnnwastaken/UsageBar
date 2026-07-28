@@ -10,8 +10,16 @@ permissions:
 
 jobs:
   build-attest:
-    runs-on: macos-latest
+    # Pinned deliberately: the published archive is named `-arm64` and nothing
+    # here cross-compiles, so the runner generation and the selected Xcode are
+    # what a release is actually built with. `macos-latest` let all of that move
+    # without a repository change. `ci.yml` runs the same environment and the
+    # same guard on every push, so a toolchain problem surfaces long before a
+    # tag is pushed.
+    runs-on: macos-15
     timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     permissions:
       contents: read
       id-token: write
@@ -21,6 +29,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Require pinned macOS release toolchain
+        run: ./tests/release_toolchain_guard.sh
       - name: Require a verified signed annotated tag matching Info.plist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,6 +47,20 @@ jobs:
           test "$verified" = "true"
       - name: Build and verify from a clean checkout
         run: ./tests/security_acceptance.sh
+      # The archive is published as `-arm64`; prove the payload really is,
+      # before it is named, hashed and attested. The packaging gate above has
+      # already run the app's self-test and `codesign --verify --deep --strict`.
+      - name: Verify the release payload is arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable="build/UsageBar.app/Contents/MacOS/UsageBar"
+          test -x "$executable"
+          file "$executable"
+          archs="$(lipo -archs "$executable")"
+          echo "lipo -archs: $archs"
+          test "$archs" = "arm64"
+          codesign --verify --deep --strict build/UsageBar.app
       - name: Create archive and SHA-256 manifest
         id: archive
         shell: bash
