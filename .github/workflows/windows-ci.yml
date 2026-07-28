@@ -71,11 +71,68 @@ jobs:
             exit 1
           }
 
+      # For a pull request GitHub checks out refs/pull/N/merge — a synthetic
+      # merge commit created for this run and discarded afterwards. Stamping
+      # artifacts from `git rev-parse HEAD` therefore names a commit nobody can
+      # look up, which is how UsageBar 2.0.0 shipped as `2.0.0+14bea7e`. The
+      # authoritative revision comes from the event instead, is validated as a
+      # full 40-character SHA before anything uses it, and is then passed
+      # explicitly to every step that builds, packages or verifies binaries.
+      #
+      # The values arrive through env rather than being interpolated into the
+      # script body, so nothing in the payload can be evaluated as code.
+      - name: Resolve the source revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            $origin = 'pull-request head'
+            $revision = $env:PULL_REQUEST_HEAD_SHA
+          }
+          else {
+            $origin = "$($env:EVENT_NAME) SHA"
+            $revision = $env:EVENT_SHA
+          }
+
+          if ($revision -notmatch '^[0-9a-fA-F]{40}$') {
+            Write-Host "::error::The resolved source revision is not a full 40-character commit SHA."
+            exit 1
+          }
+
+          $revision = $revision.ToLowerInvariant()
+          $buildId = $revision.Substring(0, 7)
+
+          Write-Host "Source of revision   : $origin"
+          Write-Host "Resolved revision    : $revision"
+          Write-Host "Expected build id    : $buildId"
+          # Printed for contrast: on a pull request this is the merge ref, and
+          # it is deliberately not what the artifacts are stamped with.
+          Write-Host "Checked-out git HEAD : $(git rev-parse HEAD)"
+
+          "USAGEBAR_SOURCE_REVISION=$revision" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "USAGEBAR_BUILD_ID=$buildId" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "revision=$revision" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "build-id=$buildId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Proves the resolution rules themselves: acceptance, rejection, the
+      # seven-character build id and the local fallback.
+      - name: Source revision tests
+        run: ./scripts/test-source-revision.ps1
+
       - name: Restore
         run: dotnet restore UsageBar.Windows.sln
 
+      # Stamped with the resolved revision so the assemblies the tests run
+      # against report the same build id the packaged ones will.
       - name: Build (Release)
-        run: dotnet build UsageBar.Windows.sln --configuration Release --no-restore
+        run: >
+          dotnet build UsageBar.Windows.sln
+          --configuration Release
+          --no-restore
+          -p:SourceRevisionId=$env:USAGEBAR_BUILD_ID
 
       # The Windows-only tests (Job Object containment, process-tree teardown,
       # CreateProcessW argument round-trips, executable ACL validation, registry
@@ -94,14 +151,17 @@ jobs:
 
       # -SkipTests because the step above just ran the whole suite against this
       # exact tree; the script still does its own publish, staging and hashing.
+      # -SourceRevision so the publish stamps the real commit rather than the
+      # merge ref its own `git rev-parse HEAD` fallback would find here.
       - name: Package (portable ZIP)
-        run: ./scripts/package.ps1 -SkipTests
+        run: ./scripts/package.ps1 -SkipTests -SourceRevision $env:USAGEBAR_SOURCE_REVISION
 
       # Refuses to publish an archive that ships symbols, test assets, source,
       # macOS output, leaked paths, a console-subsystem binary or a manifest
-      # asking for administrator rights.
+      # asking for administrator rights — or that was stamped with a revision
+      # other than the one resolved above.
       - name: Verify the package
-        run: ./scripts/verify-package.ps1
+        run: ./scripts/verify-package.ps1 -ExpectedSourceRevision $env:USAGEBAR_SOURCE_REVISION
 
       # Compiled from the same staging directory the portable package was
       # verified from, so the installed and portable builds cannot drift. A
@@ -113,8 +173,10 @@ jobs:
       - name: Package (previous version, for the upgrade test)
         run: ./scripts/package-installer.ps1 -VersionOverride 0.0.1 -OutputBaseName UsageBar-Setup-x64-previous
 
+      # The payload is the staging directory the portable package was verified
+      # from, so it must report the very same revision.
       - name: Verify the installer
-        run: ./scripts/verify-installer.ps1
+        run: ./scripts/verify-installer.ps1 -ExpectedSourceRevision $env:USAGEBAR_SOURCE_REVISION
 
       # A real install, upgrade and uninstall on this runner. All state is
       # created under temporary paths and removed afterwards.

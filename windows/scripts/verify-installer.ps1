@@ -15,15 +15,23 @@
     installer, because that directory *is* the installer's payload: the same one
     the portable package gate already verified. Anything that reached the ZIP
     reached the Setup EXE, and nothing else did.
+.PARAMETER ExpectedSourceRevision
+    The full 40-character commit SHA the installer's payload is supposed to have
+    been built from. Checked against the assemblies in the staging directory —
+    the installer's own payload — so the installed build cannot claim a
+    different revision from the portable one.
 #>
 [CmdletBinding()]
 param(
     [string] $SetupPath,
-    [string] $StagingDirectory
+    [string] $StagingDirectory,
+    [string] $ExpectedSourceRevision
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'source-revision.ps1')
 
 $windowsRoot = Split-Path -Parent $PSScriptRoot
 $installerSource = Join-Path $windowsRoot 'installer\UsageBar.iss'
@@ -244,6 +252,36 @@ if (Test-Path -LiteralPath $StagingDirectory) {
         Test-Requirement 'The installed UsageBar.exe requests asInvoker' ($appText -match 'asInvoker')
         Test-Requirement 'The installed UsageBar.exe does not request administrator' (-not ($appText -match 'requireAdministrator'))
     }
+
+    # The payload is the same staging directory the portable ZIP was built and
+    # verified from, so the installed build must report the very same revision.
+    $expectedBuildId = ''
+    if ($ExpectedSourceRevision) {
+        Test-Requirement 'The expected source revision is a full commit SHA' (
+            Test-UsageBarSourceRevision $ExpectedSourceRevision) "(got '$ExpectedSourceRevision')"
+
+        if (Test-UsageBarSourceRevision $ExpectedSourceRevision) {
+            $expectedBuildId = Get-UsageBarBuildId -SourceRevision $ExpectedSourceRevision
+        }
+    }
+
+    $stampedAssemblies = 0
+    foreach ($assembly in @('UsageBar.dll', 'UsageBar.Windows.Core.dll', 'UsageBar.Windows.Infrastructure.dll')) {
+        $assemblyPath = Join-Path $StagingDirectory $assembly
+        Test-Requirement "The payload contains $assembly" (Test-Path -LiteralPath $assemblyPath)
+        if (-not (Test-Path -LiteralPath $assemblyPath)) { continue }
+
+        $embedded = Get-UsageBarEmbeddedBuildId -AssemblyBytes ([System.IO.File]::ReadAllBytes($assemblyPath))
+        Test-Requirement "The payload $assembly carries a build id" ($embedded -ne '') '(none embedded)'
+        if ($embedded) { $stampedAssemblies++ }
+
+        if ($expectedBuildId) {
+            Test-Requirement "The payload $assembly was built from the expected source revision" (
+                $embedded -eq $expectedBuildId) "(expected $expectedBuildId, embedded '$embedded')"
+        }
+    }
+
+    Test-Requirement 'The installer payload identifies its source revision' ($stampedAssemblies -gt 0)
 }
 
 # --- result -----------------------------------------------------------------
