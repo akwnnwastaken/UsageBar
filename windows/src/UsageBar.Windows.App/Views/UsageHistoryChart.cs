@@ -73,9 +73,12 @@ internal sealed class UsageHistoryChart : FrameworkElement
 
     /// <summary>
     /// Built once per series instead of on every render and mouse move, and
-    /// shared by drawing and hit selection so both describe the same line.
+    /// shared by drawing and hit selection so both describe the same line. The
+    /// seam owns every coordinate calculation, so the drawn line and the hover
+    /// hit test can never disagree; the model it wraps stays reachable through
+    /// <see cref="UsageHistoryChartGeometry.Model"/>.
     /// </summary>
-    private UsageHistoryChartModel? _model;
+    private UsageHistoryChartGeometry? _chartGeometry;
 
     private UsageHistorySample? _hoveredSample;
 
@@ -85,7 +88,9 @@ internal sealed class UsageHistoryChart : FrameworkElement
     {
         var chart = (UsageHistoryChart)dependencyObject;
         var samples = eventArgs.NewValue as IReadOnlyList<UsageHistorySample>;
-        chart._model = samples is { Count: > 0 } ? new UsageHistoryChartModel(samples) : null;
+        chart._chartGeometry = samples is { Count: > 0 }
+            ? new UsageHistoryChartGeometry(new UsageHistoryChartModel(samples))
+            : null;
 
         // A new series invalidates any previous selection, so the panel falls
         // back to its normal summary. AffectsRender already schedules the
@@ -94,47 +99,21 @@ internal sealed class UsageHistoryChart : FrameworkElement
     }
 
     /// <summary>
-    /// Derived from the current size on every use, so a resize, a DPI change or
-    /// a move to another monitor can never leave stale coordinates behind.
+    /// The plot rectangle as WPF geometry. Derived from the current size on
+    /// every use, so a resize, a DPI change or a move to another monitor can
+    /// never leave stale coordinates behind.
     /// </summary>
-    private Rect PlotRect()
-    {
-        var width = Math.Max(0, ActualWidth - 6);
-        var height = Math.Max(0, ActualHeight - 6);
-        return new Rect(3, 3, width, height);
-    }
+    private static Rect ToRect(UsageHistoryChartRect plot) =>
+        new(plot.X, plot.Y, plot.Width, plot.Height);
 
-    /// <summary>
-    /// The single timestamp-to-X / percentage-to-Y mapping shared by the line,
-    /// the latest marker and the hover guide and point.
-    /// </summary>
-    private static Point PointForSample(UsageHistorySample sample, UsageHistoryChartModel model, Rect plot)
-    {
-        var points = model.DisplaySamples;
-        var span = (points[^1].RecordedAt - points[0].RecordedAt).TotalSeconds;
-        var x = points.Count == 1 || span <= 0
-            ? plot.X + (plot.Width / 2)
-            : plot.X + ((sample.RecordedAt - points[0].RecordedAt).TotalSeconds / span * plot.Width);
-
-        // NormalizedY is 0 at the bottom of the range; screen Y grows down.
-        var y = plot.Bottom - (model.NormalizedY(sample.RemainingPercent) * plot.Height);
-        return new Point(x, y);
-    }
+    private static Point ToPoint(UsageHistoryChartPoint point) => new(point.X, point.Y);
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
         base.OnMouseMove(e);
 
-        var model = _model;
-        if (model is null || model.DisplaySamples.Count == 0)
-        {
-            SetHoveredSample(null);
-            return;
-        }
-
-        var plot = PlotRect();
-        if (plot.Width <= 0 || plot.Height <= 0)
+        if (_chartGeometry is not { } chartGeometry)
         {
             SetHoveredSample(null);
             return;
@@ -142,14 +121,10 @@ internal sealed class UsageHistoryChart : FrameworkElement
 
         // WPF pointer positions and layout geometry share the same
         // device-independent units, so no manual DPI conversion belongs here.
+        // Which sample the position refers to — including whether it is over
+        // the plot at all — is decided by the geometry.
         var position = e.GetPosition(this);
-        if (!plot.Contains(position))
-        {
-            SetHoveredSample(null);
-            return;
-        }
-
-        SetHoveredSample(model.NearestDisplaySample((position.X - plot.X) / plot.Width));
+        SetHoveredSample(chartGeometry.HoveredSample(position.X, position.Y, ActualWidth, ActualHeight));
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)
@@ -191,25 +166,26 @@ internal sealed class UsageHistoryChart : FrameworkElement
         // over the rounded corners the background leaves out.
         drawingContext.DrawRectangle(Brushes.Transparent, null, area);
 
-        var model = _model;
-        if (model is null)
+        if (_chartGeometry is not { } chartGeometry)
         {
             return;
         }
 
-        var points = model.DisplaySamples;
+        var points = chartGeometry.Model.DisplaySamples;
         if (points.Count == 0)
         {
             return;
         }
 
-        var plot = PlotRect();
-        if (plot.Width <= 0 || plot.Height <= 0)
+        var plotRect = chartGeometry.PlotRect(ActualWidth, ActualHeight);
+        if (plotRect.Width <= 0 || plotRect.Height <= 0)
         {
             return;
         }
 
-        Point At(int index) => PointForSample(points[index], model, plot);
+        var plot = ToRect(plotRect);
+
+        Point At(int index) => ToPoint(chartGeometry.PointForSample(points[index], plotRect));
 
         var pen = new Pen(LineBrush, 1.75)
         {
@@ -221,7 +197,7 @@ internal sealed class UsageHistoryChart : FrameworkElement
 
         // Resolved before the line is drawn so the guide can sit under it.
         Point? hoveredPoint = _hoveredSample is { } hovered
-            ? PointForSample(hovered, model, plot)
+            ? ToPoint(chartGeometry.PointForSample(hovered, plotRect))
             : null;
 
         if (hoveredPoint is { } guidePoint)
