@@ -35,15 +35,25 @@
 .PARAMETER OutputDirectory
     Where the ZIP is written. Defaults to windows/artifacts.
 
+.PARAMETER SourceRevision
+    The authoritative full 40-character commit SHA the build came from. CI
+    supplies it — for a pull request that is the head commit, never the
+    synthetic merge commit GitHub checks out. Omitted locally, where the
+    checked-out commit is used instead.
+
 .EXAMPLE
     pwsh windows/scripts/package.ps1
+
+.EXAMPLE
+    pwsh windows/scripts/package.ps1 -SourceRevision 0123456789abcdef0123456789abcdef01234567
 #>
 [CmdletBinding()]
 param(
     [string] $Configuration = 'Release',
     [string] $Runtime = 'win-x64',
     [switch] $SkipTests,
-    [string] $OutputDirectory
+    [string] $OutputDirectory,
+    [string] $SourceRevision
 )
 
 Set-StrictMode -Version Latest
@@ -121,26 +131,32 @@ function Invoke-Step {
 # The short commit is embedded in the assembly's informational version so the
 # running application can report which revision it came from. Nothing else about
 # the build machine is recorded.
-$sourceRevision = ''
+#
+# The revision is resolved once here and used for every build, publish and
+# timestamp below, so the packaged assemblies and the archive can never describe
+# different commits. It is never read from HEAD in CI: a pull-request checkout
+# is GitHub's synthetic merge commit, which is what stamped UsageBar 2.0.0 as
+# `2.0.0+14bea7e`.
+. (Join-Path $PSScriptRoot 'source-revision.ps1')
+
+$resolvedRevision = Resolve-UsageBarSourceRevision -SourceRevision $SourceRevision -RepositoryRoot $repositoryRoot
+$buildId = Get-UsageBarBuildId -SourceRevision $resolvedRevision
+$revisionOrigin = if ($SourceRevision) { 'supplied explicitly' } else { 'checked-out git commit' }
+
+# Dated from the resolved revision rather than from HEAD, so a pull-request
+# build does not date the archive by its throwaway merge commit. When that
+# object is not in the checkout — a shallow CI clone has only the merge
+# commit — the fixed epoch keeps the archive reproducible.
+$commitDate = $null
 try {
-    $sourceRevision = (& git -C $repositoryRoot rev-parse --short=7 HEAD 2>$null)
-    if ($LASTEXITCODE -ne 0) { $sourceRevision = '' }
+    $raw = (& git -C $repositoryRoot show -s --format=%cI $resolvedRevision 2>$null)
+    $code = if (Test-Path variable:global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
+    if ($code -eq 0 -and $raw) {
+        $commitDate = [datetimeoffset]::Parse($raw).UtcDateTime
+    }
 }
 catch {
-    $sourceRevision = ''
-}
-
-$commitDate = $null
-if ($sourceRevision) {
-    try {
-        $raw = (& git -C $repositoryRoot show -s --format=%cI HEAD 2>$null)
-        if ($LASTEXITCODE -eq 0 -and $raw) {
-            $commitDate = [datetimeoffset]::Parse($raw).UtcDateTime
-        }
-    }
-    catch {
-        $commitDate = $null
-    }
+    $commitDate = $null
 }
 
 if (-not $commitDate) {
@@ -149,7 +165,8 @@ if (-not $commitDate) {
 }
 
 Write-Host "Repository : $repositoryRoot"
-Write-Host "Revision   : $(if ($sourceRevision) { $sourceRevision } else { '(unavailable)' })"
+Write-Host "Revision   : $resolvedRevision ($revisionOrigin)"
+Write-Host "Build id   : $buildId"
 Write-Host "Output     : $OutputDirectory"
 
 # ------------------------------------------------------------- pipeline -----
@@ -162,7 +179,8 @@ try {
     Invoke-Step 'Restore' { dotnet restore $solution }
 
     Invoke-Step 'Build' {
-        dotnet build $solution --configuration $Configuration --no-restore
+        dotnet build $solution --configuration $Configuration --no-restore `
+            -p:SourceRevisionId=$buildId
     }
 
     if (-not $SkipTests) {
@@ -189,7 +207,7 @@ try {
             -p:DebugType=none `
             -p:DebugSymbols=false `
             -p:GenerateDocumentationFile=false `
-            -p:SourceRevisionId=$sourceRevision
+            -p:SourceRevisionId=$buildId
     }
 }
 finally {
@@ -303,6 +321,7 @@ $zipSize = (Get-Item -LiteralPath $zipPath).Length
 
 Write-Host ''
 Write-Host 'Package ready.' -ForegroundColor Green
+Write-Host "  source : $resolvedRevision (build id $buildId)"
 Write-Host "  zip    : $zipPath"
 Write-Host "  size   : $([math]::Round($zipSize / 1MB, 1)) MB ($zipSize bytes)"
 Write-Host "  sha256 : $hash"
