@@ -772,6 +772,10 @@ final class ClaudeUsageFetcher {
 
 final class UsageSparklineView: NSView {
     private let model: UsageHistoryChartModel
+    /// The one place chart coordinates are computed. Keeping it in UsageBarCore
+    /// means the drawing and the hover selection cannot drift apart, and both
+    /// can be tested without AppKit.
+    private let geometry: UsageHistoryChartGeometry
     private let lineColor: NSColor
     private var trackingArea: NSTrackingArea?
     private var hoveredSample: UsageHistorySample?
@@ -784,7 +788,9 @@ final class UsageSparklineView: NSView {
     var onHoveredSampleChanged: ((UsageHistorySample?) -> Void)?
 
     init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor) {
-        model = UsageHistoryChartModel(samples: samples)
+        let model = UsageHistoryChartModel(samples: samples)
+        self.model = model
+        geometry = UsageHistoryChartGeometry(model: model)
         self.lineColor = lineColor
         super.init(frame: frameRect)
         setAccessibilityElement(true)
@@ -798,22 +804,7 @@ final class UsageSparklineView: NSView {
 
     /// Derived from the current bounds on every use, so a resize or a
     /// backing-scale change can never leave stale coordinates behind.
-    private var chartRect: NSRect { bounds.insetBy(dx: 1, dy: 2) }
-
-    /// The single time-to-x / percentage-to-y mapping shared by the line, the
-    /// latest-point marker, and the hover guide and point.
-    private func point(for sample: UsageHistorySample, in chartRect: NSRect) -> NSPoint {
-        guard let first = model.displaySamples.first, let last = model.displaySamples.last else {
-            return NSPoint(x: chartRect.midX, y: chartRect.midY)
-        }
-        let duration = max(1, last.recordedAt.timeIntervalSince(first.recordedAt))
-        let elapsed = sample.recordedAt.timeIntervalSince(first.recordedAt)
-        let x = model.displaySamples.count == 1
-            ? chartRect.midX
-            : chartRect.minX + CGFloat(elapsed / duration) * chartRect.width
-        let y = chartRect.minY + model.normalizedY(for: sample.remainingPercent) * chartRect.height
-        return NSPoint(x: x, y: y)
-    }
+    private var chartRect: NSRect { geometry.chartRect(in: bounds) }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -830,7 +821,7 @@ final class UsageSparklineView: NSView {
         guide.stroke()
 
         // The hover guide is drawn under the line so the graph stays readable.
-        let hoveredPoint = hoveredSample.map { point(for: $0, in: chartRect) }
+        let hoveredPoint = hoveredSample.map { geometry.point(for: $0, in: chartRect) }
         if let hoveredPoint {
             NSColor.secondaryLabelColor.withAlphaComponent(0.4).setStroke()
             let hoverGuide = NSBezierPath()
@@ -842,7 +833,7 @@ final class UsageSparklineView: NSView {
 
         let path = NSBezierPath()
         for (index, sample) in model.displaySamples.enumerated() {
-            let samplePoint = point(for: sample, in: chartRect)
+            let samplePoint = geometry.point(for: sample, in: chartRect)
             if index == 0 { path.move(to: samplePoint) } else { path.line(to: samplePoint) }
         }
         lineColor.setStroke()
@@ -851,7 +842,7 @@ final class UsageSparklineView: NSView {
         path.lineCapStyle = .round
         path.stroke()
 
-        let latestPoint = point(for: last, in: chartRect)
+        let latestPoint = geometry.point(for: last, in: chartRect)
         let dotRect = NSRect(x: latestPoint.x - 2, y: latestPoint.y - 2, width: 4, height: 4)
         lineColor.setFill()
         NSBezierPath(ovalIn: dotRect).fill()
@@ -906,14 +897,10 @@ final class UsageSparklineView: NSView {
     }
 
     private func updateHover(with event: NSEvent) {
+        // AppKit's only job here: turn the window location into view
+        // coordinates. Which sample that refers to is decided by the geometry.
         let location = convert(event.locationInWindow, from: nil)
-        let chartRect = self.chartRect
-        guard chartRect.width > 0, !model.displaySamples.isEmpty, bounds.contains(location) else {
-            setHoveredSample(nil)
-            return
-        }
-        let progress = (location.x - chartRect.minX) / chartRect.width
-        setHoveredSample(model.nearestDisplaySample(toNormalizedX: progress))
+        setHoveredSample(geometry.hoveredSample(at: location, in: bounds))
     }
 
     private func setHoveredSample(_ sample: UsageHistorySample?) {
