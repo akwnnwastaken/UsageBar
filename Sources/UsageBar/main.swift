@@ -557,6 +557,15 @@ private enum PipeDrainer {
 final class CodexUsageFetcher {
     private static let responseTimeout: TimeInterval = 15
 
+    /// The exact bytes UsageBar writes to the Codex app server, announcing the
+    /// running application's version. Kept as a single production entry point so
+    /// the packaged `--self-test` can inspect what the app really sends: the
+    /// announced version must follow `AppMetadata` — and therefore `Info.plist` —
+    /// never a literal that a release bump would leave stale.
+    static var handshakePayload: String {
+        CodexHandshake.requestPayload(appVersion: AppMetadata.version)
+    }
+
     func fetch(completion: @escaping (ProviderUsage) -> Void) {
         DispatchQueue.global(qos: .utility).async {
             let executable: String
@@ -601,11 +610,7 @@ final class CodexUsageFetcher {
                     dataAvailable: dataAvailable
                 )
                 let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
-                let messages = [
-                    "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"usage_bar\",\"title\":\"UsageBar\",\"version\":\"\(AppMetadata.version)\"}}}",
-                    "{\"method\":\"initialized\"}",
-                    "{\"method\":\"account/rateLimits/read\",\"id\":2}"
-                ].joined(separator: "\n") + "\n"
+                let messages = Self.handshakePayload
                 try? input.fileHandleForWriting.write(contentsOf: Data(messages.utf8))
 
                 let deadline = Date().addingTimeInterval(Self.responseTimeout)
@@ -2490,6 +2495,36 @@ private func runSelfTest() -> Int32 {
         ) == "3 days"
     else {
         fputs("Codex özel pencere testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Codex'e gönderilen el sıkışma, çalışan uygulamanın gerçek sürümünü
+    // tanıtmalı. Bu öz test paketlenmiş uygulamada koştuğu için beyan edilen
+    // sürümü doğrudan paketin Info.plist değeriyle karşılaştırabilir; sabit
+    // yazılmış, sürüm yükseltmesinde eskimiş bir değer burada yakalanır.
+    let handshakeLines = CodexUsageFetcher.handshakePayload
+        .split(separator: "\n", omittingEmptySubsequences: false)
+        .map(String.init)
+    let handshakeInitialize = try? JSONSerialization.jsonObject(
+        with: Data((handshakeLines.first ?? "").utf8)
+    ) as? [String: Any]
+    let handshakeClientInfo = (handshakeInitialize?["params"] as? [String: Any])?["clientInfo"]
+        as? [String: Any]
+    let bundleShortVersion = Bundle.main.object(
+        forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as? String
+    guard
+        // Üç mesaj ve sondaki satır sonu.
+        handshakeLines.count == 4,
+        handshakeLines.last?.isEmpty == true,
+        handshakeInitialize?["method"] as? String == "initialize",
+        handshakeClientInfo?["name"] as? String == "usage_bar",
+        handshakeClientInfo?["title"] as? String == "UsageBar",
+        let announcedVersion = handshakeClientInfo?["version"] as? String,
+        announcedVersion == AppMetadata.version,
+        announcedVersion == bundleShortVersion
+    else {
+        fputs("Codex el sıkışma sürümü testi başarısız\n", stderr)
         return 1
     }
 
