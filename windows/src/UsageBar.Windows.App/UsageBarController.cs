@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using UsageBar.Windows.Core.Contract;
 using UsageBar.Windows.Core.Diagnostics;
 using UsageBar.Windows.Core.History;
 using UsageBar.Windows.Core.Localization;
@@ -89,6 +90,27 @@ internal sealed class UsageBarController : IDisposable
 
     /// <summary>The smoothed readings shown in the tray and the panel.</summary>
     public IReadOnlyDictionary<string, ProviderUsage> DisplayUsages => _displayState.Apply(_usages);
+
+    /// <summary>
+    /// Copies the raw provider/settings state on its UI-thread owner. Projection
+    /// and encoding happen after this immutable input leaves the dispatcher.
+    /// </summary>
+    public UsageSnapshotV1ProjectionInput CaptureUsageSnapshotInput()
+    {
+        var copiedUsages = _usages.ToDictionary(
+            pair => pair.Key,
+            pair => new ProviderUsage(
+                pair.Value.Name,
+                pair.Value.Windows.ToArray(),
+                pair.Value.Error,
+                pair.Value.LastSuccessfulAt),
+            StringComparer.Ordinal);
+
+        return new UsageSnapshotV1ProjectionInput(
+            Settings.CodexConnected,
+            Settings.ClaudeConnected,
+            copiedUsages);
+    }
 
     public IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> History => _history;
 

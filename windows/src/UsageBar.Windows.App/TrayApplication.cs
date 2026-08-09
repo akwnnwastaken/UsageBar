@@ -3,7 +3,9 @@ using System.Windows;
 using System.Windows.Threading;
 using UsageBar.Windows.App.Tray;
 using UsageBar.Windows.App.Views;
+using UsageBar.Windows.Core.Contract;
 using UsageBar.Windows.Core.Policies;
+using UsageBar.Windows.Infrastructure.LocalApi;
 using UsageBar.Windows.Infrastructure.Providers;
 using UsageBar.Windows.Infrastructure.Startup;
 using UsageBar.Windows.Infrastructure.Storage;
@@ -27,6 +29,7 @@ internal sealed class TrayApplication : Application
     private SettingsWindow? _settings;
     private DispatcherTimer? _refreshTimer;
     private DispatcherTimer? _rotationTimer;
+    private WindowsLocalUsageApiListener? _localUsageApi;
     private bool _shuttingDown;
 
     public TrayApplication() => ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -41,6 +44,8 @@ internal sealed class TrayApplication : Application
             new CodexUsageReader(),
             new RegistryAutoStartService(),
             PostToUiThread);
+        _localUsageApi = new WindowsLocalUsageApiListener(CreateUsageSnapshotAsync);
+        _localUsageApi.Start();
 
         _panel = new UsagePanelWindow(_controller);
         _panel.IsChildWindowActive = () => _settings?.IsVisible == true;
@@ -233,10 +238,53 @@ internal sealed class TrayApplication : Application
             _controller.Changed -= OnControllerChanged;
         }
 
+        _localUsageApi?.StopAsync().GetAwaiter().GetResult();
+        _localUsageApi?.Dispose();
+
         // The tray icon goes first so it never lingers as a ghost.
         _tray?.Dispose();
         _controller?.Dispose();
 
         base.OnExit(e);
+    }
+
+    private async Task<byte[]> CreateUsageSnapshotAsync(
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken)
+    {
+        var input = await CaptureUsageSnapshotInputAsync(cancellationToken).ConfigureAwait(false);
+        return UsageSnapshotV1Json.Encode(UsageSnapshotV1Projection.Project(input, observedAt));
+    }
+
+    private async Task<UsageSnapshotV1ProjectionInput> CaptureUsageSnapshotInputAsync(
+        CancellationToken cancellationToken)
+    {
+        var completion = new TaskCompletionSource<UsageSnapshotV1ProjectionInput>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancellationToken.Register(
+            () => completion.TrySetCanceled(cancellationToken));
+
+        try
+        {
+            _ = Dispatcher.BeginInvoke(
+                DispatcherPriority.Send,
+                new Action(() =>
+                {
+                    if (_shuttingDown || _controller is null)
+                    {
+                        completion.TrySetException(
+                            new InvalidOperationException("snapshot_unavailable"));
+                        return;
+                    }
+
+                    completion.TrySetResult(_controller.CaptureUsageSnapshotInput());
+                }));
+        }
+        catch (InvalidOperationException)
+        {
+            completion.TrySetException(new InvalidOperationException("snapshot_unavailable"));
+        }
+
+        return await completion.Task.ConfigureAwait(false);
     }
 }
