@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2030-01-01T12:00:00.000Z",
+  "providers": [
+    {
+      "id": "codex",
+      "state": "fresh",
+      "lastSuccessfulAt": "2030-01-01T11:59:30.000Z",
+      "error": null,
+      "windows": [
+        {
+          "kind": "fiveHour",
+          "durationMinutes": 300,
+          "usedPercent": 27,
+          "resetAt": "2030-01-01T15:00:00.000Z"
+        },
+        {
+          "kind": "weekly",
+          "durationMinutes": 10080,
+          "usedPercent": 61,
+          "resetAt": "2030-01-07T00:00:00.000Z"
+        },
+        {
+          "kind": "duration",
+          "durationMinutes": 4320,
+          "usedPercent": 42,
+          "resetAt": null
+        },
+        {
+          "kind": "unknown",
+          "durationMinutes": null,
+          "usedPercent": 18,
+          "resetAt": null
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "state": "fresh",
+      "lastSuccessfulAt": "2030-01-01T11:59:20.000Z",
+      "error": null,
+      "windows": [
+        {
+          "kind": "fiveHour",
+          "durationMinutes": 300,
+          "usedPercent": 35,
+          "resetAt": "2030-01-01T16:00:00.000Z"
+        },
+        {
+          "kind": "weekly",
+          "durationMinutes": 10080,
+          "usedPercent": 54,
+          "resetAt": null
+        }
+      ]
+    }
+  ]
+}

@@ -5,9 +5,10 @@ Representative provider output used by the **Windows** test suite
 asserted in the macOS Swift tests, so both ports are checked against the same
 provider behavior.
 
-These files are new. The macOS build does not reference them: `Package.swift`,
-the Swift sources and `tests/UsageBarCoreTests` are untouched by the Windows
-port.
+The provider-output files under `codex/` and `claude/` were introduced for the
+Windows port; the macOS build does not consume those files. The public contract
+snapshots under `contract/v1/` are shared by the macOS AR-011 tests and are the
+future Windows parity inputs.
 
 Nothing here contains real account data — no tokens, no credentials, no user
 paths. The percentages and reset times are illustrative.
@@ -15,6 +16,7 @@ paths. The percentages and reset times are illustrative.
 ```text
 codex/    newline-delimited JSON-RPC lines from `codex app-server --stdio`
 claude/   plain-text output of Claude Code's print-mode usage query
+contract/ synthetic, provider-neutral public telemetry contract snapshots
 ```
 
 | Fixture | Covers |
@@ -35,3 +37,15 @@ claude/   plain-text output of Claude Code's print-mode usage query
 | `claude/print-usage-unreadable.txt` | unreadable verdict |
 | `claude/print-usage-truncated.txt` | partially written output (weekly line incomplete) |
 | `claude/screen-usage-panel.txt` | legacy interactive-panel shape, kept as a parser check |
+
+## Public telemetry contract fixtures
+
+The `contract/v1/` snapshots freeze the transport-independent v1 JSON shape for
+future cross-platform projection and serialization parity. They contain only
+synthetic timestamps, percentages, states, and allowlisted error codes.
+
+| Fixture | Covers |
+| --- | --- |
+| `contract/v1/fresh-multiple-windows.json` | both providers fresh; all window kinds; multiple raw windows; nullable reset and duration |
+| `contract/v1/stale-and-disabled.json` | stale retained windows with a safe error; disabled provider |
+| `contract/v1/unavailable.json` | connected providers with no successful telemetry and safe errors |

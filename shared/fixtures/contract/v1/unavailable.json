@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2030-03-01T18:45:00.000Z",
+  "providers": [
+    {
+      "id": "codex",
+      "state": "unavailable",
+      "lastSuccessfulAt": null,
+      "error": {
+        "code": "no_data"
+      },
+      "windows": []
+    },
+    {
+      "id": "claude",
+      "state": "unavailable",
+      "lastSuccessfulAt": null,
+      "error": {
+        "code": "not_authenticated"
+      },
+      "windows": []
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2030-02-01T09:30:00.000Z",
+  "providers": [
+    {
+      "id": "codex",
+      "state": "stale",
+      "lastSuccessfulAt": "2030-02-01T09:20:00.000Z",
+      "error": {
+        "code": "timed_out"
+      },
+      "windows": [
+        {
+          "kind": "weekly",
+          "durationMinutes": 10080,
+          "usedPercent": 88,
+          "resetAt": "2030-02-03T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "state": "disabled",
+      "lastSuccessfulAt": null,
+      "error": null,
+      "windows": []
+    }
+  ]
+}
