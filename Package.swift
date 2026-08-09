@@ -9,7 +9,8 @@ let package = Package(
     ],
     products: [
         .executable(name: "UsageBar", targets: ["UsageBar"]),
-        .library(name: "UsageBarCore", targets: ["UsageBarCore"])
+        .library(name: "UsageBarCore", targets: ["UsageBarCore"]),
+        .library(name: "UsageBarLocalAPI", targets: ["UsageBarLocalAPI"])
     ],
     targets: [
         .target(
@@ -19,14 +20,22 @@ let package = Package(
             name: "UsageBarProcessLauncher",
             publicHeadersPath: "include"
         ),
+        .target(
+            name: "UsageBarLocalAPI",
+            dependencies: ["UsageBarCore"]
+        ),
         .executableTarget(
             name: "UsageBar",
-            dependencies: ["UsageBarCore", "UsageBarProcessLauncher"],
+            dependencies: ["UsageBarCore", "UsageBarLocalAPI", "UsageBarProcessLauncher"],
             path: "Sources/UsageBar"
         ),
         .testTarget(
             name: "UsageBarCoreTests",
             dependencies: ["UsageBarCore"]
+        ),
+        .testTarget(
+            name: "UsageBarLocalAPITests",
+            dependencies: ["UsageBarLocalAPI", "UsageBarCore"]
         )
     ]
 )

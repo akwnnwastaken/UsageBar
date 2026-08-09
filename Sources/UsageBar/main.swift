@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 import ServiceManagement
 import UsageBarCore
+import UsageBarLocalAPI
 import UsageBarProcessLauncher
 
 enum AppMetadata {
@@ -911,6 +912,10 @@ final class UsageSparklineView: NSView {
     }
 }
 
+private enum LocalUsageSnapshotFailure: Error {
+    case ownerUnavailable
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private enum PreferenceKey {
         static let codexConnected = "provider.codex.connected"
@@ -947,6 +952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var displayedRemaining: [String: Int] = [:]
     private var pendingRemainingRise: [String: Int] = [:]
     private var pendingRemainingRiseCount: [String: Int] = [:]
+    private var localUsageAPIListener: MacLocalUsageAPIListener?
 
     private var language: AppLanguage {
         get {
@@ -1071,9 +1077,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.title = "%—"
         statusItem.button?.toolTip = text.usageTooltip
         rebuildMenu()
+        startLocalUsageAPIListener()
         refresh()
         configureRefreshTimer()
         configureStatusPresentationTimer()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        refreshTimer?.invalidate()
+        statusPresentationTimer?.invalidate()
+        localUsageAPIListener?.stopAndWait()
+    }
+
+    private func startLocalUsageAPIListener() {
+        let listener = MacLocalUsageAPIListener(snapshotProvider: { [weak self] observedAt, completion in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion(.failure(LocalUsageSnapshotFailure.ownerUnavailable))
+                    return
+                }
+                do {
+                    let snapshot = try UsageSnapshotV1Projection.project(
+                        UsageSnapshotV1ProjectionInput(
+                            codexIsEnabled: self.codexConnected,
+                            claudeIsEnabled: self.claudeConnected,
+                            usages: self.usages
+                        ),
+                        observedAt: observedAt
+                    )
+                    completion(.success(try UsageSnapshotV1JSON.encode(snapshot)))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        })
+        localUsageAPIListener = listener
+        listener.start()
     }
 
     private func configureRefreshTimer() {
