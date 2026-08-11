@@ -15,6 +15,14 @@ namespace UsageBar.Windows.Infrastructure.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class StorageTests : IDisposable
 {
+    /// <summary>
+    /// The one clock these tests run on. Storage takes <c>now</c> as an
+    /// argument, so nothing here needs the real one — and a fixed UTC instant
+    /// keeps the serialized timestamps identical across time zones, daylight
+    /// saving and repeated runs.
+    /// </summary>
+    private static readonly DateTimeOffset TestNow = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
         "usagebar-storage-" + Guid.NewGuid().ToString("N"));
@@ -130,24 +138,23 @@ public sealed class StorageTests : IDisposable
     [Fact]
     public void HistoryRoundTripsAndIsSanitizedOnLoad()
     {
-        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         var history = new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal)
         {
             [UsageHistoryModel.SeriesKey(ProviderNames.Codex, UsageWindowKind.FiveHour)] = new[]
             {
-                new UsageHistorySample(now.AddMinutes(-10), 90),
-                new UsageHistorySample(now.AddMinutes(-5), 80)
+                new UsageHistorySample(TestNow.AddMinutes(-10), 90),
+                new UsageHistorySample(TestNow.AddMinutes(-5), 80)
             },
             // Older than the retention window: must not come back.
             ["Codex|weekly"] = new[]
             {
-                new UsageHistorySample(now.AddHours(-30), 50)
+                new UsageHistorySample(TestNow.AddHours(-30), 50)
             }
         };
 
-        Assert.True(_storage.SaveHistory(history, now));
+        Assert.True(_storage.SaveHistory(history, TestNow));
 
-        var loaded = _storage.LoadHistory(now);
+        var loaded = _storage.LoadHistory(TestNow);
         Assert.Equal(
             new[] { 90, 80 },
             loaded["Codex|five-hour"].Select(sample => sample.RemainingPercent));
@@ -159,24 +166,23 @@ public sealed class StorageTests : IDisposable
     {
         File.WriteAllText(_storage.HistoryPath, "{\"schemaVersion\":1,\"series\":{\"Codex|weekly\":[{\"reco");
 
-        Assert.Empty(_storage.LoadHistory(DateTimeOffset.Now));
+        Assert.Empty(_storage.LoadHistory(TestNow));
     }
 
     [Fact]
     public void ClearingHistoryRemovesTheFile()
     {
-        var now = DateTimeOffset.Now;
         _storage.SaveHistory(
             new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal)
             {
-                ["Codex|weekly"] = new[] { new UsageHistorySample(now, 50) }
+                ["Codex|weekly"] = new[] { new UsageHistorySample(TestNow, 50) }
             },
-            now);
+            TestNow);
 
         Assert.True(File.Exists(_storage.HistoryPath));
         Assert.True(_storage.ClearHistory());
         Assert.False(File.Exists(_storage.HistoryPath));
-        Assert.Empty(_storage.LoadHistory(now));
+        Assert.Empty(_storage.LoadHistory(TestNow));
     }
 
     /// <summary>
@@ -186,14 +192,13 @@ public sealed class StorageTests : IDisposable
     [Fact]
     public void PersistedFilesContainNoProviderOutputOrCredentials()
     {
-        var now = DateTimeOffset.Now;
         _storage.SaveSettings(new UsageBarSettings { CodexConnected = true, ClaudeConnected = true });
         _storage.SaveHistory(
             new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal)
             {
-                ["Codex|five-hour"] = new[] { new UsageHistorySample(now, 65) }
+                ["Codex|five-hour"] = new[] { new UsageHistorySample(TestNow, 65) }
             },
-            now);
+            TestNow);
 
         var written = File.ReadAllText(_storage.SettingsPath, Encoding.UTF8) +
                       File.ReadAllText(_storage.HistoryPath, Encoding.UTF8);
