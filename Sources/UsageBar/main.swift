@@ -2093,7 +2093,15 @@ private func runSelfTest() -> Int32 {
         turkish.resetDisplay(nil, now: beforeReset) == nil,
         english.resetDisplay(nil, now: beforeReset) == nil,
         turkish.resetDisplay(resetSample, now: resetSample) == "Sıfırlama: şimdi",
-        english.resetDisplay(resetSample, now: resetSample.addingTimeInterval(3_600)) == "Resets: now"
+        english.resetDisplay(resetSample, now: resetSample.addingTimeInterval(3_600)) == "Resets: now",
+        // A reset still ahead keeps its clock even in the final minute, where
+        // the countdown has already floored to "now". Due-ness comes from the
+        // instants, not from the rounded countdown.
+        turkish.resetDisplay(resetSample, now: resetSample.addingTimeInterval(-59))
+            == "Sıfırlama: 18:45 · şimdi",
+        turkish.relativeReset(resetSample, now: resetSample.addingTimeInterval(-59)) == "şimdi",
+        turkish.resetDisplay(resetSample, now: resetSample.addingTimeInterval(-60))
+            == "Sıfırlama: 18:45 · 1dk"
     else {
         fputs("Dil testi başarısız\n", stderr)
         return 1

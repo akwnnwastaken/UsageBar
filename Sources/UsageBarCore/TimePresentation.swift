@@ -21,10 +21,6 @@ public struct TimePresentation {
         let days: Int
         let hours: Int
         let minutes: Int
-
-        /// True while less than one whole minute remains, which includes every
-        /// instant at or before `now`.
-        var isNow: Bool { days == 0 && hours == 0 && minutes == 0 }
     }
 
     public let language: AppLanguage
@@ -70,19 +66,26 @@ public struct TimePresentation {
     /// A window that reports no reset instant has no line at all — `nil` here,
     /// and the caller adds nothing — because a reset time is never inferred.
     ///
-    /// A reset that is already due drops to `Sıfırlama: şimdi` / `Resets: now`.
-    /// Its clock time is in the past, so printing it beside "now" would state
-    /// two different things about the same instant. The same applies in the last
-    /// minute before a reset, where the countdown itself already reads "now".
+    /// A reset that is due or past — and only that — drops to
+    /// `Sıfırlama: şimdi` / `Resets: now`. Its clock time is behind us, so
+    /// printing it beside "now" would state two different things about the same
+    /// instant.
+    ///
+    /// Due-ness is decided by comparing the instants, never by reading the
+    /// countdown. The countdown floors to whole minutes, so it says "now"
+    /// throughout the final minute while the reset is still ahead; treating that
+    /// as due would call a future instant past, and widening the countdown to
+    /// avoid it would rewrite rounding the menu bar has always used. So the
+    /// final minute deliberately shows both: `Sıfırlama: 18:45 · şimdi` /
+    /// `Resets: 6:45 PM · now`.
     ///
     /// The absolute side is always clock-only, even when the reset is days away:
     /// the countdown is what carries the day count.
     public func resetLine(_ resetsAt: Date?, now: Date) -> String? {
         guard let resetsAt else { return nil }
         let label = pick("Sıfırlama", "Resets")
-        let countdown = countdown(to: resetsAt, now: now)
-        guard !countdown.isNow else { return "\(label): \(nowWord)" }
-        return "\(label): \(clock(resetsAt)) · \(countdownText(countdown))"
+        guard resetsAt > now else { return "\(label): \(nowWord)" }
+        return "\(label): \(clock(resetsAt)) · \(relativeReset(resetsAt, now: now))"
     }
 
     func countdown(to date: Date, now: Date) -> Countdown {

@@ -107,10 +107,16 @@ final class TimePresentationTests: XCTestCase {
         XCTAssertNil(english().resetLine(nil, now: now))
     }
 
+    /// The boundary is the instant itself: due at exactly `now`, and one second
+    /// past is already past.
     func testAResetAtNowShowsOnlyTheLocalizedNow() throws {
         let resetsAt = try instant(2026, 8, 24, 18, 45)
         XCTAssertEqual(turkish().resetLine(resetsAt, now: resetsAt), "Sıfırlama: şimdi")
         XCTAssertEqual(english().resetLine(resetsAt, now: resetsAt), "Resets: now")
+
+        let oneSecondPast = resetsAt.addingTimeInterval(1)
+        XCTAssertEqual(turkish().resetLine(resetsAt, now: oneSecondPast), "Sıfırlama: şimdi")
+        XCTAssertEqual(english().resetLine(resetsAt, now: oneSecondPast), "Resets: now")
     }
 
     /// A reset in the past must not leave its stale clock time on screen.
@@ -129,18 +135,51 @@ final class TimePresentationTests: XCTestCase {
         XCTAssertFalse(englishLine.contains("PM"))
     }
 
-    /// The last minute before a reset already reads "now" in the countdown, so
-    /// the line drops the clock there too rather than saying `18:45 · şimdi`.
-    func testTheFinalMinuteBeforeAResetAlsoShowsOnlyTheLocalizedNow() throws {
+    /// A reset that has not happened yet keeps its clock time, including inside
+    /// the final minute where the countdown has already floored to "now".
+    ///
+    /// Dropping the clock there would call a still-future instant due, and
+    /// stopping the countdown from flooring would rewrite rounding the menu bar
+    /// has always used. Neither is acceptable, so both are shown:
+    /// `Sıfırlama: 18:45 · şimdi`. Due-ness is decided by comparing the
+    /// instants, never by reading the countdown.
+    func testAFutureResetKeepsItsClockThroughTheFinalMinute() throws {
         let resetsAt = try instant(2026, 8, 24, 18, 45)
+        let fiftyNineSecondsBefore = resetsAt.addingTimeInterval(-59)
+
         XCTAssertEqual(
-            turkish().resetLine(resetsAt, now: resetsAt.addingTimeInterval(-59)),
-            "Sıfırlama: şimdi"
+            turkish().resetLine(resetsAt, now: fiftyNineSecondsBefore),
+            "Sıfırlama: 18:45 · şimdi"
         )
+        XCTAssertEqual(
+            normalized(try XCTUnwrap(english().resetLine(resetsAt, now: fiftyNineSecondsBefore))),
+            "Resets: 6:45 PM · now"
+        )
+
+        // One second ahead is still ahead.
+        XCTAssertEqual(
+            turkish().resetLine(resetsAt, now: resetsAt.addingTimeInterval(-1)),
+            "Sıfırlama: 18:45 · şimdi"
+        )
+        XCTAssertEqual(
+            normalized(try XCTUnwrap(english().resetLine(resetsAt, now: resetsAt.addingTimeInterval(-1)))),
+            "Resets: 6:45 PM · now"
+        )
+
+        // The countdown itself is untouched: it still floors to "now" here...
+        XCTAssertEqual(turkish().relativeReset(resetsAt, now: fiftyNineSecondsBefore), "şimdi")
+        XCTAssertEqual(english().relativeReset(resetsAt, now: fiftyNineSecondsBefore), "now")
+
+        // ...and still turns over at a whole minute, in both forms.
         XCTAssertEqual(
             turkish().resetLine(resetsAt, now: resetsAt.addingTimeInterval(-60)),
             "Sıfırlama: 18:45 · 1dk"
         )
+        XCTAssertEqual(
+            normalized(try XCTUnwrap(english().resetLine(resetsAt, now: resetsAt.addingTimeInterval(-60)))),
+            "Resets: 6:45 PM · 1m"
+        )
+        XCTAssertEqual(turkish().relativeReset(resetsAt, now: resetsAt.addingTimeInterval(-60)), "1dk")
     }
 
     // MARK: - Clock conventions
@@ -197,7 +236,11 @@ final class TimePresentationTests: XCTestCase {
     /// detailed line ends with exactly what the menu bar shows.
     func testTheDetailedLineEndsWithTheUnchangedCountdown() throws {
         let base = try instant(2026, 8, 24, 12, 0)
+        // Every future offset, down to a single second: the detailed line never
+        // drops the countdown, and the countdown is never rewritten to suit it.
         let offsets: [TimeInterval] = [
+            1,
+            59,
             60,
             59 * 60,
             3_600 + 15 * 60,
