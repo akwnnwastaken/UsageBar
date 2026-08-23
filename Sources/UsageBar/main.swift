@@ -111,13 +111,15 @@ struct Localizer {
         )
     }
 
+    /// Clock and reset wording lives in `UsageBarCore` so it can be asserted
+    /// directly. The language remains the only input and the machine's own time
+    /// zone is still used, so what the menu shows is unchanged.
+    private var timeText: TimePresentation { TimePresentation(language: language) }
+
     /// Local time in the selected language's usual form: `19:22` in Turkish,
     /// `7:22 PM` in English.
     func localTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: language == .turkish ? "tr_TR" : "en_US")
-        formatter.dateFormat = language == .turkish ? "HH:mm" : "h:mm a"
-        return formatter.string(from: date)
+        timeText.clock(date)
     }
 
     /// Replaces the history summary while the pointer hovers a recorded sample.
@@ -159,7 +161,6 @@ struct Localizer {
     var connect: String { pick("Bağlan", "Connect") }
     var cancel: String { pick("Vazgeç", "Cancel") }
     var ok: String { pick("Tamam", "OK") }
-    var now: String { pick("şimdi", "now") }
 
     func remaining(_ percent: Int) -> String {
         pick("%\(percent) kaldı", "\(percent)% remaining")
@@ -198,8 +199,10 @@ struct Localizer {
         )
     }
 
-    func resetIn(_ duration: String) -> String {
-        pick("Sıfırlama: \(duration)", "Resets in \(duration)")
+    /// The detailed reset line — local clock time and countdown for the same
+    /// instant — or `nil` when the window reports no reset at all.
+    func resetDisplay(_ resetsAt: Date?, now: Date = Date()) -> String? {
+        timeText.resetLine(resetsAt, now: now)
     }
 
     func lastUpdated(_ time: String) -> String {
@@ -224,22 +227,10 @@ struct Localizer {
         )
     }
 
+    /// The countdown on its own. This is what the menu bar shows; the detailed
+    /// menu uses `resetDisplay(_:now:)`, which adds the clock time.
     func relativeReset(_ date: Date, now: Date = Date()) -> String {
-        let interval = max(0, Int(date.timeIntervalSince(now)))
-        let days = interval / 86_400
-        let hours = (interval % 86_400) / 3_600
-        let minutes = (interval % 3_600) / 60
-        if language == .turkish {
-            if days > 0 { return "\(days)g \(hours)sa" }
-            if hours > 0 { return "\(hours)sa \(minutes)dk" }
-            if minutes > 0 { return "\(minutes)dk" }
-            return self.now
-        }
-
-        if days > 0 { return "\(days)d \(hours)h" }
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        if minutes > 0 { return "\(minutes)m" }
-        return self.now
+        timeText.relativeReset(date, now: now)
     }
 
     func issue(_ issue: ProviderIssue) -> String {
@@ -1698,8 +1689,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let prefix = "\(label): "
         let remaining = text.remaining(remainingPercent)
         var displayText = prefix + remaining
-        if let resetsAt = window.resetsAt {
-            displayText += "\n\(text.resetIn(text.relativeReset(resetsAt)))"
+        if let resetLine = text.resetDisplay(window.resetsAt) {
+            displayText += "\n\(resetLine)"
         }
         let attributed = NSMutableAttributedString(
             string: displayText,
@@ -2059,6 +2050,19 @@ private func runSelfTest() -> Int32 {
     let turkish = Localizer(language: .turkish)
     let english = Localizer(language: .english)
     let durationOrigin = Date(timeIntervalSince1970: 1_000_000)
+    // Built from local components so the expected wall-clock text holds in any
+    // time zone, and compared with an explicit `now` so the countdown cannot
+    // drift while the test runs. English is checked in two pieces, because the
+    // system's am/pm separator is not stable.
+    var resetComponents = DateComponents()
+    resetComponents.year = 2026
+    resetComponents.month = 8
+    resetComponents.day = 24
+    resetComponents.hour = 18
+    resetComponents.minute = 45
+    let resetSample = Calendar(identifier: .gregorian).date(from: resetComponents) ?? durationOrigin
+    let beforeReset = resetSample.addingTimeInterval(-(3 * 3_600 + 12 * 60))
+    let englishReset = english.resetDisplay(resetSample, now: beforeReset) ?? ""
     guard
         turkish.remaining(59) == "%59 kaldı",
         english.remaining(59) == "59% remaining",
@@ -2077,7 +2081,19 @@ private func runSelfTest() -> Int32 {
         english.relativeReset(
             durationOrigin.addingTimeInterval(6 * 86_400 + 21 * 3_600),
             now: durationOrigin
-        ) == "6d 21h"
+        ) == "6d 21h",
+        // The detailed line adds the clock time; the menu bar keeps the
+        // countdown alone.
+        turkish.resetDisplay(resetSample, now: beforeReset) == "Sıfırlama: 18:45 · 3sa 12dk",
+        englishReset.hasPrefix("Resets: 6:45"),
+        englishReset.hasSuffix("· 3h 12m"),
+        turkish.relativeReset(resetSample, now: beforeReset) == "3sa 12dk",
+        // A window without a reset instant has no line, and a reset that is
+        // already due shows only the localized "now".
+        turkish.resetDisplay(nil, now: beforeReset) == nil,
+        english.resetDisplay(nil, now: beforeReset) == nil,
+        turkish.resetDisplay(resetSample, now: resetSample) == "Sıfırlama: şimdi",
+        english.resetDisplay(resetSample, now: resetSample.addingTimeInterval(3_600)) == "Resets: now"
     else {
         fputs("Dil testi başarısız\n", stderr)
         return 1
