@@ -385,11 +385,11 @@ internal sealed class UsagePanelWindow : Window
         });
         panel.Children.Add(line);
 
-        if (window.ResetsAt is DateTimeOffset resetsAt)
+        if (text.ResetDisplay(window.ResetsAt, DateTimeOffset.Now) is string resetLine)
         {
             panel.Children.Add(new TextBlock
             {
-                Text = text.ResetIn(text.RelativeReset(resetsAt, DateTimeOffset.Now)),
+                Text = resetLine,
                 Foreground = _theme.SecondaryForeground,
                 FontSize = 11
             });
