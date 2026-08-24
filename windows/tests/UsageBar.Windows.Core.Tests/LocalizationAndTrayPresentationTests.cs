@@ -199,6 +199,59 @@ public sealed class LocalizationAndTrayPresentationTests
         Assert.Contains("(stale)", stalePresentation.Tooltip, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The detailed panel gained an absolute clock beside its countdown; the
+    /// tray tooltip deliberately did not. It has 127 characters for the whole
+    /// balloon, and saying the same instant twice there would spend them on
+    /// nothing. The exact tooltip is pinned so a clock cannot appear unnoticed.
+    /// </summary>
+    [Fact]
+    public void TrayResetTooltipStaysRelativeOnly()
+    {
+        var policy = new UsageAlertPolicy(true, UsageAlertPreset.Balanced);
+        var resetsAt = Now.AddMinutes(78);
+
+        var english = TrayPresentationCalculator.Calculate(
+            ProviderNames.Codex,
+            Usages(remaining: 42),
+            policy,
+            English,
+            isRefreshing: false,
+            showResetCountdown: true,
+            Now);
+
+        Assert.Equal(
+            string.Join(
+                Environment.NewLine,
+                "UsageBar",
+                "Codex: 42% remaining",
+                "5 hours window resets in 1h 18m"),
+            english.Tooltip);
+        Assert.DoesNotContain(English.FormattedTime(resetsAt), english.Tooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain("Resets:", english.Tooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain(" · ", english.Tooltip, StringComparison.Ordinal);
+
+        var turkish = TrayPresentationCalculator.Calculate(
+            ProviderNames.Codex,
+            Usages(remaining: 42),
+            policy,
+            Turkish,
+            isRefreshing: false,
+            showResetCountdown: true,
+            Now);
+
+        Assert.Equal(
+            string.Join(
+                Environment.NewLine,
+                "UsageBar",
+                "Codex: %42 kaldı",
+                "5 saat penceresi 1sa 18dk içinde sıfırlanır"),
+            turkish.Tooltip);
+        Assert.DoesNotContain(Turkish.FormattedTime(resetsAt), turkish.Tooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sıfırlama:", turkish.Tooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain(" · ", turkish.Tooltip, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TooltipStaysWithinTheShellLimit()
     {

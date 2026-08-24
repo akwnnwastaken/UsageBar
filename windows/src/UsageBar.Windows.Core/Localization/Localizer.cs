@@ -186,8 +186,49 @@ public sealed class Localizer
     public string WaitingForUsage(string provider) =>
         Pick($"{provider} kullanım bilgisi bekleniyor", $"Waiting for {provider} usage");
 
-    public string ResetIn(string duration) =>
-        Pick($"Sıfırlama: {duration}", $"Resets in {duration}");
+    /// <summary>
+    /// The detailed panel's reset line: <c>Sıfırlama: 18:45 · 3sa 12dk</c> /
+    /// <c>Resets: 6:45 PM · 3h 12m</c>. Both sides describe one instant — the
+    /// clock says when the reset happens, the countdown how long that is.
+    /// </summary>
+    /// <remarks>
+    /// <para>A window that reports no reset instant gets no line at all —
+    /// <see langword="null"/> here, and the caller adds nothing — because a
+    /// reset time is never inferred.</para>
+    /// <para>A reset that is due or past drops to <c>Sıfırlama: şimdi</c> /
+    /// <c>Resets: now</c>. Its clock time is behind us, so printing it beside
+    /// "now" would state two different things about the same instant.</para>
+    /// <para>Due-ness is decided by comparing the instants, never by reading the
+    /// countdown. <see cref="RelativeReset"/> floors to whole minutes, so it
+    /// reads "now" throughout the final minute while the reset is still ahead;
+    /// treating that as due would call a future instant past, and widening the
+    /// rounding to avoid it would rewrite what the tray tooltip has always
+    /// shown. So the final minute deliberately shows both:
+    /// <c>Sıfırlama: 18:45 · şimdi</c>.</para>
+    /// <para>The absolute side is clock only, even when the reset is days away:
+    /// the countdown is what carries the day count.</para>
+    /// </remarks>
+    public string? ResetDisplay(DateTimeOffset? resetsAt, DateTimeOffset now) =>
+        ResetDisplay(resetsAt, now, TimeZoneInfo.Local);
+
+    /// <summary>
+    /// <see cref="ResetDisplay(DateTimeOffset?, DateTimeOffset)"/> against an
+    /// explicit zone. The zone is a parameter only so the wording can be
+    /// asserted from a fixed one rather than whichever the test host runs in;
+    /// the application always shows the machine's own local time.
+    /// </summary>
+    public string? ResetDisplay(DateTimeOffset? resetsAt, DateTimeOffset now, TimeZoneInfo timeZone)
+    {
+        if (resetsAt is not DateTimeOffset reset)
+        {
+            return null;
+        }
+
+        var label = Pick("Sıfırlama", "Resets");
+        return reset > now
+            ? $"{label}: {FormattedTime(reset, timeZone)} · {RelativeReset(reset, now)}"
+            : $"{label}: {Now}";
+    }
 
     public string WindowResetsIn(string windowLabel, string duration) =>
         Pick($"{windowLabel} penceresi {duration} içinde sıfırlanır", $"{windowLabel} window resets in {duration}");
@@ -204,7 +245,21 @@ public sealed class Localizer
             $"Last good data: {lastSuccessfulTime}\n{Issue(issue)}");
 
     public string FormattedTime(DateTimeOffset value) =>
-        value.ToLocalTime().ToString(IsTurkish ? "HH:mm" : "h:mm tt", Culture);
+        FormattedTime(value, TimeZoneInfo.Local);
+
+    /// <summary>
+    /// The same clock in an explicit zone: <c>18:45</c> in Turkish,
+    /// <c>6:45 PM</c> in English. Clock only — never a weekday, date, seconds or
+    /// zone suffix. One rule per language, so the reset line and the history
+    /// hover cannot drift apart.
+    /// </summary>
+    public string FormattedTime(DateTimeOffset value, TimeZoneInfo timeZone)
+    {
+        ArgumentNullException.ThrowIfNull(timeZone);
+
+        return TimeZoneInfo.ConvertTime(value, timeZone)
+            .ToString(IsTurkish ? "HH:mm" : "h:mm tt", Culture);
+    }
 
     public string AlertPresetTitle(UsageAlertPreset preset)
     {
