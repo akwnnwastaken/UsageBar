@@ -316,7 +316,6 @@ public sealed class UsageHistoryTests
         var history = UsageHistoryRecorder.Record(
             new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal),
             usages,
-            new[] { ProviderNames.Codex },
             Base);
 
         Assert.Equal(65, history["Codex|five-hour"][0].RemainingPercent);
@@ -344,7 +343,6 @@ public sealed class UsageHistoryTests
                 ["Codex|five-hour"] = Series(65)
             },
             new Dictionary<string, ProviderUsage>(StringComparer.Ordinal) { [ProviderNames.Codex] = stale },
-            new[] { ProviderNames.Codex },
             Base.AddMinutes(5));
 
         Assert.Single(history["Codex|five-hour"]);

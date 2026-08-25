@@ -940,9 +940,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusPresentationTimer: Timer?
     private var rotatingProviderIndex = 0
     private var usageHistory: [String: [UsageHistorySample]] = [:]
-    private var displayedRemaining: [String: Int] = [:]
-    private var pendingRemainingRise: [String: Int] = [:]
-    private var pendingRemainingRiseCount: [String: Int] = [:]
+    private var displayFilter = UsageDisplayFilterState()
+
+    /// One counter per provider, bumped whenever its connection or collection
+    /// state changes. A read carries the value it launched with, so a result
+    /// that outlives the state it was started under can be told apart from a
+    /// current one — which current eligibility alone cannot do.
+    private var providerGenerations: [String: Int] = [:]
+    private var pendingRefreshAfterEnable = PendingCollectionRefresh()
+
+    /// The measurements this refresh cycle has accepted so far. Written only by
+    /// the acceptance callbacks and read once at completion, all on the main
+    /// queue, and emptied at both ends of the cycle so nothing can leak into
+    /// the next one.
+    private var acceptedMeasurements: [String: ProviderUsage] = [:]
 
     private var language: AppLanguage {
         get {
@@ -1024,17 +1035,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// stays connected, so this is independent of `codexConnected`; an absent
     /// preference means enabled (see `ProviderCollectionPreference`).
     private var codexCollectionEnabled: Bool {
-        ProviderCollectionPreference.isCollectionEnabled(
-            in: UserDefaults.standard,
-            forKey: PreferenceKey.codexCollectionEnabled
-        )
+        get {
+            ProviderCollectionPreference.isCollectionEnabled(
+                in: UserDefaults.standard,
+                forKey: PreferenceKey.codexCollectionEnabled
+            )
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.codexCollectionEnabled) }
     }
 
     private var claudeCollectionEnabled: Bool {
-        ProviderCollectionPreference.isCollectionEnabled(
-            in: UserDefaults.standard,
-            forKey: PreferenceKey.claudeCollectionEnabled
-        )
+        get {
+            ProviderCollectionPreference.isCollectionEnabled(
+                in: UserDefaults.standard,
+                forKey: PreferenceKey.claudeCollectionEnabled
+            )
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeCollectionEnabled) }
+    }
+
+    private func connected(_ providerName: String) -> Bool {
+        providerName == "Codex" ? codexConnected : claudeConnected
+    }
+
+    private func collectionEnabled(_ providerName: String) -> Bool {
+        providerName == "Codex" ? codexCollectionEnabled : claudeCollectionEnabled
+    }
+
+    private func generation(of providerName: String) -> Int {
+        providerGenerations[providerName] ?? 0
+    }
+
+    /// Invalidates every read of this provider that is already in flight. Always
+    /// called as part of the same synchronous state change, so a read launched
+    /// afterwards captures the new value and one launched before keeps the old.
+    private func bumpGeneration(for providerName: String) {
+        providerGenerations[providerName] = generation(of: providerName) + 1
+    }
+
+    /// The one runtime path that pauses or resumes collection for a provider.
+    /// The connection, the cached readings, the displayed values and the
+    /// recorded history all survive a pause; only the half-proven rise does not.
+    ///
+    /// No control calls this yet — wiring the menu and settings is a later step.
+    private func setCollectionEnabled(_ enabled: Bool, forProvider providerName: String) {
+        guard collectionEnabled(providerName) != enabled else { return }
+        if providerName == "Codex" {
+            codexCollectionEnabled = enabled
+        } else {
+            claudeCollectionEnabled = enabled
+        }
+        bumpGeneration(for: providerName)
+
+        guard enabled else {
+            displayFilter.clearPendingRise(forProvider: providerName)
+            return
+        }
+        if pendingRefreshAfterEnable.requestCollection(isRefreshing: isRefreshing) {
+            refresh()
+        }
     }
 
     private var connectedProviderNames: [String] {
@@ -1119,59 +1178,130 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refresh() {
         guard !isRefreshing else { return }
+
+        // Decided before any refreshing state is set: a cycle that reads nobody
+        // must not look like a refresh at all — no spinner, no timestamp, no
+        // completion. Retention still runs, so pausing everything does not stop
+        // the 24-hour clock.
+        let plan = [
+            (
+                provider: "Codex",
+                action: ProviderCollectionPolicy.action(
+                    connected: codexConnected,
+                    collectionEnabled: codexCollectionEnabled
+                )
+            ),
+            (
+                provider: "Claude Code",
+                action: ProviderCollectionPolicy.action(
+                    connected: claudeConnected,
+                    collectionEnabled: claudeCollectionEnabled
+                )
+            )
+        ]
+        guard ProviderCollectionPolicy.collectsUsage(plan.map(\.action)) else {
+            maintainUsageHistoryRetention(at: Date())
+            return
+        }
+
         isRefreshing = true
+        acceptedMeasurements = [:]
         rebuildMenu()
 
         let group = DispatchGroup()
-        if codexConnected {
-            group.enter()
-            codexFetcher.fetch { [weak self] usage in
-                DispatchQueue.main.async {
-                    self?.acceptFetchedUsage(usage)
-                    group.leave()
-                }
-            }
-        } else {
-            usages.removeValue(forKey: "Codex")
+        launch(plan[0].action, provider: plan[0].provider, in: group) { [codexFetcher] completion in
+            codexFetcher.fetch(completion: completion)
         }
-
-        if claudeConnected {
-            group.enter()
-            claudeFetcher.fetch { [weak self] usage in
-                DispatchQueue.main.async {
-                    self?.acceptFetchedUsage(usage)
-                    group.leave()
-                }
-            }
-        } else {
-            usages.removeValue(forKey: "Claude Code")
+        launch(plan[1].action, provider: plan[1].provider, in: group) { [claudeFetcher] completion in
+            claudeFetcher.fetch(completion: completion)
         }
 
         group.notify(queue: .main) { [weak self] in
             guard let self else { return }
             self.isRefreshing = false
+            // Consumed before the follow-up starts, so the follow-up cannot
+            // re-arm itself and loop.
+            let followUpRequested = self.pendingRefreshAfterEnable.consume()
+
             let updateDate = Date()
             self.lastUpdated = updateDate
-            self.recordUsageHistory(at: updateDate)
-            self.updateDisplayedRemaining()
+            let measurements = self.acceptedMeasurements
+            self.acceptedMeasurements = [:]
+            self.recordUsageHistory(of: measurements, at: updateDate)
+            self.advanceDisplayedRemaining(with: measurements)
             self.updateStatusTitle()
             self.rebuildMenu()
+
+            if followUpRequested { self.refresh() }
         }
     }
 
-    private func acceptFetchedUsage(_ fetched: ProviderUsage, at date: Date = Date()) {
+    /// Carries out one provider's part of the plan. Both providers go through
+    /// here so a paused one can never fall into the disconnected branch and
+    /// lose the readings the pause is meant to keep.
+    private func launch(
+        _ action: ProviderCollectionAction,
+        provider providerName: String,
+        in group: DispatchGroup,
+        fetch: (@escaping (ProviderUsage) -> Void) -> Void
+    ) {
+        switch action {
+        case .collect:
+            let launchGeneration = generation(of: providerName)
+            group.enter()
+            fetch { [weak self] usage in
+                DispatchQueue.main.async {
+                    self?.acceptFetchedUsage(
+                        usage,
+                        from: providerName,
+                        launchGeneration: launchGeneration
+                    )
+                    group.leave()
+                }
+            }
+        case .retainCache:
+            break
+        case .dropCache:
+            usages.removeValue(forKey: providerName)
+        }
+    }
+
+    /// Applies a finished read — unless the provider moved on while it ran.
+    ///
+    /// A read that was launched, then had its provider paused, disconnected or
+    /// reconnected, is discarded whole: no cached reading, no freshness change,
+    /// no measurement for the display filter or the history.
+    private func acceptFetchedUsage(
+        _ fetched: ProviderUsage,
+        from providerName: String,
+        launchGeneration: Int,
+        at date: Date = Date()
+    ) {
+        // The launch decides whose state is checked. A result naming a
+        // different provider is a broken contract, not something to validate
+        // against whatever it claims to be.
+        guard fetched.name == providerName else { return }
+        guard ProviderCollectionPolicy.shouldAccept(
+            connected: connected(providerName),
+            collectionEnabled: collectionEnabled(providerName),
+            launchGeneration: launchGeneration,
+            currentGeneration: generation(of: providerName)
+        ) else { return }
+
         if fetched.error == nil, !fetched.windows.isEmpty {
-            usages[fetched.name] = fetched.markedSuccessful(at: date)
+            let measurement = fetched.markedSuccessful(at: date)
+            usages[providerName] = measurement
+            acceptedMeasurements[providerName] = measurement
             return
         }
         if let issue = fetched.error,
-           let previous = usages[fetched.name],
+           let previous = usages[providerName],
            !previous.windows.isEmpty,
            previous.lastSuccessfulAt != nil {
-            usages[fetched.name] = .stale(from: previous, issue: issue)
+            usages[providerName] = .stale(from: previous, issue: issue)
             return
         }
-        usages[fetched.name] = fetched
+        usages[providerName] = fetched
     }
 
     private func updateStatusTitle() {
@@ -1234,52 +1364,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusPresentationTimer = timer
     }
 
-    private func recordUsageHistory(at date: Date) {
+    /// Records the measurements this cycle accepted, then applies retention.
+    /// A provider that was not read — paused, disconnected, failed, or simply
+    /// not part of this cycle — contributes nothing.
+    private func recordUsageHistory(of measurements: [String: ProviderUsage], at date: Date) {
         guard usageHistoryEnabled else { return }
-        for providerName in connectedProviderNames {
-            guard let usage = usages[providerName], usage.error == nil else { continue }
-
-            if let legacySamples = usageHistory.removeValue(forKey: providerName),
-               let summary = UsageSummaryCalculator.summary(for: providerName, in: usages) {
-                let migratedKey = historyKey(providerName: providerName, windowKind: summary.windowKind)
-                if usageHistory[migratedKey] == nil {
-                    usageHistory[migratedKey] = legacySamples
-                }
-            }
-
-            for window in usage.windows {
-                let key = historyKey(providerName: providerName, windowKind: window.kind)
-                usageHistory[key] = UsageHistoryModel.adding(
-                    remainingPercent: min(100, max(0, 100 - window.usedPercent)),
-                    at: date,
-                    to: usageHistory[key] ?? []
-                )
-            }
-        }
-        usageHistory = UsageHistoryModel.sanitized(usageHistory, now: date)
+        usageHistory = UsageHistoryRecorder.recording(
+            usageHistory,
+            measurements: measurements,
+            at: date
+        )
         persistUsageHistory()
     }
 
+    /// Retention for a tick that collected nothing: everything paused, or usage
+    /// history just switched back on. It prunes what has aged out and does not
+    /// create a sample, because nothing was measured.
+    private func maintainUsageHistoryRetention(at date: Date) {
+        guard usageHistoryEnabled else { return }
+        let retained = UsageHistoryModel.sanitized(usageHistory, now: date)
+        guard retained != usageHistory else { return }
+        usageHistory = retained
+        persistUsageHistory()
+        rebuildMenu()
+    }
+
     private func historyKey(providerName: String, windowKind: UsageWindowKind) -> String {
-        "\(providerName)|\(windowKind.historyKey)"
+        UsageHistoryRecorder.seriesKey(providerName: providerName, windowKind: windowKind)
     }
 
     /// Gösterilecek kalan yüzdeleri günceller. Yalnızca yenileme tamamlandığında
-    /// çağrılmalıdır; menü her yeniden çizildiğinde çağrılırsa bekletme mantığı
-    /// tek bir ölçümü birden çok kez saymış olur.
-    private func updateDisplayedRemaining() {
-        for (providerName, usage) in usages where usage.error == nil {
+    /// ve yalnızca bu turda kabul edilen ölçümlerle çağrılmalıdır; önbelleğin
+    /// tamamı verilirse bekletme mantığı tek bir ölçümü birden çok kez sayar.
+    private func advanceDisplayedRemaining(with measurements: [String: ProviderUsage]) {
+        for (providerName, usage) in measurements where usage.error == nil {
             for window in usage.windows {
-                let key = historyKey(providerName: providerName, windowKind: window.kind)
-                let decision = UsageDisplayNoiseFilter.decide(
-                    raw: remainingPercent(of: window),
-                    previouslyDisplayed: displayedRemaining[key],
-                    pendingRise: pendingRemainingRise[key],
-                    pendingCount: pendingRemainingRiseCount[key] ?? 0
+                displayFilter.advance(
+                    key: historyKey(providerName: providerName, windowKind: window.kind),
+                    raw: remainingPercent(of: window)
                 )
-                displayedRemaining[key] = decision.displayed
-                pendingRemainingRise[key] = decision.pendingRise
-                pendingRemainingRiseCount[key] = decision.pendingCount
             }
         }
     }
@@ -1295,7 +1418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard usage.error == nil else { return usage }
             return usage.replacingWindows(usage.windows.map { window in
                 let key = historyKey(providerName: usage.name, windowKind: window.kind)
-                guard let displayed = displayedRemaining[key],
+                guard let displayed = displayFilter.displayedValue(forKey: key),
                       displayed != remainingPercent(of: window)
                 else { return window }
                 return UsageWindow(
@@ -1836,6 +1959,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let wasEmpty = connectedProviderNames.isEmpty
         codexConnected = true
+        // Connecting always resumes collection: a pause stored before the
+        // provider was disconnected must never come back with it.
+        codexCollectionEnabled = true
+        bumpGeneration(for: "Codex")
         if wasEmpty { selectedProviderName = "Codex" }
         configureStatusPresentationTimer()
         updateStatusTitle()
@@ -1872,6 +1999,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let wasEmpty = connectedProviderNames.isEmpty
         claudeConnected = true
+        // As for Codex: reconnecting resumes collection unconditionally.
+        claudeCollectionEnabled = true
+        bumpGeneration(for: "Claude Code")
         if wasEmpty { selectedProviderName = "Claude Code" }
         configureStatusPresentationTimer()
         updateStatusTitle()
@@ -1885,13 +2015,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func disconnectProvider(_ providerName: String, clearPreference: () -> Void) {
         let previousSelection = selectedProviderName
         clearPreference()
+        // Invalidates any read still in flight, so a result that arrives after
+        // this point cannot bring the disconnected provider back.
+        bumpGeneration(for: providerName)
         // Drop the live usage and menu-display state for the provider. Usage
         // history is intentionally kept (the "Clear history" item removes it).
         usages.removeValue(forKey: providerName)
-        let prefix = "\(providerName)|"
-        displayedRemaining = displayedRemaining.filter { !$0.key.hasPrefix(prefix) }
-        pendingRemainingRise = pendingRemainingRise.filter { !$0.key.hasPrefix(prefix) }
-        pendingRemainingRiseCount = pendingRemainingRiseCount.filter { !$0.key.hasPrefix(prefix) }
+        displayFilter.forget(provider: providerName)
 
         let remaining = connectedProviderNames
         selectedProviderName = ProviderConnectionTransition.selection(
@@ -1963,7 +2093,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleUsageHistory() {
         usageHistoryEnabled.toggle()
-        if usageHistoryEnabled { recordUsageHistory(at: Date()) }
+        // Switching history back on prunes what aged out while it was off. It
+        // must not turn the cached readings into samples: nothing was measured
+        // by flipping a switch.
+        if usageHistoryEnabled { maintainUsageHistoryRetention(at: Date()) }
         rebuildMenu()
     }
 
@@ -2257,6 +2390,91 @@ private func runSelfTest() -> Int32 {
         renderedRemaining([4, 100, 98]) == [4, 100, 98]
     else {
         fputs("Kullanım gösterim filtresi testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Toplama yaşam döngüsü: paketlenmiş ikili dosyanın da duraklatılmış
+    // sağlayıcıyı başlatmadığını, eski nesilli sonucu reddettiğini ve
+    // önbelleği ölçüm saymadığını doğrular.
+    var pendingCollectionRefresh = PendingCollectionRefresh()
+    let coalescedWhileBusy = pendingCollectionRefresh.requestCollection(isRefreshing: true)
+    let coalescedTwice = pendingCollectionRefresh.requestCollection(isRefreshing: true)
+    let coalescedFollowUp = pendingCollectionRefresh.consume()
+    let coalescedRearm = pendingCollectionRefresh.consume()
+
+    // Bekletilen 33 → 38 yükselişi, Codex duraklatılıp başka sağlayıcılar
+    // yenilenirken ilerlememeli; duraklatmada gösterilen değer korunmalı.
+    let pausedSeriesKey = UsageHistoryRecorder.seriesKey(providerName: "Codex", windowKind: .weekly)
+    var pausedFilter = UsageDisplayFilterState()
+    pausedFilter.advance(key: pausedSeriesKey, raw: 33)
+    pausedFilter.advance(key: pausedSeriesKey, raw: 38)
+    let heldRiseCount = pausedFilter.pendingCount(forKey: pausedSeriesKey)
+    pausedFilter.clearPendingRise(forProvider: "Codex")
+
+    let measuredWindow = UsageWindow(
+        kind: .weekly,
+        usedPercent: 40,
+        resetsAt: nil,
+        durationMinutes: 10_080
+    )
+    let measurement = ProviderUsage(name: "Codex", windows: [measuredWindow], error: nil)
+        .markedSuccessful(at: historyOrigin)
+    let recordedFromMeasurement = UsageHistoryRecorder.recording(
+        [:],
+        measurements: ["Codex": measurement],
+        at: historyOrigin
+    )
+    let recordedFromNothing = UsageHistoryRecorder.recording(
+        [:],
+        measurements: [:],
+        at: historyOrigin
+    )
+
+    guard
+        ProviderCollectionPolicy.action(connected: true, collectionEnabled: true) == .collect,
+        ProviderCollectionPolicy.action(connected: true, collectionEnabled: false) == .retainCache,
+        ProviderCollectionPolicy.action(connected: false, collectionEnabled: true) == .dropCache,
+        ProviderCollectionPolicy.action(connected: false, collectionEnabled: false) == .dropCache,
+        ProviderCollectionPolicy.collectsUsage([.retainCache, .dropCache]) == false,
+        ProviderCollectionPolicy.collectsUsage([.retainCache, .collect]),
+        ProviderCollectionPolicy.shouldAccept(
+            connected: true,
+            collectionEnabled: true,
+            launchGeneration: 7,
+            currentGeneration: 7
+        ),
+        ProviderCollectionPolicy.shouldAccept(
+            connected: true,
+            collectionEnabled: true,
+            launchGeneration: 6,
+            currentGeneration: 7
+        ) == false,
+        ProviderCollectionPolicy.shouldAccept(
+            connected: true,
+            collectionEnabled: false,
+            launchGeneration: 7,
+            currentGeneration: 7
+        ) == false,
+        ProviderCollectionPolicy.shouldAccept(
+            connected: false,
+            collectionEnabled: true,
+            launchGeneration: 7,
+            currentGeneration: 7
+        ) == false,
+        coalescedWhileBusy == false,
+        coalescedTwice == false,
+        coalescedFollowUp,
+        coalescedRearm == false,
+        pendingCollectionRefresh.requestCollection(isRefreshing: false),
+        heldRiseCount == 1,
+        pausedFilter.displayedValue(forKey: pausedSeriesKey) == 33,
+        pausedFilter.pendingRise(forKey: pausedSeriesKey) == nil,
+        pausedFilter.pendingCount(forKey: pausedSeriesKey) == 0,
+        recordedFromMeasurement[pausedSeriesKey]?.count == 1,
+        recordedFromMeasurement[pausedSeriesKey]?.first?.remainingPercent == 60,
+        recordedFromNothing.isEmpty
+    else {
+        fputs("Toplama yaşam döngüsü testi başarısız\n", stderr)
         return 1
     }
 

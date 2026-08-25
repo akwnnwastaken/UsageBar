@@ -69,6 +69,160 @@ final class ProviderCollectionPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Refresh plan
+
+    func testOnlyAnEligibleProviderIsRead() {
+        XCTAssertEqual(
+            ProviderCollectionPolicy.action(connected: true, collectionEnabled: true),
+            .collect
+        )
+    }
+
+    func testAPausedProviderKeepsItsCacheAndADisconnectedOneDoesNot() {
+        // The distinction the pause depends on: paused keeps the readings the
+        // user is still looking at, disconnected clears them as it always has.
+        XCTAssertEqual(
+            ProviderCollectionPolicy.action(connected: true, collectionEnabled: false),
+            .retainCache
+        )
+        XCTAssertEqual(
+            ProviderCollectionPolicy.action(connected: false, collectionEnabled: true),
+            .dropCache
+        )
+        XCTAssertEqual(
+            ProviderCollectionPolicy.action(connected: false, collectionEnabled: false),
+            .dropCache
+        )
+    }
+
+    func testACycleWithNothingToReadCollectsNothing() {
+        XCTAssertFalse(ProviderCollectionPolicy.collectsUsage([]))
+        XCTAssertFalse(ProviderCollectionPolicy.collectsUsage([.retainCache, .dropCache]))
+        XCTAssertTrue(ProviderCollectionPolicy.collectsUsage([.retainCache, .collect]))
+        XCTAssertTrue(ProviderCollectionPolicy.collectsUsage([.collect, .dropCache]))
+    }
+
+    // MARK: - Acceptance
+
+    func testACurrentResultFromAnEligibleProviderIsAccepted() {
+        XCTAssertTrue(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: true,
+                launchGeneration: 3,
+                currentGeneration: 3
+            )
+        )
+    }
+
+    func testAResultIsRejectedOnceItsProviderIsNoLongerEligible() {
+        XCTAssertFalse(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: false,
+                collectionEnabled: true,
+                launchGeneration: 3,
+                currentGeneration: 3
+            )
+        )
+        XCTAssertFalse(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: false,
+                launchGeneration: 3,
+                currentGeneration: 3
+            )
+        )
+    }
+
+    func testAResultFromAnOlderGenerationIsRejected() {
+        XCTAssertFalse(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: true,
+                launchGeneration: 2,
+                currentGeneration: 3
+            )
+        )
+    }
+
+    /// Disconnect → reconnect while a read is in flight. Both bumps land before
+    /// the old result returns, and the provider is fully eligible again by then
+    /// — so eligibility alone would accept a reading of an account the user has
+    /// since reconnected, out of order with the newer one.
+    func testReconnectingDoesNotMakeAnInFlightResultCurrentAgain() {
+        var generation = 4
+        let launchGeneration = generation
+
+        generation += 1 // disconnect
+        generation += 1 // reconnect
+
+        XCTAssertFalse(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: true,
+                launchGeneration: launchGeneration,
+                currentGeneration: generation
+            )
+        )
+        // The read launched after reconnecting is the one that counts.
+        XCTAssertTrue(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: true,
+                launchGeneration: generation,
+                currentGeneration: generation
+            )
+        )
+    }
+
+    /// The same race through pause → resume rather than disconnect → reconnect.
+    func testResumingDoesNotMakeAnInFlightResultCurrentAgain() {
+        var generation = 9
+        let launchGeneration = generation
+
+        generation += 1 // pause
+        generation += 1 // resume
+
+        XCTAssertFalse(
+            ProviderCollectionPolicy.shouldAccept(
+                connected: true,
+                collectionEnabled: true,
+                launchGeneration: launchGeneration,
+                currentGeneration: generation
+            )
+        )
+    }
+
+    // MARK: - Coalescing
+
+    func testResumingWhileIdleCollectsStraightAway() {
+        var pending = PendingCollectionRefresh()
+        XCTAssertTrue(pending.requestCollection(isRefreshing: false))
+        // Nothing was deferred, so no follow-up is owed.
+        XCTAssertFalse(pending.consume())
+    }
+
+    func testResumingDuringARefreshOwesExactlyOneFollowUp() {
+        var pending = PendingCollectionRefresh()
+
+        XCTAssertFalse(pending.requestCollection(isRefreshing: true))
+        XCTAssertFalse(pending.requestCollection(isRefreshing: true))
+        XCTAssertFalse(pending.requestCollection(isRefreshing: true))
+
+        XCTAssertTrue(pending.consume())
+        // Consuming empties the slot, so the follow-up cannot re-arm itself.
+        XCTAssertFalse(pending.consume())
+    }
+
+    func testAConsumedFollowUpCanBeArmedAgainByANewResume() {
+        var pending = PendingCollectionRefresh()
+        XCTAssertFalse(pending.requestCollection(isRefreshing: true))
+        XCTAssertTrue(pending.consume())
+
+        XCTAssertFalse(pending.requestCollection(isRefreshing: true))
+        XCTAssertTrue(pending.consume())
+    }
+
     // MARK: - Stored preference
 
     func testTheCollectionKeysAreTheirOwnNames() {
