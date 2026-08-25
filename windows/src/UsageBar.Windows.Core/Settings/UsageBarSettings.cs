@@ -25,6 +25,18 @@ public sealed class UsageBarSettings
     [JsonPropertyName("claudeConnected")]
     public bool ClaudeConnected { get; set; }
 
+    /// <summary>
+    /// Whether UsageBar may collect usage for the provider. Independent of
+    /// <see cref="CodexConnected"/>: a paused provider stays connected. Null —
+    /// the value written by every build before collection could be paused —
+    /// means enabled, so an upgrade never pauses anyone.
+    /// </summary>
+    [JsonPropertyName("codexCollectionEnabled")]
+    public bool? CodexCollectionEnabled { get; set; }
+
+    [JsonPropertyName("claudeCollectionEnabled")]
+    public bool? ClaudeCollectionEnabled { get; set; }
+
     [JsonPropertyName("selectedProvider")]
     public string? SelectedProvider { get; set; }
 
@@ -99,6 +111,8 @@ public static class UsageBarSettingsSanitizer
         value.UsageColorsEnabled ??= true;
         value.UsageHistoryEnabled ??= true;
         value.ShowResetCountdown ??= false;
+        value.CodexCollectionEnabled ??= true;
+        value.ClaudeCollectionEnabled ??= true;
         value.RefreshInterval = UsageRefreshIntervals
             .Resolved(value.RefreshInterval)
             .StorageValue();

@@ -918,6 +918,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let legacyUsageHistoryData = "usage.history.samples.v1"
         static let legacyCodexEnabled = "provider.codex.enabled"
         static let legacyClaudeEnabled = "provider.claude.enabled"
+        // Collection state is a different family from the legacy keys above and
+        // is read existence-aware; both names live in `UsageBarCore` so the app
+        // and the tests covering that read cannot drift apart.
+        static let codexCollectionEnabled = ProviderCollectionPreference.codexKey
+        static let claudeCollectionEnabled = ProviderCollectionPreference.claudeKey
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -1013,6 +1018,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var claudeConnected: Bool {
         get { UserDefaults.standard.bool(forKey: PreferenceKey.claudeConnected) }
         set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeConnected) }
+    }
+
+    /// Whether UsageBar may collect for Codex. A provider the user has paused
+    /// stays connected, so this is independent of `codexConnected`; an absent
+    /// preference means enabled (see `ProviderCollectionPreference`).
+    private var codexCollectionEnabled: Bool {
+        ProviderCollectionPreference.isCollectionEnabled(
+            in: UserDefaults.standard,
+            forKey: PreferenceKey.codexCollectionEnabled
+        )
+    }
+
+    private var claudeCollectionEnabled: Bool {
+        ProviderCollectionPreference.isCollectionEnabled(
+            in: UserDefaults.standard,
+            forKey: PreferenceKey.claudeCollectionEnabled
+        )
     }
 
     private var connectedProviderNames: [String] {

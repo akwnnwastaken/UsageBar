@@ -116,6 +116,42 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
+    public void ASettingsFileWithoutCollectionStateLoadsAsCollecting()
+    {
+        // What every installation written before collection could be paused
+        // looks like on disk. Loading it must not pause anybody.
+        File.WriteAllText(
+            _storage.SettingsPath,
+            """{"schemaVersion":1,"codexConnected":true,"claudeConnected":true}""");
+
+        var loaded = _storage.LoadSettings();
+
+        Assert.True(loaded.CodexCollectionEnabled);
+        Assert.True(loaded.ClaudeCollectionEnabled);
+    }
+
+    [Fact]
+    public void APausedProviderStaysPausedAcrossASaveAndLoad()
+    {
+        _storage.SaveSettings(new UsageBarSettings
+        {
+            CodexConnected = true,
+            ClaudeConnected = true,
+            CodexCollectionEnabled = false,
+            ClaudeCollectionEnabled = true
+        });
+
+        var loaded = _storage.LoadSettings();
+
+        Assert.False(loaded.CodexCollectionEnabled);
+        Assert.True(loaded.ClaudeCollectionEnabled);
+        // The pause is a collection decision only — both providers stay
+        // connected.
+        Assert.True(loaded.CodexConnected);
+        Assert.True(loaded.ClaudeConnected);
+    }
+
+    [Fact]
     public void WritingLeavesNoTemporaryFileBehind()
     {
         _storage.SaveSettings(new UsageBarSettings { CodexConnected = true });
