@@ -122,6 +122,96 @@ require_present \
   "Duraklatma bekletilen yükselişi temizlemiyor" \
   'displayFilter\.clearPendingRise\('
 
+# The pause/resume control goes through the one runtime mutation path. Writing
+# the preference from the click handler would skip the generation bump, the
+# pending-rise clearing and the coalesced refresh.
+require_present \
+  "Toplama denetimi kanonik çalışma zamanı yolunu çağırmıyor" \
+  'setCollectionEnabled\(!collectionEnabled\(providerName\), forProvider: providerName\)'
+
+require_occurrences \
+  "Codex toplama tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.codexCollectionEnabled\)' 1
+
+require_occurrences \
+  "Claude toplama tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.claudeCollectionEnabled\)' 1
+
+# Scan one function's body for a forbidden pattern. Some rules are about what a
+# specific transition must NOT touch, and a whole-file scan cannot express that.
+scan_forbidden_in_function() {
+  local label="$1" signature="$2" pattern="$3" body matches rc
+  body=$(awk "/$signature/,/^    \}\$/" "$PROJECT_DIR/Sources/UsageBar/main.swift")
+  if [[ -z "$body" ]]; then
+    print -u2 "$label (fonksiyon bulunamadı: $signature)"
+    exit 1
+  fi
+  matches=$(print -r -- "$body" | grep -En -- "$pattern") && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$matches"
+    exit 1
+  elif [[ $rc -ne 1 ]]; then
+    print -u2 "grep taraması başarısız oldu (exit $rc); güvenlik kapısı fail-closed"
+    exit 1
+  fi
+}
+
+# Pausing is not a selection change and not a rotation change: the stored
+# preferences must survive it untouched, so resuming restores what the user
+# chose. Disconnect keeps its own separate repair rules.
+scan_forbidden_in_function \
+  "Duraklatma saklanan sağlayıcı seçimini değiştiriyor" \
+  'private func setCollectionEnabled' \
+  'selectedProviderName'
+
+scan_forbidden_in_function \
+  "Duraklatma otomatik döndürme tercihini değiştiriyor" \
+  'private func setCollectionEnabled' \
+  'autoRotateProviders'
+
+# Etkin sağlayıcı ve döndürme yalnızca toplama yapan sağlayıcılardan seçilir.
+require_present \
+  "Etkin sağlayıcı toplama yapanlardan seçilmiyor" \
+  'eligible: eligibleProviderNames'
+
+require_present \
+  "Döndürme adayları toplama yapanlardan alınmıyor" \
+  'eligibleCount: eligibleProviderNames\.count'
+
+scan_forbidden \
+  "Döndürme hâlâ bağlı sağlayıcı sayısına bakıyor" \
+  'autoRotateProviders && connectedProviderNames\.count > 1'
+
+# Sağlayıcı seçici ve yönetim satırları bağlı sağlayıcılardan kurulur; seçicinin
+# tıklama işleyicisi listeyi yeniden hesaplamaz, kurulduğu eşlemeyi okur.
+require_present \
+  "Sağlayıcı yönetimi bağlı sağlayıcı listesinden kurulmuyor" \
+  'addProviderManagementItems\(connectedNames\)'
+
+require_present \
+  "Seçici tıklaması yakalanan sağlayıcı eşlemesini kullanmıyor" \
+  'let providerNames = selectorProviderNames'
+
+# "Hepsi duraklatıldı", "önce bağlayın" ile karıştırılmaz.
+require_present \
+  "Boşta kalma nedeni bağlı/toplayan ayrımından hesaplanmıyor" \
+  'connectedCount: connectedProviderNames\.count'
+
+require_present \
+  "Hepsi duraklatıldı durumu duraklatma metnini göstermiyor" \
+  'text\.collectionPaused'
+
+# Teşhis, bağlantı ve toplama durumunu ayrı ayrı bildirir; toplama durumu
+# politikadan türetilir, bağlantıdan ya da önbellekten değil.
+require_present \
+  "Teşhis toplama durumunu ayrı bildirmiyor" \
+  'connected:\\\(connected\),collecting:\\\(collecting\)'
+
+require_present \
+  "Teşhis toplama durumu toplama politikasından türetilmiyor" \
+  'let collecting = ProviderCollectionPolicy\.isEligible\('
+
 "$PROJECT_DIR/tests/build_regression.sh"
 git -C "$PROJECT_DIR" diff --check
 print "Güvenlik kabul testleri başarılı"

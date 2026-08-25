@@ -93,8 +93,13 @@ internal sealed class UsageBarController : IDisposable
 
     public UsageRefreshInterval RefreshInterval => UsageRefreshIntervals.Resolved(Settings.RefreshInterval);
 
+    /// <summary>What the user manages; a paused provider stays in this list.</summary>
     public IReadOnlyList<string> ConnectedProviderNames => Settings.ConnectedProviderNames();
 
+    /// <summary>What is actually being collected.</summary>
+    public IReadOnlyList<string> EligibleProviderNames => Settings.EligibleProviderNames();
+
+    /// <summary>Null when nothing is being collected, including when everything is paused.</summary>
     public string? StatusProviderName => Settings.StatusProviderName(_rotatingProviderIndex);
 
     /// <summary>The smoothed readings shown in the tray and the panel.</summary>
@@ -149,6 +154,7 @@ internal sealed class UsageBarController : IDisposable
 
     public TrayPresentation Presentation => TrayPresentationCalculator.Calculate(
         StatusProviderName,
+        ConnectedProviderNames.Count > 0,
         DisplayUsages,
         AlertPolicy,
         Text,
@@ -163,17 +169,22 @@ internal sealed class UsageBarController : IDisposable
         _ = RefreshAsync();
     }
 
-    /// <summary>Advances the auto-rotation. Does not query any provider.</summary>
+    /// <summary>
+    /// Advances the auto-rotation. Does not query any provider. Rotation runs
+    /// over the eligible providers, so pausing one of two leaves the preference
+    /// intact and simply stops rotating until it resumes.
+    /// </summary>
     public void RotateProvider()
     {
-        if (!Settings.AutoRotateProviders || ConnectedProviderNames.Count <= 1)
+        var eligible = EligibleProviderNames;
+        if (!Settings.RotationIsActive())
         {
             return;
         }
 
         _rotatingProviderIndex = ProviderRotation.NextIndex(
             _rotatingProviderIndex,
-            ConnectedProviderNames.Count);
+            eligible.Count);
         RaiseChanged();
     }
 
@@ -580,8 +591,8 @@ internal sealed class UsageBarController : IDisposable
             AutoStartState.IsOn,
             new[]
             {
-                ProviderDiagnosticsFor(ProviderNames.Codex, Settings.CodexConnected),
-                ProviderDiagnosticsFor(ProviderNames.ClaudeCode, Settings.ClaudeConnected)
+                ProviderDiagnosticsFor(ProviderNames.Codex),
+                ProviderDiagnosticsFor(ProviderNames.ClaudeCode)
             },
             // Launch-context facts. Provider discovery was seen to depend on how
             // UsageBar was started, so a report says which context it came from
@@ -593,8 +604,15 @@ internal sealed class UsageBarController : IDisposable
             trace));
     }
 
-    private ProviderDiagnostics ProviderDiagnosticsFor(string providerName, bool connected)
+    private ProviderDiagnostics ProviderDiagnosticsFor(string providerName)
     {
+        var connected = IsConnected(providerName);
+        // Derived from the collection policy, never from whether a reading
+        // happens to be cached.
+        var collecting = ProviderCollectionPolicy.IsEligible(
+            connected,
+            IsCollectionEnabled(providerName));
+
         _usages.TryGetValue(providerName, out var usage);
 
         var dataState = usage switch
@@ -615,6 +633,7 @@ internal sealed class UsageBarController : IDisposable
         return new ProviderDiagnostics(
             providerName,
             connected,
+            collecting,
             executableState,
             adapterKind,
             dataState,

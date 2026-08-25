@@ -4,6 +4,7 @@ using Microsoft.Win32;
 using UsageBar.Windows.Core.Localization;
 using UsageBar.Windows.Core.Policies;
 using UsageBar.Windows.Core.Providers;
+using UsageBar.Windows.Core.Settings;
 using UsageBar.Windows.Infrastructure.Startup;
 using UsageBar.Windows.Infrastructure.Tray;
 
@@ -133,6 +134,7 @@ internal sealed class TrayIconController : IDisposable
         }
         else
         {
+            _menu.Items.Add(CollectionToggle(text, ProviderNames.Codex));
             _menu.Items.Add(Item(
                 text.DisconnectCodex,
                 () => _controller.DisconnectProvider(ProviderNames.Codex)));
@@ -144,6 +146,7 @@ internal sealed class TrayIconController : IDisposable
         }
         else
         {
+            _menu.Items.Add(CollectionToggle(text, ProviderNames.ClaudeCode));
             _menu.Items.Add(Item(
                 text.DisconnectClaude,
                 () => _controller.DisconnectProvider(ProviderNames.ClaudeCode)));
@@ -174,6 +177,22 @@ internal sealed class TrayIconController : IDisposable
     {
         var item = new ToolStripMenuItem(label) { Enabled = enabled };
         item.Click += (_, _) => action();
+        return item;
+    }
+
+    /// <summary>
+    /// Quick access to the same control Settings offers. It names its provider
+    /// so the two rows are never ambiguous, and it goes through the controller —
+    /// the checkbox never touches stored settings itself.
+    /// </summary>
+    private ToolStripMenuItem CollectionToggle(Localizer text, string providerName)
+    {
+        var isCollecting = _controller.Settings.IsCollectionEnabled(providerName);
+        var label = providerName == ProviderNames.ClaudeCode ? "Claude" : providerName;
+        var item = Item(
+            $"{label}: {text.CollectUsage}",
+            () => _controller.SetCollectionEnabled(providerName, !isCollecting));
+        item.Checked = isCollecting;
         return item;
     }
 

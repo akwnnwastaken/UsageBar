@@ -243,7 +243,9 @@ public sealed class TrayIconRenderer : IDisposable
         TrayIconState.Critical => lightForeground ? Color.FromArgb(255, 107, 99) : Color.FromArgb(196, 43, 27),
         TrayIconState.Warning => lightForeground ? Color.FromArgb(255, 185, 0) : Color.FromArgb(160, 98, 0),
         TrayIconState.Stale => lightForeground ? Color.FromArgb(200, 200, 200) : Color.FromArgb(90, 90, 90),
-        TrayIconState.NoData or TrayIconState.Refreshing =>
+        // Paused joins the existing neutral group: it is a deliberate stop, not
+        // a failure, and it introduces no colour of its own.
+        TrayIconState.NoData or TrayIconState.Refreshing or TrayIconState.Paused =>
             lightForeground ? Color.FromArgb(190, 190, 190) : Color.FromArgb(110, 110, 110),
         _ => lightForeground ? Color.FromArgb(245, 245, 245) : Color.FromArgb(26, 26, 26)
     };

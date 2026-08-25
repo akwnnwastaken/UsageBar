@@ -169,7 +169,11 @@ public static class UsageBarSettingsSanitizer
         _ => "balanced"
     };
 
-    /// <summary>The connected providers, in a stable order.</summary>
+    /// <summary>
+    /// The connected providers, in a stable order. This is the list the user
+    /// manages: a paused provider is still connected and stays here, so it can
+    /// always be resumed or disconnected.
+    /// </summary>
     public static IReadOnlyList<string> ConnectedProviderNames(this UsageBarSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -188,16 +192,48 @@ public static class UsageBarSettingsSanitizer
         return names;
     }
 
+    /// <summary>Whether collection is allowed for a provider; null means yes.</summary>
+    public static bool IsCollectionEnabled(this UsageBarSettings settings, string providerName)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return (providerName == Providers.ProviderNames.Codex
+            ? settings.CodexCollectionEnabled
+            : settings.ClaudeCollectionEnabled) ?? true;
+    }
+
+    /// <summary>
+    /// The providers actually being collected — connected and not paused. Only
+    /// these may be presented as the live tray value or rotated through.
+    /// </summary>
+    public static IReadOnlyList<string> EligibleProviderNames(this UsageBarSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return settings
+            .ConnectedProviderNames()
+            .Where(name => Policies.ProviderCollectionPolicy.IsEligible(
+                connected: true,
+                collectionEnabled: settings.IsCollectionEnabled(name)))
+            .ToList();
+    }
+
     /// <summary>
     /// The provider whose value the tray icon shows: the rotating one in auto
     /// mode, otherwise the fixed selection, falling back to whatever is
-    /// connected.
+    /// eligible.
+    ///
+    /// Resolved over the <b>eligible</b> providers, never the connected ones: a
+    /// paused provider has no live value to show. Its stored selection is left
+    /// alone, so resuming it brings the user's own choice straight back. Null
+    /// means nothing is being collected — which the caller must tell apart from
+    /// "nothing is connected".
     /// </summary>
     public static string? StatusProviderName(
         this UsageBarSettings settings,
         int rotatingProviderIndex)
     {
-        var providers = settings.ConnectedProviderNames();
+        var providers = settings.EligibleProviderNames();
         if (providers.Count == 0)
         {
             return null;
@@ -214,5 +250,17 @@ public static class UsageBarSettingsSanitizer
         }
 
         return providers[0];
+    }
+
+    /// <summary>
+    /// Whether auto-rotation has anything to rotate between. The preference
+    /// itself survives a pause: rotation simply lies dormant until a second
+    /// provider is eligible again.
+    /// </summary>
+    public static bool RotationIsActive(this UsageBarSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return settings.AutoRotateProviders && settings.EligibleProviderNames().Count > 1;
     }
 }

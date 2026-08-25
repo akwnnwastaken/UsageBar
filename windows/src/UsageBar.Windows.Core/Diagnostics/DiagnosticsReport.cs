@@ -76,6 +76,13 @@ public enum ProviderDataState
 public sealed record ProviderDiagnostics(
     string ProviderName,
     bool Connected,
+    /// <summary>
+    /// Whether UsageBar is allowed to collect for this provider. Reported
+    /// separately from <see cref="Connected"/> on purpose: a deliberately
+    /// paused provider must not read as a connected one that stopped producing
+    /// data, which is what support would otherwise chase.
+    /// </summary>
+    bool Collecting,
     ProviderExecutableState ExecutableState,
     ProviderAdapterKind AdapterKind,
     ProviderDataState DataState,
@@ -194,6 +201,7 @@ public static class DiagnosticsReportBuilder
             builder
                 .Append(DiagnosticsSanitizer.SafeToken(ProviderNames.Key(provider.ProviderName)))
                 .Append("=connected:").Append(Boolean(provider.Connected))
+                .Append(",collecting:").Append(Boolean(provider.Collecting))
                 .Append(",executable:").Append(ExecutableState(provider.ExecutableState))
                 .Append(",adapter:").Append(AdapterKind(provider.AdapterKind))
                 .Append(",state:").Append(DataState(provider.DataState))

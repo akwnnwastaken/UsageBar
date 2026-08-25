@@ -30,6 +30,14 @@ struct Localizer {
     var connectClaude: String { pick("Claude Code'a bağlan", "Connect Claude Code") }
     var disconnectCodex: String { pick("Codex bağlantısını kaldır", "Disconnect Codex") }
     var disconnectClaude: String { pick("Claude Code bağlantısını kaldır", "Disconnect Claude Code") }
+    /// The per-provider collection toggle. Unchecking it *is* the pause action,
+    /// so there is no separate pause verb.
+    var collectUsage: String { pick("Kullanımı topla", "Collect usage") }
+    /// Marks a provider that is still connected but not being collected.
+    var paused: String { pick("Duraklatıldı", "Paused") }
+    /// Shown instead of `connectFirst` when providers are connected but every
+    /// one of them is paused — the user has nothing to connect, only to resume.
+    var collectionPaused: String { pick("Kullanım toplama duraklatıldı", "Usage collection paused") }
     var refreshNow: String { pick("Şimdi yenile", "Refresh now") }
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
@@ -949,6 +957,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var providerGenerations: [String: Int] = [:]
     private var pendingRefreshAfterEnable = PendingCollectionRefresh()
 
+    /// The providers the menu-bar selector was last built from, in segment
+    /// order. The click handler resolves against this rather than rebuilding the
+    /// list, so a segment always means the provider it was drawn for.
+    private var selectorProviderNames: [String] = []
+
     /// The measurements this refresh cycle has accepted so far. Written only by
     /// the acceptance callbacks and read once at completion, all on the main
     /// queue, and emptied at both ends of the cycle so nothing can leak into
@@ -1096,11 +1109,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Both providers' connection and collection state, in menu order.
+    private var providerCollectionStates: [ProviderCollectionState] {
+        [
+            ProviderCollectionState(
+                name: "Codex",
+                connected: codexConnected,
+                collectionEnabled: codexCollectionEnabled
+            ),
+            ProviderCollectionState(
+                name: "Claude Code",
+                connected: claudeConnected,
+                collectionEnabled: claudeCollectionEnabled
+            )
+        ]
+    }
+
+    /// What the user manages: still listed, still disconnectable and still
+    /// resumable while paused.
     private var connectedProviderNames: [String] {
-        var names: [String] = []
-        if codexConnected { names.append("Codex") }
-        if claudeConnected { names.append("Claude Code") }
-        return names
+        ProviderStatusPolicy.connectedNames(providerCollectionStates)
+    }
+
+    /// What is actually being collected — the only providers the menu bar may
+    /// speak for or rotate through.
+    private var eligibleProviderNames: [String] {
+        ProviderStatusPolicy.eligibleNames(providerCollectionStates)
     }
 
     private var selectedProviderName: String? {
@@ -1119,12 +1153,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var statusProviderName: String? {
-        let providers = connectedProviderNames
-        guard !providers.isEmpty else { return nil }
-        if autoRotateProviders && providers.count > 1 {
-            return providers[rotatingProviderIndex % providers.count]
-        }
-        return selectedProviderName
+        ProviderStatusPolicy.activeProviderName(
+            eligible: eligibleProviderNames,
+            selected: selectedProviderName,
+            autoRotate: autoRotateProviders,
+            rotatingIndex: rotatingProviderIndex
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -1338,8 +1372,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.attributedTitle = NSAttributedString(string: "")
             statusItem.button?.title = "%—"
             statusItem.button?.image = statusProviderName.flatMap { providerIcon(for: $0, size: 16) }
-            statusItem.button?.toolTip = statusProviderName.map { text.waitingForUsage(provider: $0) }
-                ?? text.connectFirst
+            let idleReason = ProviderStatusPolicy.idleReason(
+                connectedCount: connectedProviderNames.count,
+                eligibleCount: eligibleProviderNames.count
+            )
+            switch idleReason {
+            case .allCollectionPaused:
+                statusItem.button?.toolTip = text.collectionPaused
+            case .noProviderConnected:
+                statusItem.button?.toolTip = text.connectFirst
+            case nil:
+                statusItem.button?.toolTip = statusProviderName.map { text.waitingForUsage(provider: $0) }
+                    ?? text.connectFirst
+            }
         }
     }
 
@@ -1347,15 +1392,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusPresentationTimer?.invalidate()
         statusPresentationTimer = nil
 
-        let shouldRotate = autoRotateProviders && connectedProviderNames.count > 1
+        // Rotation runs over the providers actually being collected. Pausing one
+        // of two makes it dormant without touching the preference, and it starts
+        // again by itself when the second provider resumes.
+        let shouldRotate = ProviderStatusPolicy.rotationIsActive(
+            autoRotate: autoRotateProviders,
+            eligibleCount: eligibleProviderNames.count
+        )
         guard shouldRotate || showResetInMenuBar else { return }
         let interval: TimeInterval = shouldRotate ? ProviderRotation.interval : 60
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
-            if self.autoRotateProviders && self.connectedProviderNames.count > 1 {
+            let eligibleCount = self.eligibleProviderNames.count
+            if ProviderStatusPolicy.rotationIsActive(
+                autoRotate: self.autoRotateProviders,
+                eligibleCount: eligibleCount
+            ) {
                 self.rotatingProviderIndex = ProviderRotation.nextIndex(
                     after: self.rotatingProviderIndex,
-                    providerCount: self.connectedProviderNames.count
+                    providerCount: eligibleCount
                 )
             }
             self.updateStatusTitle()
@@ -1460,7 +1515,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
-            addProvider(displayUsages[providerName] ?? .unavailable(providerName, fallback))
+            addProvider(
+                displayUsages[providerName] ?? .unavailable(providerName, fallback),
+                collectionEnabled: collectionEnabled(providerName)
+            )
         }
 
         if !connectedNames.isEmpty {
@@ -1470,7 +1528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addUsageColorSettings()
             addUsageHistorySettings()
             addRefreshIntervalSettings()
-            addDisconnectItems(connectedNames)
+            addProviderManagementItems(connectedNames)
         }
 
         if !codexConnected || !claudeConnected {
@@ -1512,7 +1570,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         refreshItem.target = self
-        refreshItem.isEnabled = !isRefreshing && !connectedNames.isEmpty
+        // Nothing to refresh while every connected provider is paused: the
+        // action would launch no provider, so it must not look available.
+        refreshItem.isEnabled = !isRefreshing && !eligibleProviderNames.isEmpty
         menu.addItem(refreshItem)
 
         let diagnosticsItem = NSMenuItem(
@@ -1539,6 +1599,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addProviderSelector() {
         let providerNames = connectedProviderNames
+        // The segment→provider mapping is captured here and read back by the
+        // click handler. Recomputing the list at click time would index into a
+        // different list if the provider set changed after the control was
+        // built, and the click would land on the wrong provider.
+        selectorProviderNames = providerNames
         let supportsAutomatic = providerNames.count > 1
         let providerLabels = providerNames.map { $0 == "Claude Code" ? "Claude" : $0 }
         let labels = supportsAutomatic ? [text.automatic] + providerLabels : providerLabels
@@ -1714,20 +1779,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item)
     }
 
-    private func addDisconnectItems(_ connectedNames: [String]) {
+    /// One row per connected provider, holding everything that manages it.
+    ///
+    /// A paused provider is never removed from here: pausing is temporary, and
+    /// the row that resumes it has to stay reachable. The row is a submenu
+    /// rather than two flat items so each control keeps an unambiguous label
+    /// instead of repeating "Collect usage" once per provider.
+    private func addProviderManagementItems(_ connectedNames: [String]) {
         for providerName in connectedNames {
-            let title = providerName == "Codex" ? text.disconnectCodex : text.disconnectClaude
-            let action = providerName == "Codex"
-                ? #selector(disconnectCodex)
-                : #selector(disconnectClaude)
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.image = providerIcon(for: providerName, size: 16)
-            menu.addItem(item)
+            let isCollecting = collectionEnabled(providerName)
+            let rootItem = NSMenuItem(
+                title: isCollecting ? providerName : "\(providerName) · \(text.paused)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            rootItem.image = providerIcon(for: providerName, size: 16)
+
+            let submenu = manuallyEnabledMenu()
+            let collectItem = NSMenuItem(
+                title: text.collectUsage,
+                action: providerName == "Codex"
+                    ? #selector(toggleCodexCollection)
+                    : #selector(toggleClaudeCollection),
+                keyEquivalent: ""
+            )
+            collectItem.target = self
+            collectItem.state = isCollecting ? .on : .off
+            submenu.addItem(collectItem)
+            submenu.addItem(.separator())
+
+            let disconnectItem = NSMenuItem(
+                title: providerName == "Codex" ? text.disconnectCodex : text.disconnectClaude,
+                action: providerName == "Codex"
+                    ? #selector(disconnectCodex)
+                    : #selector(disconnectClaude),
+                keyEquivalent: ""
+            )
+            disconnectItem.target = self
+            submenu.addItem(disconnectItem)
+
+            rootItem.submenu = submenu
+            menu.addItem(rootItem)
         }
     }
 
-    private func addProvider(_ usage: ProviderUsage) {
+    private func addProvider(_ usage: ProviderUsage, collectionEnabled: Bool) {
         var rows: [(title: NSAttributedString, history: [UsageHistorySample])] = []
         for (position, window) in usage.windows.enumerated() {
             let samples = usageHistoryEnabled
@@ -1735,7 +1831,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 : []
             rows.append((windowTitle(text.usageWindowLabel(window, position: position), window), samples))
         }
-        if let error = usage.error {
+        // A paused provider keeps whatever error it last had, but UsageBar is
+        // not trying to collect from it, so the row would blame the provider for
+        // a state the user chose. The paused marker takes its place.
+        if let error = usage.error,
+           ProviderStatusPolicy.rendersActiveError(
+               collectionEnabled: collectionEnabled,
+               hasError: true
+           ) {
             if let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
                 rows.append((staleTitle(error, lastSuccessfulAt: lastSuccessfulAt), []))
             } else {
@@ -1758,7 +1861,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             container.addSubview(imageView)
         }
 
-        let title = NSTextField(labelWithString: usage.name)
+        let title = NSTextField(
+            labelWithString: collectionEnabled ? usage.name : "\(usage.name) · \(text.paused)"
+        )
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .labelColor
         title.frame = NSRect(x: 38, y: height - 34, width: width - 50, height: 23)
@@ -2012,6 +2117,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func disconnectCodex() { disconnectProvider("Codex") { self.codexConnected = false } }
     @objc private func disconnectClaude() { disconnectProvider("Claude Code") { self.claudeConnected = false } }
 
+    /// The menu's collection toggles. They only invert the stored state and hand
+    /// it to the one runtime path — everything else about pausing and resuming
+    /// (the generation bump, the pending-rise clearing, the coalesced refresh)
+    /// belongs there, not here.
+    @objc private func toggleCodexCollection() { toggleCollection(for: "Codex") }
+    @objc private func toggleClaudeCollection() { toggleCollection(for: "Claude Code") }
+
+    private func toggleCollection(for providerName: String) {
+        setCollectionEnabled(!collectionEnabled(providerName), forProvider: providerName)
+        configureStatusPresentationTimer()
+        updateStatusTitle()
+        rebuildMenu()
+    }
+
     private func disconnectProvider(_ providerName: String, clearPreference: () -> Void) {
         let previousSelection = selectedProviderName
         clearPreference()
@@ -2041,7 +2160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func selectStatusProvider(_ sender: NSSegmentedControl) {
-        let providerNames = connectedProviderNames
+        // The list this control was built from, not a freshly derived one.
+        let providerNames = selectorProviderNames
         let supportsAutomatic = providerNames.count > 1
         if supportsAutomatic && sender.selectedSegment == 0 {
             autoRotateProviders = true
@@ -2127,7 +2247,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ]
 
         for providerName in ["Codex", "Claude Code"] {
-            let connected = providerName == "Codex" ? codexConnected : claudeConnected
+            let connected = self.connected(providerName)
+            // Reported separately from `connected` on purpose: a deliberately
+            // paused provider must not read as a connected one that stopped
+            // producing data, which is what support would otherwise chase.
+            let collecting = ProviderCollectionPolicy.isEligible(
+                connected: connected,
+                collectionEnabled: collectionEnabled(providerName)
+            )
             let executableState: String
             let lookup = providerName == "Codex"
                 ? ExecutableLocator.codex()
@@ -2151,7 +2278,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let windowKinds = usage?.windows.map { $0.kind.historyKey }.joined(separator: ",") ?? "none"
             let issue = usage?.error?.diagnosticCode ?? "none"
             let key = providerName == "Codex" ? "codex" : "claude"
-            lines.append("\(key)=connected:\(connected),executable:\(executableState),state:\(state),windows:\(windowKinds),issue:\(issue)")
+            lines.append(
+                "\(key)=connected:\(connected),collecting:\(collecting)"
+                    + ",executable:\(executableState),state:\(state),windows:\(windowKinds),issue:\(issue)"
+            )
         }
         return lines.joined(separator: "\n")
     }
@@ -2475,6 +2605,61 @@ private func runSelfTest() -> Int32 {
         recordedFromNothing.isEmpty
     else {
         fputs("Toplama yaşam döngüsü testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Duraklatma sunumu: paketlenmiş ikili dosyada da duraklatılan sağlayıcı
+    // bağlı kalır, etkin sağlayıcı yalnızca toplama yapanlardan seçilir ve
+    // "hepsi duraklatıldı" durumu "önce bağlayın" ile karıştırılmaz.
+    let pausedCodex = [
+        ProviderCollectionState(name: "Codex", connected: true, collectionEnabled: false),
+        ProviderCollectionState(name: "Claude Code", connected: true, collectionEnabled: true)
+    ]
+    let allPaused = pausedCodex.map {
+        ProviderCollectionState(name: $0.name, connected: true, collectionEnabled: false)
+    }
+
+    guard
+        turkish.collectUsage == "Kullanımı topla",
+        english.collectUsage == "Collect usage",
+        turkish.paused == "Duraklatıldı",
+        english.paused == "Paused",
+        turkish.collectionPaused == "Kullanım toplama duraklatıldı",
+        english.collectionPaused == "Usage collection paused",
+        // Duraklatılan sağlayıcı yönetimden düşmez, yalnızca toplamadan düşer.
+        ProviderStatusPolicy.connectedNames(pausedCodex) == ["Codex", "Claude Code"],
+        ProviderStatusPolicy.eligibleNames(pausedCodex) == ["Claude Code"],
+        // Saklanan seçim yeniden yazılmaz; yalnızca etkin sağlayıcı değişir.
+        ProviderStatusPolicy.activeProviderName(
+            eligible: ["Claude Code"],
+            selected: "Codex",
+            autoRotate: false,
+            rotatingIndex: 0
+        ) == "Claude Code",
+        ProviderStatusPolicy.activeProviderName(
+            eligible: ["Codex", "Claude Code"],
+            selected: "Codex",
+            autoRotate: false,
+            rotatingIndex: 0
+        ) == "Codex",
+        ProviderStatusPolicy.activeProviderName(
+            eligible: [],
+            selected: "Codex",
+            autoRotate: false,
+            rotatingIndex: 0
+        ) == nil,
+        ProviderStatusPolicy.rotationIsActive(autoRotate: true, eligibleCount: 1) == false,
+        ProviderStatusPolicy.rotationIsActive(autoRotate: true, eligibleCount: 2),
+        ProviderStatusPolicy.idleReason(connectedCount: 0, eligibleCount: 0) == .noProviderConnected,
+        ProviderStatusPolicy.idleReason(
+            connectedCount: ProviderStatusPolicy.connectedNames(allPaused).count,
+            eligibleCount: ProviderStatusPolicy.eligibleNames(allPaused).count
+        ) == .allCollectionPaused,
+        ProviderStatusPolicy.idleReason(connectedCount: 2, eligibleCount: 1) == nil,
+        ProviderStatusPolicy.rendersActiveError(collectionEnabled: false, hasError: true) == false,
+        ProviderStatusPolicy.rendersActiveError(collectionEnabled: true, hasError: true)
+    else {
+        fputs("Duraklatma sunumu testi başarısız\n", stderr)
         return 1
     }
 

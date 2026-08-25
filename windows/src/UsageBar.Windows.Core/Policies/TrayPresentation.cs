@@ -26,7 +26,15 @@ public enum TrayIconState
     Refreshing,
 
     /// <summary>The last known value, kept visible after a failed refresh.</summary>
-    Stale
+    Stale,
+
+    /// <summary>
+    /// Providers are connected, but the user has paused collection on every one
+    /// of them. Deliberately its own state: routing this through
+    /// <see cref="NoData"/> would tell the user to connect a provider they
+    /// already have.
+    /// </summary>
+    Paused
 }
 
 /// <summary>What the tray icon should draw and what its tooltip should say.</summary>
@@ -51,8 +59,15 @@ public static class TrayPresentationCalculator
     /// <summary>Maximum tooltip length Windows shell tooltips reliably accept.</summary>
     public const int MaximumTooltipLength = 127;
 
+    /// <param name="hasConnectedProviders">
+    /// Whether any provider is connected at all. A null
+    /// <paramref name="statusProviderName"/> no longer implies "nothing is set
+    /// up": it also happens when every connected provider is paused, and the
+    /// two cases must not share a message.
+    /// </param>
     public static TrayPresentation Calculate(
         string? statusProviderName,
+        bool hasConnectedProviders,
         IReadOnlyDictionary<string, ProviderUsage> displayUsages,
         UsageAlertPolicy alertPolicy,
         Localizer text,
@@ -62,6 +77,18 @@ public static class TrayPresentationCalculator
     {
         ArgumentNullException.ThrowIfNull(displayUsages);
         ArgumentNullException.ThrowIfNull(text);
+
+        if (statusProviderName is null && hasConnectedProviders)
+        {
+            // Every connected provider is paused. A read may still be finishing,
+            // but its result can no longer be accepted, so this is not a
+            // refresh in progress — it is a deliberate stop.
+            return new TrayPresentation(
+                TrayIconState.Paused,
+                TrayPresentation.NoDataLabel,
+                null,
+                Tooltip(text, text.CollectionPaused));
+        }
 
         var summary = statusProviderName is null
             ? null

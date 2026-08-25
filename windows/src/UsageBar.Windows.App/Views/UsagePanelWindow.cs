@@ -8,6 +8,7 @@ using UsageBar.Windows.Core.History;
 using UsageBar.Windows.Core.Localization;
 using UsageBar.Windows.Core.Policies;
 using UsageBar.Windows.Core.Providers;
+using UsageBar.Windows.Core.Settings;
 
 namespace UsageBar.Windows.App.Views;
 
@@ -277,7 +278,9 @@ internal sealed class UsagePanelWindow : Window
             MinWidth = 88,
             Padding = new Thickness(12, 5, 12, 5),
             Margin = new Thickness(8, 0, 0, 0),
-            IsEnabled = !_controller.IsRefreshing && _controller.ConnectedProviderNames.Count > 0
+            // Nothing to refresh while every connected provider is paused: the
+            // action would launch no provider, so it must not look available.
+            IsEnabled = !_controller.IsRefreshing && _controller.EligibleProviderNames.Count > 0
         };
         refresh.Click += (_, _) => _ = _controller.RefreshAsync();
         Grid.SetColumn(refresh, 1);
@@ -318,18 +321,31 @@ internal sealed class UsagePanelWindow : Window
     private UIElement ProviderCard(Localizer text, string providerName, bool colorsEnabled)
     {
         var usage = _controller.DisplayUsages.TryGetValue(providerName, out var found) ? found : null;
+        var isCollecting = _controller.Settings.IsCollectionEnabled(providerName);
 
         var card = new StackPanel();
         card.Children.Add(new TextBlock
         {
-            Text = providerName,
+            // A paused provider stays on the panel — it is still connected, and
+            // the marker says why it is not moving.
+            Text = isCollecting ? providerName : $"{providerName} · {text.Paused}",
             FontWeight = FontWeights.SemiBold,
             Foreground = _theme.Foreground,
             Margin = new Thickness(0, 0, 0, 4)
         });
 
+        // A paused provider keeps whatever error it last had, but UsageBar is
+        // not trying to collect from it, so showing that error would blame the
+        // provider for a state the user chose.
+        var showsError = ProviderCollectionPolicy.RendersActiveError(isCollecting, usage?.Error is not null);
+
         if (usage is null || usage.Windows.Count == 0)
         {
+            if (!isCollecting)
+            {
+                return Section(card);
+            }
+
             var issue = usage?.Error ?? (_controller.IsRefreshing ? ProviderIssue.Refreshing : ProviderIssue.NoData);
             card.Children.Add(new TextBlock
             {
@@ -345,7 +361,7 @@ internal sealed class UsagePanelWindow : Window
                 card.Children.Add(WindowRow(text, usage, usage.Windows[position], position, colorsEnabled));
             }
 
-            if (usage.IsStale && usage.LastSuccessfulAt is DateTimeOffset lastGood)
+            if (showsError && usage.IsStale && usage.LastSuccessfulAt is DateTimeOffset lastGood)
             {
                 card.Children.Add(new TextBlock
                 {

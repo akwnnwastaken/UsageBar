@@ -41,6 +41,7 @@ public sealed class TrayIconRenderingTests
 
         return TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             usages,
             new UsageAlertPolicy(true, UsageAlertPreset.Balanced),
             English,

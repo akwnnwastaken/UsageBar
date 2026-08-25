@@ -81,6 +81,18 @@ public static class ProviderCollectionPolicy
         int launchGeneration,
         int currentGeneration) =>
         IsEligible(connected, collectionEnabled) && launchGeneration == currentGeneration;
+
+    /// <summary>
+    /// Whether a provider's retained error should be shown as an active
+    /// collection failure.
+    ///
+    /// A paused provider keeps whatever error it last had — the model is not
+    /// rewritten — but UsageBar is not attempting collection, so presenting it
+    /// as a failure would blame the provider for a state the user chose. Paused
+    /// wins; the error returns on its own if a later reading fails.
+    /// </summary>
+    public static bool RendersActiveError(bool collectionEnabled, bool hasError) =>
+        collectionEnabled && hasError;
 }
 
 /// <summary>

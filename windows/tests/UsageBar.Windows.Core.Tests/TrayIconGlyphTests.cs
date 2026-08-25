@@ -25,6 +25,7 @@ public sealed class TrayIconGlyphTests
 
         return TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             new Dictionary<string, ProviderUsage>(StringComparer.Ordinal) { [ProviderNames.Codex] = usage },
             new UsageAlertPolicy(true, UsageAlertPreset.Balanced),
             English,
@@ -90,12 +91,13 @@ public sealed class TrayIconGlyphTests
         var policy = new UsageAlertPolicy(true, UsageAlertPreset.Balanced);
 
         var noData = TrayIconGlyph.For(TrayPresentationCalculator.Calculate(
-            null, empty, policy, English, isRefreshing: false, showResetCountdown: false, Now));
+            null, hasConnectedProviders: false, empty, policy, English, isRefreshing: false, showResetCountdown: false, Now));
         Assert.Equal("—", noData.Text);
         Assert.Equal(TrayUnderline.None, noData.Underline);
 
         var refreshing = TrayIconGlyph.For(TrayPresentationCalculator.Calculate(
-            ProviderNames.Codex, empty, policy, English, isRefreshing: true, showResetCountdown: false, Now));
+            ProviderNames.Codex,
+            hasConnectedProviders: true, empty, policy, English, isRefreshing: true, showResetCountdown: false, Now));
         Assert.Equal("↻", refreshing.Text);
         Assert.Equal(TrayUnderline.None, refreshing.Underline);
     }
