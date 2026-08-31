@@ -75,6 +75,10 @@ public readonly record struct TrayIconGlyph(
         TrayIconState.Warning => TrayUnderline.Short,
         TrayIconState.Critical => TrayUnderline.Full,
         TrayIconState.Stale => TrayUnderline.Dashed,
+        // Paused reuses the existing neutral dashed treatment rather than
+        // introducing a new one: it is not an error, and colour alone never
+        // carries the meaning — the tooltip says it in words.
+        TrayIconState.Paused => TrayUnderline.Dashed,
         _ => TrayUnderline.None
     };
 }

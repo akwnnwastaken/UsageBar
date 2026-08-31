@@ -268,6 +268,7 @@ public sealed class ClaudeProviderPolicyTests
                 new ProviderDiagnostics(
                     ProviderNames.ClaudeCode,
                     Connected: true,
+                    Collecting: true,
                     ProviderExecutableState.Trusted,
                     ProviderAdapterKind.Wsl,
                     ProviderDataState.Fresh,
@@ -291,6 +292,7 @@ public sealed class ClaudeProviderPolicyTests
                     new ProviderDiagnostics(
                         ProviderNames.ClaudeCode,
                         Connected: true,
+                        Collecting: true,
                         ProviderExecutableState.Trusted,
                         kind,
                         ProviderDataState.Fresh,

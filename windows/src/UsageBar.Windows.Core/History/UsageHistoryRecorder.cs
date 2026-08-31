@@ -3,7 +3,12 @@ using UsageBar.Windows.Core.Providers;
 namespace UsageBar.Windows.Core.History;
 
 /// <summary>
-/// Turns a completed refresh into new history samples.
+/// Turns the measurements a refresh actually accepted into new history samples.
+///
+/// The input is the accepted set, never the usage cache: a provider that was
+/// not read this cycle — paused, disconnected, or simply not part of it — keeps
+/// its last reading on screen, and re-recording that reading would draw a flat
+/// line of measurements that never happened.
 ///
 /// Two parity rules live here: a provider whose refresh failed contributes
 /// nothing (a stale value is never recorded as a new sample), and the recorded
@@ -14,19 +19,17 @@ public static class UsageHistoryRecorder
 {
     public static IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> Record(
         IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> history,
-        IReadOnlyDictionary<string, ProviderUsage> usages,
-        IReadOnlyList<string> connectedProviderNames,
+        IReadOnlyDictionary<string, ProviderUsage> acceptedMeasurements,
         DateTimeOffset at)
     {
         ArgumentNullException.ThrowIfNull(history);
-        ArgumentNullException.ThrowIfNull(usages);
-        ArgumentNullException.ThrowIfNull(connectedProviderNames);
+        ArgumentNullException.ThrowIfNull(acceptedMeasurements);
 
         var updated = new Dictionary<string, IReadOnlyList<UsageHistorySample>>(history, StringComparer.Ordinal);
 
-        foreach (var providerName in connectedProviderNames)
+        foreach (var (providerName, usage) in acceptedMeasurements)
         {
-            if (!usages.TryGetValue(providerName, out var usage) || usage.Error is not null)
+            if (usage.Error is not null)
             {
                 continue;
             }

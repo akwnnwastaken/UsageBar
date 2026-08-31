@@ -51,6 +51,7 @@ public sealed class DiagnosticsTests
                 new ProviderDiagnostics(
                     ProviderNames.Codex,
                     Connected: true,
+                    Collecting: true,
                     ProviderExecutableState.Trusted,
                     ProviderAdapterKind.NativeExecutable,
                     ProviderDataState.Fresh,
@@ -59,6 +60,7 @@ public sealed class DiagnosticsTests
                 new ProviderDiagnostics(
                     ProviderNames.ClaudeCode,
                     Connected: true,
+                    Collecting: true,
                     ProviderExecutableState.UnsupportedInstallation,
                     ProviderAdapterKind.Wsl,
                     ProviderDataState.Stale,
@@ -117,11 +119,11 @@ public sealed class DiagnosticsTests
         Assert.Contains("tray_guidance_version=1", report, StringComparison.Ordinal);
         Assert.Contains("autostart=false", report, StringComparison.Ordinal);
         Assert.Contains(
-            "codex=connected:true,executable:trusted,adapter:native_exe,state:fresh,windows:five-hour+weekly,issue:none",
+            "codex=connected:true,collecting:true,executable:trusted,adapter:native_exe,state:fresh,windows:five-hour+weekly,issue:none",
             report,
             StringComparison.Ordinal);
         Assert.Contains(
-            "claude=connected:true,executable:unsupported_installation,adapter:wsl,state:stale,windows:none,issue:claude_usage_timed_out",
+            "claude=connected:true,collecting:true,executable:unsupported_installation,adapter:wsl,state:stale,windows:none,issue:claude_usage_timed_out",
             report,
             StringComparison.Ordinal);
     }

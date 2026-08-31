@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using UsageBar.Windows.App.Tray;
 using UsageBar.Windows.App.Views;
 using UsageBar.Windows.Core.Policies;
+using UsageBar.Windows.Core.Settings;
 using UsageBar.Windows.Infrastructure.Providers;
 using UsageBar.Windows.Infrastructure.Startup;
 using UsageBar.Windows.Infrastructure.Storage;
@@ -130,9 +131,10 @@ internal sealed class TrayApplication : Application
             _refreshTimer.Interval = interval;
         }
 
-        // Rotation only makes sense with more than one connected provider.
-        var shouldRotate = _controller.Settings.AutoRotateProviders &&
-                           _controller.ConnectedProviderNames.Count > 1;
+        // Rotation only makes sense with more than one provider actually being
+        // collected: a paused one has no live value to rotate to. The
+        // preference itself is untouched, so rotation resumes on its own.
+        var shouldRotate = _controller.Settings.RotationIsActive();
 
         if (shouldRotate && _rotationTimer is null)
         {

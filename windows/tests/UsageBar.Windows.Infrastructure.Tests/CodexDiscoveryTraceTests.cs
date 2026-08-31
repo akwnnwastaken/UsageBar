@@ -560,6 +560,7 @@ public sealed class CodexDiscoveryTraceTests : IDisposable
             new ProviderDiagnostics(
                 ProviderNames.Codex,
                 Connected: true,
+                Collecting: true,
                 ProviderExecutableState.Missing,
                 ProviderAdapterKind.None,
                 ProviderDataState.Error,

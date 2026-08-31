@@ -139,6 +139,7 @@ public sealed class LocalizationAndTrayPresentationTests
         var usages = Usages(remaining: 42);
         var presentation = TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             usages,
             new UsageAlertPolicy(true, UsageAlertPreset.Balanced),
             English,
@@ -162,6 +163,7 @@ public sealed class LocalizationAndTrayPresentationTests
     {
         var presentation = TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             Usages(remaining),
             new UsageAlertPolicy(true, UsageAlertPreset.Balanced),
             English,
@@ -180,20 +182,22 @@ public sealed class LocalizationAndTrayPresentationTests
         var policy = new UsageAlertPolicy(true, UsageAlertPreset.Balanced);
 
         var noData = TrayPresentationCalculator.Calculate(
-            null, empty, policy, English, isRefreshing: false, showResetCountdown: false, Now);
+            null, hasConnectedProviders: false, empty, policy, English, isRefreshing: false, showResetCountdown: false, Now);
         Assert.Equal(TrayIconState.NoData, noData.State);
         Assert.Equal("—", noData.Label);
         Assert.Contains("Connect a provider first", noData.Tooltip, StringComparison.Ordinal);
 
         var refreshing = TrayPresentationCalculator.Calculate(
-            ProviderNames.Codex, empty, policy, English, isRefreshing: true, showResetCountdown: false, Now);
+            ProviderNames.Codex,
+            hasConnectedProviders: true, empty, policy, English, isRefreshing: true, showResetCountdown: false, Now);
         Assert.Equal(TrayIconState.Refreshing, refreshing.State);
         Assert.Equal("↻", refreshing.Label);
         Assert.Contains("Waiting for Codex usage", refreshing.Tooltip, StringComparison.Ordinal);
 
         var stale = Usages(remaining: 42, stale: true);
         var stalePresentation = TrayPresentationCalculator.Calculate(
-            ProviderNames.Codex, stale, policy, English, isRefreshing: false, showResetCountdown: false, Now);
+            ProviderNames.Codex,
+            hasConnectedProviders: true, stale, policy, English, isRefreshing: false, showResetCountdown: false, Now);
         Assert.Equal(TrayIconState.Stale, stalePresentation.State);
         Assert.Equal("42", stalePresentation.Label);
         Assert.Contains("(stale)", stalePresentation.Tooltip, StringComparison.Ordinal);
@@ -213,6 +217,7 @@ public sealed class LocalizationAndTrayPresentationTests
 
         var english = TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             Usages(remaining: 42),
             policy,
             English,
@@ -233,6 +238,7 @@ public sealed class LocalizationAndTrayPresentationTests
 
         var turkish = TrayPresentationCalculator.Calculate(
             ProviderNames.Codex,
+            hasConnectedProviders: true,
             Usages(remaining: 42),
             policy,
             Turkish,
@@ -257,6 +263,7 @@ public sealed class LocalizationAndTrayPresentationTests
     {
         var presentation = TrayPresentationCalculator.Calculate(
             ProviderNames.ClaudeCode,
+            hasConnectedProviders: true,
             Usages(remaining: 42, providerName: ProviderNames.ClaudeCode),
             new UsageAlertPolicy(true, UsageAlertPreset.Balanced),
             Turkish,

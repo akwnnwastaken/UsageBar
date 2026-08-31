@@ -28,6 +28,23 @@ public sealed class Localizer
     public string AppName => "UsageBar";
     public string UsageTooltip => Pick("Codex ve Claude Code kullanımı", "Codex and Claude Code usage");
     public string ConnectFirst => Pick("Önce bir sağlayıcı bağlayın", "Connect a provider first");
+
+    /// <summary>
+    /// Shown instead of <see cref="ConnectFirst"/> when providers are connected
+    /// but every one of them is paused — there is nothing to connect, only to
+    /// resume.
+    /// </summary>
+    public string CollectionPaused => Pick("Kullanım toplama duraklatıldı", "Usage collection paused");
+
+    /// <summary>
+    /// The per-provider collection toggle. Unchecking it <i>is</i> the pause
+    /// action, so there is no separate pause verb.
+    /// </summary>
+    public string CollectUsage => Pick("Kullanımı topla", "Collect usage");
+
+    /// <summary>Marks a provider that is connected but not being collected.</summary>
+    public string Paused => Pick("Duraklatıldı", "Paused");
+
     public string Refreshing => Pick("Yenileniyor…", "Refreshing…");
     public string NoData => Pick("Henüz veri yok", "No data yet");
     public string Now => Pick("şimdi", "now");

@@ -42,6 +42,16 @@ internal sealed class UsageBarController : IDisposable
     private readonly Dictionary<string, ProviderUsage> _usages = new(StringComparer.Ordinal);
     private readonly UsageDisplayState _displayState = new();
 
+    /// <summary>
+    /// One counter per provider, bumped whenever its connection or collection
+    /// state changes. A read carries the value it launched with, so a result
+    /// that outlives the state it was started under can be told apart from a
+    /// current one — which current eligibility alone cannot do.
+    /// </summary>
+    private readonly Dictionary<string, int> _generations = new(StringComparer.Ordinal);
+
+    private PendingCollectionRefresh _pendingRefreshAfterEnable;
+
     private IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> _history;
     private CancellationTokenSource? _refresh;
     private int _rotatingProviderIndex;
@@ -83,8 +93,13 @@ internal sealed class UsageBarController : IDisposable
 
     public UsageRefreshInterval RefreshInterval => UsageRefreshIntervals.Resolved(Settings.RefreshInterval);
 
+    /// <summary>What the user manages; a paused provider stays in this list.</summary>
     public IReadOnlyList<string> ConnectedProviderNames => Settings.ConnectedProviderNames();
 
+    /// <summary>What is actually being collected.</summary>
+    public IReadOnlyList<string> EligibleProviderNames => Settings.EligibleProviderNames();
+
+    /// <summary>Null when nothing is being collected, including when everything is paused.</summary>
     public string? StatusProviderName => Settings.StatusProviderName(_rotatingProviderIndex);
 
     /// <summary>The smoothed readings shown in the tray and the panel.</summary>
@@ -139,6 +154,7 @@ internal sealed class UsageBarController : IDisposable
 
     public TrayPresentation Presentation => TrayPresentationCalculator.Calculate(
         StatusProviderName,
+        ConnectedProviderNames.Count > 0,
         DisplayUsages,
         AlertPolicy,
         Text,
@@ -153,17 +169,22 @@ internal sealed class UsageBarController : IDisposable
         _ = RefreshAsync();
     }
 
-    /// <summary>Advances the auto-rotation. Does not query any provider.</summary>
+    /// <summary>
+    /// Advances the auto-rotation. Does not query any provider. Rotation runs
+    /// over the eligible providers, so pausing one of two leaves the preference
+    /// intact and simply stops rotating until it resumes.
+    /// </summary>
     public void RotateProvider()
     {
-        if (!Settings.AutoRotateProviders || ConnectedProviderNames.Count <= 1)
+        var eligible = EligibleProviderNames;
+        if (!Settings.RotationIsActive())
         {
             return;
         }
 
         _rotatingProviderIndex = ProviderRotation.NextIndex(
             _rotatingProviderIndex,
-            ConnectedProviderNames.Count);
+            eligible.Count);
         RaiseChanged();
     }
 
@@ -183,36 +204,58 @@ internal sealed class UsageBarController : IDisposable
             return;
         }
 
+        // Decided before any refreshing state is set: a cycle that reads nobody
+        // must not look like a refresh at all — no spinner, no timestamp, no
+        // completion. Retention still runs, so pausing everything does not stop
+        // the 24-hour clock.
+        if (!ProviderCollectionPolicy.CollectsUsage(new[] { ActionFor(ProviderNames.Codex), ActionFor(ProviderNames.ClaudeCode) }))
+        {
+            MaintainHistoryRetention(DateTimeOffset.Now);
+            return;
+        }
+
         IsRefreshing = true;
         RaiseChanged();
+
+        // The measurements this cycle accepts. Every write happens inside a
+        // posted action, and `_post` is a synchronous dispatcher invoke, so all
+        // of them have run by the time the completion below is posted.
+        var acceptedMeasurements = new Dictionary<string, ProviderUsage>(StringComparer.Ordinal);
 
         using var cancellation = new CancellationTokenSource();
         Interlocked.Exchange(ref _refresh, cancellation);
 
         try
         {
-            if (Settings.CodexConnected)
+            var codexAction = ActionFor(ProviderNames.Codex);
+            if (codexAction == ProviderCollectionAction.Collect)
             {
+                var launchGeneration = GenerationOf(ProviderNames.Codex);
                 var fetched = await _codexReader
                     .ReadAsync(Settings.CodexExecutablePath, cancellation.Token)
                     .ConfigureAwait(false);
 
-                _post(() => Accept(fetched));
+                _post(() => Accept(ProviderNames.Codex, launchGeneration, fetched, acceptedMeasurements));
             }
-            else
+            else if (codexAction == ProviderCollectionAction.DropCache)
             {
                 _post(() => _usages.Remove(ProviderNames.Codex));
             }
 
-            if (Settings.ClaudeConnected)
+            // Read from the state as it is now, not as it was at method entry:
+            // the Codex read above may have taken long enough for the user to
+            // pause or disconnect Claude in the meantime.
+            var claudeAction = ActionFor(ProviderNames.ClaudeCode);
+            if (claudeAction == ProviderCollectionAction.Collect)
             {
+                var launchGeneration = GenerationOf(ProviderNames.ClaudeCode);
                 var claude = await ClaudeReader()
                     .ReadAsync(cancellation.Token)
                     .ConfigureAwait(false);
 
-                _post(() => Accept(claude));
+                _post(() => Accept(ProviderNames.ClaudeCode, launchGeneration, claude, acceptedMeasurements));
             }
-            else
+            else if (claudeAction == ProviderCollectionAction.DropCache)
             {
                 _post(() => _usages.Remove(ProviderNames.ClaudeCode));
             }
@@ -224,34 +267,171 @@ internal sealed class UsageBarController : IDisposable
         {
             // The refresh is no longer the current one; the using block owns it.
             Interlocked.CompareExchange(ref _refresh, null, cancellation);
-            _post(CompleteRefresh);
+            _post(() => CompleteRefresh(acceptedMeasurements));
         }
     }
 
-    private void Accept(ProviderUsage fetched)
+    /// <summary>
+    /// Applies a finished read — unless the provider moved on while it ran.
+    ///
+    /// A read that was launched, then had its provider paused, disconnected or
+    /// reconnected, is discarded whole: no cached reading, no freshness change,
+    /// no measurement for the display filter or the history.
+    /// </summary>
+    private void Accept(
+        string providerName,
+        int launchGeneration,
+        ProviderUsage fetched,
+        IDictionary<string, ProviderUsage> acceptedMeasurements)
     {
+        // The launch decides whose state is checked. A result naming a
+        // different provider is a broken contract, not something to validate
+        // against whatever it claims to be.
+        if (!string.Equals(fetched.Name, providerName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!ProviderCollectionPolicy.ShouldAccept(
+                IsConnected(providerName),
+                IsCollectionEnabled(providerName),
+                launchGeneration,
+                GenerationOf(providerName)))
+        {
+            return;
+        }
+
         var now = DateTimeOffset.Now;
-        _usages.TryGetValue(fetched.Name, out var previous);
-        _usages[fetched.Name] = ProviderUsageTransition.Accept(previous, fetched, now);
+        _usages.TryGetValue(providerName, out var previous);
+        var accepted = ProviderUsageTransition.Accept(previous, fetched, now);
+        _usages[providerName] = accepted;
+
+        if (accepted.Error is null && accepted.Windows.Count > 0)
+        {
+            acceptedMeasurements[providerName] = accepted;
+        }
     }
 
-    private void CompleteRefresh()
+    private void CompleteRefresh(IReadOnlyDictionary<string, ProviderUsage> acceptedMeasurements)
     {
         var now = DateTimeOffset.Now;
         IsRefreshing = false;
+
+        // Consumed before the follow-up starts, so the follow-up cannot re-arm
+        // itself and loop.
+        var followUpRequested = _pendingRefreshAfterEnable.Consume();
+
         LastUpdated = now;
 
-        // The filter advances once per completed refresh; the raw readings are
-        // what history records.
-        _displayState.Advance(_usages);
+        // The filter advances once per completed refresh, from the measurements
+        // that refresh accepted; the raw readings are what history records.
+        _displayState.Advance(acceptedMeasurements);
 
         if (Settings.UsageHistoryEnabled ?? true)
         {
-            _history = UsageHistoryRecorder.Record(_history, _usages, ConnectedProviderNames, now);
+            _history = UsageHistoryRecorder.Record(_history, acceptedMeasurements, now);
             _storage.SaveHistory(_history, now);
         }
 
         RaiseChanged();
+
+        if (followUpRequested)
+        {
+            _ = RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Retention for a tick that collected nothing: everything paused, or the
+    /// history setting just switched back on. It prunes what has aged out and
+    /// creates no sample, because nothing was measured.
+    /// </summary>
+    private void MaintainHistoryRetention(DateTimeOffset now)
+    {
+        if (!(Settings.UsageHistoryEnabled ?? true))
+        {
+            return;
+        }
+
+        var retained = UsageHistoryModel.Sanitized(_history, now);
+        if (SameHistory(_history, retained))
+        {
+            return;
+        }
+
+        _history = retained;
+        _storage.SaveHistory(_history, now);
+        RaiseChanged();
+    }
+
+    private static bool SameHistory(
+        IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> left,
+        IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> right) =>
+        left.Count == right.Count &&
+        left.All(entry =>
+            right.TryGetValue(entry.Key, out var samples) &&
+            entry.Value.SequenceEqual(samples));
+
+    private bool IsConnected(string providerName) =>
+        providerName == ProviderNames.Codex ? Settings.CodexConnected : Settings.ClaudeConnected;
+
+    private bool IsCollectionEnabled(string providerName) =>
+        (providerName == ProviderNames.Codex
+            ? Settings.CodexCollectionEnabled
+            : Settings.ClaudeCollectionEnabled) ?? true;
+
+    private ProviderCollectionAction ActionFor(string providerName) =>
+        ProviderCollectionPolicy.Action(IsConnected(providerName), IsCollectionEnabled(providerName));
+
+    private int GenerationOf(string providerName) =>
+        _generations.TryGetValue(providerName, out var generation) ? generation : 0;
+
+    /// <summary>
+    /// Invalidates every read of this provider that is already in flight.
+    /// Always called as part of the same synchronous state change, so a read
+    /// launched afterwards captures the new value and one launched before keeps
+    /// the old.
+    /// </summary>
+    private void BumpGeneration(string providerName) =>
+        _generations[providerName] = GenerationOf(providerName) + 1;
+
+    /// <summary>
+    /// The one runtime path that pauses or resumes collection for a provider.
+    /// The connection, the cached readings, the displayed values and the
+    /// recorded history all survive a pause; only the half-proven rise does not.
+    ///
+    /// No control calls this yet — wiring the settings surface is a later step.
+    /// </summary>
+    public void SetCollectionEnabled(string providerName, bool collectionEnabled)
+    {
+        if (IsCollectionEnabled(providerName) == collectionEnabled)
+        {
+            return;
+        }
+
+        UpdateSettings(settings =>
+        {
+            if (providerName == ProviderNames.Codex)
+            {
+                settings.CodexCollectionEnabled = collectionEnabled;
+            }
+            else
+            {
+                settings.ClaudeCollectionEnabled = collectionEnabled;
+            }
+        });
+        BumpGeneration(providerName);
+
+        if (!collectionEnabled)
+        {
+            _displayState.ClearPendingRise(providerName);
+            return;
+        }
+
+        if (_pendingRefreshAfterEnable.RequestCollection(IsRefreshing))
+        {
+            _ = RefreshAsync();
+        }
     }
 
     public void UpdateSettings(Action<UsageBarSettings> mutate)
@@ -298,11 +478,15 @@ internal sealed class UsageBarController : IDisposable
         {
             var wasEmpty = settings.ConnectedProviderNames().Count == 0;
             settings.ClaudeConnected = true;
+            // Connecting always resumes collection: a pause stored before the
+            // provider was disconnected must never come back with it.
+            settings.ClaudeCollectionEnabled = true;
             if (wasEmpty)
             {
                 settings.SelectedProvider = ProviderNames.ClaudeCode;
             }
         });
+        BumpGeneration(ProviderNames.ClaudeCode);
 
         _ = RefreshAsync();
     }
@@ -313,11 +497,14 @@ internal sealed class UsageBarController : IDisposable
         {
             var wasEmpty = settings.ConnectedProviderNames().Count == 0;
             settings.CodexConnected = true;
+            // As for Claude: reconnecting resumes collection unconditionally.
+            settings.CodexCollectionEnabled = true;
             if (wasEmpty)
             {
                 settings.SelectedProvider = ProviderNames.Codex;
             }
         });
+        BumpGeneration(ProviderNames.Codex);
 
         _ = RefreshAsync();
     }
@@ -350,6 +537,10 @@ internal sealed class UsageBarController : IDisposable
                 settings.AutoRotateProviders = false;
             }
         });
+
+        // Invalidates any read still in flight, so a result that arrives after
+        // this point cannot bring the disconnected provider back.
+        BumpGeneration(providerName);
 
         // Live readings and display state go; recorded history deliberately
         // stays until the user clears it explicitly.
@@ -400,8 +591,8 @@ internal sealed class UsageBarController : IDisposable
             AutoStartState.IsOn,
             new[]
             {
-                ProviderDiagnosticsFor(ProviderNames.Codex, Settings.CodexConnected),
-                ProviderDiagnosticsFor(ProviderNames.ClaudeCode, Settings.ClaudeConnected)
+                ProviderDiagnosticsFor(ProviderNames.Codex),
+                ProviderDiagnosticsFor(ProviderNames.ClaudeCode)
             },
             // Launch-context facts. Provider discovery was seen to depend on how
             // UsageBar was started, so a report says which context it came from
@@ -413,8 +604,15 @@ internal sealed class UsageBarController : IDisposable
             trace));
     }
 
-    private ProviderDiagnostics ProviderDiagnosticsFor(string providerName, bool connected)
+    private ProviderDiagnostics ProviderDiagnosticsFor(string providerName)
     {
+        var connected = IsConnected(providerName);
+        // Derived from the collection policy, never from whether a reading
+        // happens to be cached.
+        var collecting = ProviderCollectionPolicy.IsEligible(
+            connected,
+            IsCollectionEnabled(providerName));
+
         _usages.TryGetValue(providerName, out var usage);
 
         var dataState = usage switch
@@ -435,6 +633,7 @@ internal sealed class UsageBarController : IDisposable
         return new ProviderDiagnostics(
             providerName,
             connected,
+            collecting,
             executableState,
             adapterKind,
             dataState,

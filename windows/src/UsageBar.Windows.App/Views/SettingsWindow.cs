@@ -85,6 +85,21 @@ internal sealed class SettingsWindow : Window
             interval => _controller.UpdateSettings(
                 settings => settings.RefreshInterval = interval.StorageValue())));
 
+        // Collection can be paused per provider without disconnecting it, so
+        // the control belongs beside the other provider settings and stays
+        // available while the provider is paused. The controller owns the
+        // transition; this only forwards the intent.
+        foreach (var providerName in _controller.ConnectedProviderNames)
+        {
+            var isCollecting = _controller.Settings.IsCollectionEnabled(providerName);
+            _content.Children.Add(Caption(
+                isCollecting ? providerName : $"{providerName} · {text.Paused}"));
+            _content.Children.Add(Toggle(
+                text.CollectUsage,
+                isCollecting,
+                value => _controller.SetCollectionEnabled(providerName, value)));
+        }
+
         _content.Children.Add(Caption(text.UsageColorsTitle));
         _content.Children.Add(Toggle(
             text.UsageColorsEnabled,

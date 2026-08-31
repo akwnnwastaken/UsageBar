@@ -256,7 +256,6 @@ public sealed class ClaudeUsageReaderTests
             {
                 [ProviderNames.ClaudeCode] = stale
             },
-            new[] { ProviderNames.ClaudeCode },
             Now.AddMinutes(5));
 
         Assert.Empty(history);
