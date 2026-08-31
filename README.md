@@ -26,9 +26,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.0.0/UsageBar-2.0.0-macOS-arm64.zip"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.0.1/UsageBar-2.0.1-macOS-arm64.zip"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.0/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
 </p>
 
 ---
@@ -45,13 +45,13 @@
 
 ## Downloads
 
-Version **2.0.0** is current for both platforms. macOS and Windows use separate release tags.
+Version **2.0.1** is current for both platforms. macOS and Windows use separate release tags.
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
-| macOS 13+ · Apple Silicon | `UsageBar-2.0.0-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.0.0/UsageBar-2.0.0-macOS-arm64.zip) | [`v2.0.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) |
-| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.0/UsageBar-Setup-x64.exe) | [`windows-v2.0.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) |
-| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.0/UsageBar-Windows-x64.zip) | [`windows-v2.0.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) |
+| macOS 13+ · Apple Silicon | `UsageBar-2.0.1-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.0.1/UsageBar-2.0.1-macOS-arm64.zip) | [`v2.0.1`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.1) |
+| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Setup-x64.exe) | [`windows-v2.0.1`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.1) |
+| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Windows-x64.zip) | [`windows-v2.0.1`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.1) |
 
 > [!NOTE]
 > The `main` branch contains the source for both platforms. Release packages, signing status, and first-launch guidance differ by platform; read the matching installation section below.
@@ -129,7 +129,7 @@ Bir sağlayıcı geçici olarak yanıt vermezse son başarılı değer zaman dam
 
 - Yerel **C# / .NET 8 / WPF** sistem tepsisi uygulamasıdır; görev çubuğu düğmesi veya ana pencere açmaz.
 - Codex'in resmî Windows kurulumunu ve Claude Code'un yerel Windows kurulumunu destekler.
-- Claude Code'u **WSL** üzerinden okuyabilir; bu yol 2.0.0 sürümünde fiziksel olarak doğrulanmamıştır.
+- Claude Code'u **WSL** üzerinden okuyabilir; bu yol 2.0.1 sürümünde fiziksel olarak doğrulanmamıştır.
 - Taşınabilir ZIP ve kullanıcıya özel kurulum paketi olarak dağıtılır.
 - Kurulum paketi yönetici izni istemez ve UsageBar'ı kurulum sonunda otomatik başlatmaz.
 - Sağlayıcı süreçlerini `CreateProcessW` ile, kabuk kullanmadan başlatır ve bir **Job Object** içinde sınırlandırır.
@@ -150,7 +150,7 @@ Windows son kullanıcı paketleri self-contained'dır; ayrıca .NET Runtime kuru
 
 #### macOS
 
-1. [`v2.0.0` sürümünden](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0) `UsageBar-2.0.0-macOS-arm64.zip` dosyasını indirin.
+1. [`v2.0.1` sürümünden](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.1) `UsageBar-2.0.1-macOS-arm64.zip` dosyasını indirin.
 2. ZIP'i açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
 3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
 
@@ -174,7 +174,7 @@ Apple'ın resmî açıklaması: [Apple'ın kötü amaçlı yazılım denetimi ya
 
 #### Windows kurulum paketi — önerilen
 
-1. [`windows-v2.0.0` sürümünü](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0) açın.
+1. [`windows-v2.0.1` sürümünü](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.1) açın.
 2. `UsageBar-Setup-x64.exe` dosyasını indirin.
 3. İsterseniz aşağıdaki doğrulama adımlarını uygulayın.
 4. Kurulum paketini çalıştırın. Yalnızca geçerli kullanıcı için kurulur ve yönetici izni istemez.
@@ -188,7 +188,7 @@ Kurulum paketi UsageBar'ı bilerek otomatik başlatmaz. Otomatik başlatma terci
 
 #### Windows taşınabilir sürüm
 
-1. [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.0/UsageBar-Windows-x64.zip) dosyasını indirin.
+1. [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Windows-x64.zip) dosyasını indirin.
 2. Kalıcı ve yazılabilir bir klasöre çıkarın.
 3. Uygulamayı doğrudan ZIP'in içinden çalıştırmayın.
 4. `UsageBar.exe` dosyasını çalıştırın.
@@ -200,13 +200,13 @@ Kurulum paketi UsageBar'ı bilerek otomatik başlatmaz. Otomatik başlatma terci
 Release sayfasındaki `.sha256` dosyasıyla karşılaştırmak için:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.0.1-macOS-arm64.zip
 ```
 
 CI tarafından üretilen paketin GitHub build provenance kaydını doğrulamak için:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.0.1-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -417,7 +417,7 @@ If a provider temporarily fails, the last successful value remains visible with 
 
 - A native **C# / .NET 8 / WPF** system tray application with no taskbar button or main window.
 - Supports Codex's official Windows installation and Claude Code's native Windows installation.
-- Can read Claude Code through **WSL**; that path was not physically validated for the 2.0.0 release.
+- Can read Claude Code through **WSL**; that path was not physically validated for the 2.0.1 release.
 - Distributed as a portable ZIP and a per-user installer.
 - The installer does not require administrator permission and does not launch UsageBar automatically when setup finishes.
 - Provider processes start through `CreateProcessW` without a shell and are contained in a **Job Object**.
@@ -438,7 +438,7 @@ Windows end-user packages are self-contained; no separate .NET Runtime installat
 
 #### macOS
 
-1. Download `UsageBar-2.0.0-macOS-arm64.zip` from the [`v2.0.0` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.0).
+1. Download `UsageBar-2.0.1-macOS-arm64.zip` from the [`v2.0.1` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.0.1).
 2. Extract the ZIP and move `UsageBar.app` to the **Applications** folder.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
@@ -462,7 +462,7 @@ Apple's official guidance: [Open an app Apple cannot check for malicious softwar
 
 #### Windows installer — recommended
 
-1. Open the [`windows-v2.0.0` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.0).
+1. Open the [`windows-v2.0.1` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.1).
 2. Download `UsageBar-Setup-x64.exe`.
 3. Optionally complete the verification steps below.
 4. Run the installer. It installs for the current user only and does not request administrator permission.
@@ -476,7 +476,7 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 
 #### Windows portable
 
-1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.0/UsageBar-Windows-x64.zip).
+1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Windows-x64.zip).
 2. Extract it to a permanent, writable folder.
 3. Do not run the app directly from inside the ZIP.
 4. Run `UsageBar.exe`.
@@ -488,13 +488,13 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 Compare the download with the `.sha256` file on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.0.1-macOS-arm64.zip
 ```
 
 Verify GitHub build provenance for the CI-produced package:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-2.0.0-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.0.1-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```

@@ -9,6 +9,51 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-01
+
+### Added
+- Usage collection can be paused per provider without disconnecting it. Each
+  connected provider has a **Collect usage** toggle — macOS in the provider's
+  management row, Windows in Settings and in the tray menu. A paused provider
+  stays connected and configured; nothing is re-authenticated to resume.
+- The paused state persists across a restart, per provider.
+- Detailed views on both platforms now show a window's reset instant as a local
+  clock time beside the countdown that was already there —
+  `Sıfırlama: 18:45 · 3sa 12dk` / `Resets: 6:45 PM · 3h 12m`. The menu-bar and
+  tray summaries stay relative-only.
+- Diagnostics report `connected` and `collecting` as separate facts, so a
+  deliberately paused provider is no longer indistinguishable from a connected
+  one that stopped producing data.
+
+### Changed
+- Resuming a provider collects immediately, or coalesces into exactly one
+  follow-up when a refresh is already running.
+- The menu-bar/tray value and auto-rotation follow the providers actually being
+  collected. Pausing the selected provider falls through to another one **without
+  rewriting the stored selection**, so resuming brings that choice straight back,
+  and auto-rotation goes dormant rather than losing its preference.
+- When every connected provider is paused, UsageBar says so — macOS keeps `%—`
+  with a "Usage collection paused" tooltip and Windows gains an explicit paused
+  tray state — instead of the misleading "Connect a provider first". Refresh
+  controls are disabled while nothing is eligible.
+- A paused provider is not presented as an active collection failure. Its
+  retained error stays in the model untouched; only the presentation defers to
+  the paused marker until a new reading says otherwise.
+- Cached readings, displayed values and recorded history are retained while a
+  provider is paused, under the unchanged 24-hour retention rules.
+
+### Fixed
+- A read still in flight can no longer change what is shown after its provider
+  was paused, resumed, disconnected or reconnected. Each provider carries a
+  generation counter captured at launch, so a stale answer is discarded whole —
+  no cached reading, no freshness change, no measurement.
+- Corrected a pre-existing defect where a fetch in flight during a disconnect
+  could bring the removed provider back.
+- The display-noise filter and the usage-history recorder now advance only from
+  measurements a refresh newly accepted, never from the usage cache. Previously
+  one provider's refresh could re-confirm a rise nobody measured again, and a
+  provider that was not read could gain history samples it never produced.
+
 ## [2.0.0] - 2026-07-27
 
 ### Added
@@ -123,7 +168,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.9.0...v2.0.0
 [1.9.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.7.0...v1.8.0
