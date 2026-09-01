@@ -89,6 +89,11 @@ internal sealed class SettingsWindow : Window
         // the control belongs beside the other provider settings and stays
         // available while the provider is paused. The controller owns the
         // transition; this only forwards the intent.
+        //
+        // "Show details" is a second, separate control answering a separate
+        // question: whether the panel draws the provider's detailed body. It
+        // lives here rather than in the panel it collapses, so hiding the
+        // details can never hide the way back.
         foreach (var providerName in _controller.ConnectedProviderNames)
         {
             var isCollecting = _controller.Settings.IsCollectionEnabled(providerName);
@@ -98,6 +103,10 @@ internal sealed class SettingsWindow : Window
                 text.CollectUsage,
                 isCollecting,
                 value => _controller.SetCollectionEnabled(providerName, value)));
+            _content.Children.Add(Toggle(
+                text.ShowDetails,
+                _controller.AreDetailsVisible(providerName),
+                value => _controller.SetDetailsVisible(providerName, value)));
         }
 
         _content.Children.Add(Caption(text.UsageColorsTitle));
