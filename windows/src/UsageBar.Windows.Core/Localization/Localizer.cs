@@ -42,6 +42,12 @@ public sealed class Localizer
     /// </summary>
     public string CollectUsage => Pick("Kullanımı topla", "Collect usage");
 
+    /// <summary>
+    /// The per-provider presentation toggle. It hides the detailed body only —
+    /// the provider keeps collecting, so this is never a second pause verb.
+    /// </summary>
+    public string ShowDetails => Pick("Ayrıntıları göster", "Show details");
+
     /// <summary>Marks a provider that is connected but not being collected.</summary>
     public string Paused => Pick("Duraklatıldı", "Paused");
 

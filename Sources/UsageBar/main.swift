@@ -33,6 +33,9 @@ struct Localizer {
     /// The per-provider collection toggle. Unchecking it *is* the pause action,
     /// so there is no separate pause verb.
     var collectUsage: String { pick("Kullanımı topla", "Collect usage") }
+    /// The per-provider presentation toggle. It hides the detailed body only —
+    /// the provider keeps collecting, so this is never a second pause verb.
+    var showDetails: String { pick("Ayrıntıları göster", "Show details") }
     /// Marks a provider that is still connected but not being collected.
     var paused: String { pick("Duraklatıldı", "Paused") }
     /// Shown instead of `connectFirst` when providers are connected but every
@@ -931,6 +934,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // and the tests covering that read cannot drift apart.
         static let codexCollectionEnabled = ProviderCollectionPreference.codexKey
         static let claudeCollectionEnabled = ProviderCollectionPreference.claudeKey
+        // Detail visibility is a presentation preference and a third family
+        // again: it is read existence-aware, is never migrated from any of the
+        // keys above, and never decides whether a provider is read.
+        static let codexDetailsVisible = ProviderDetailVisibilityPreference.codexKey
+        static let claudeDetailsVisible = ProviderDetailVisibilityPreference.claudeKey
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -1067,12 +1075,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeCollectionEnabled) }
     }
 
+    /// Whether Codex's detailed body is drawn. Purely a presentation choice:
+    /// it is independent of `codexConnected` and of `codexCollectionEnabled`,
+    /// and an absent preference means visible (see
+    /// `ProviderDetailVisibilityPreference`).
+    private var codexDetailsVisible: Bool {
+        get {
+            ProviderDetailVisibilityPreference.areDetailsVisible(
+                in: UserDefaults.standard,
+                forKey: PreferenceKey.codexDetailsVisible
+            )
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.codexDetailsVisible) }
+    }
+
+    private var claudeDetailsVisible: Bool {
+        get {
+            ProviderDetailVisibilityPreference.areDetailsVisible(
+                in: UserDefaults.standard,
+                forKey: PreferenceKey.claudeDetailsVisible
+            )
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.claudeDetailsVisible) }
+    }
+
     private func connected(_ providerName: String) -> Bool {
         providerName == "Codex" ? codexConnected : claudeConnected
     }
 
     private func collectionEnabled(_ providerName: String) -> Bool {
         providerName == "Codex" ? codexCollectionEnabled : claudeCollectionEnabled
+    }
+
+    private func detailsVisible(_ providerName: String) -> Bool {
+        providerName == "Codex" ? codexDetailsVisible : claudeDetailsVisible
     }
 
     private func generation(of providerName: String) -> Int {
@@ -1107,6 +1143,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if pendingRefreshAfterEnable.requestCollection(isRefreshing: isRefreshing) {
             refresh()
         }
+    }
+
+    /// The one runtime path that shows or hides a provider's detailed body.
+    ///
+    /// Deliberately far smaller than `setCollectionEnabled`: nothing about the
+    /// provider's lifecycle changes here. It stores the preference and redraws
+    /// the menu, and that is the whole transition. No read is launched, no
+    /// generation is bumped, no cache, history, filter state, selection or
+    /// rotation preference is touched — a provider whose details the user just
+    /// hid is collecting exactly as it was a moment earlier.
+    private func setDetailsVisible(_ visible: Bool, forProvider providerName: String) {
+        guard detailsVisible(providerName) != visible else { return }
+        if providerName == "Codex" {
+            codexDetailsVisible = visible
+        } else {
+            claudeDetailsVisible = visible
+        }
+        rebuildMenu()
     }
 
     /// Both providers' connection and collection state, in menu order.
@@ -1517,7 +1571,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
             addProvider(
                 displayUsages[providerName] ?? .unavailable(providerName, fallback),
-                collectionEnabled: collectionEnabled(providerName)
+                collectionEnabled: collectionEnabled(providerName),
+                detailsVisible: detailsVisible(providerName)
             )
         }
 
@@ -1806,6 +1861,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             collectItem.target = self
             collectItem.state = isCollecting ? .on : .off
             submenu.addItem(collectItem)
+
+            // Lives here rather than inside the body it hides, so hiding the
+            // details can never hide the way back. It is a separate control
+            // from "Collect usage" because it answers a separate question.
+            let detailsItem = NSMenuItem(
+                title: text.showDetails,
+                action: providerName == "Codex"
+                    ? #selector(toggleCodexDetails)
+                    : #selector(toggleClaudeDetails),
+                keyEquivalent: ""
+            )
+            detailsItem.target = self
+            detailsItem.state = detailsVisible(providerName) ? .on : .off
+            submenu.addItem(detailsItem)
             submenu.addItem(.separator())
 
             let disconnectItem = NSMenuItem(
@@ -1823,9 +1892,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func addProvider(_ usage: ProviderUsage, collectionEnabled: Bool) {
+    private func addProvider(_ usage: ProviderUsage, collectionEnabled: Bool, detailsVisible: Bool) {
+        // The whole rendering decision, taken once. `usage` itself is never
+        // rewritten to produce the compact form: the readings, their history
+        // and their freshness are all still there, simply not drawn.
+        let plan = ProviderDetailPresentationPolicy.card(
+            collectionEnabled: collectionEnabled,
+            detailsVisible: detailsVisible,
+            hasIssue: usage.error != nil
+        )
+
+        // The single gate on the detailed body. Making the *list* empty rather
+        // than skipping a loop is deliberate: there is one place windows are
+        // enumerated, so no usage row, reset line, history summary or chart can
+        // be built for a hidden provider by any other route.
+        let detailWindows = plan.showsDetailBody ? usage.windows : []
+
         var rows: [(title: NSAttributedString, history: [UsageHistorySample])] = []
-        for (position, window) in usage.windows.enumerated() {
+        for (position, window) in detailWindows.enumerated() {
             let samples = usageHistoryEnabled
                 ? usageHistory[historyKey(providerName: usage.name, windowKind: window.kind)] ?? []
                 : []
@@ -1834,12 +1918,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A paused provider keeps whatever error it last had, but UsageBar is
         // not trying to collect from it, so the row would blame the provider for
         // a state the user chose. The paused marker takes its place.
-        if let error = usage.error,
-           ProviderStatusPolicy.rendersActiveError(
-               collectionEnabled: collectionEnabled,
-               hasError: true
-           ) {
-            if let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
+        //
+        // A hidden body still keeps this one line — it says what the provider is
+        // doing, not how much quota is left. The stale form of it carries a
+        // last-successful clock, which is detail, so the concise form stands in
+        // while the body is hidden.
+        if let error = usage.error, plan.showsOperationalIssue {
+            if plan.showsDetailBody, let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
                 rows.append((staleTitle(error, lastSuccessfulAt: lastSuccessfulAt), []))
             } else {
                 rows.append((errorTitle(error), []))
@@ -1862,7 +1947,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let title = NSTextField(
-            labelWithString: collectionEnabled ? usage.name : "\(usage.name) · \(text.paused)"
+            labelWithString: plan.showsPausedMarker ? "\(usage.name) · \(text.paused)" : usage.name
         )
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .labelColor
@@ -2129,6 +2214,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureStatusPresentationTimer()
         updateStatusTitle()
         rebuildMenu()
+    }
+
+    /// The menu's detail toggles. They invert the stored preference and hand it
+    /// to the one presentation path. Unlike the collection toggles they have
+    /// nothing else to arrange: the status title and the rotation timer read
+    /// eligibility, which this preference has no part in.
+    @objc private func toggleCodexDetails() { toggleDetailsVisible(for: "Codex") }
+    @objc private func toggleClaudeDetails() { toggleDetailsVisible(for: "Claude Code") }
+
+    private func toggleDetailsVisible(for providerName: String) {
+        setDetailsVisible(!detailsVisible(providerName), forProvider: providerName)
     }
 
     private func disconnectProvider(_ providerName: String, clearPreference: () -> Void) {
@@ -2660,6 +2756,74 @@ private func runSelfTest() -> Int32 {
         ProviderStatusPolicy.rendersActiveError(collectionEnabled: true, hasError: true)
     else {
         fputs("Duraklatma sunumu testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Ayrıntı görünürlüğü: paketlenmiş ikili dosyada da tercih adları
+    // çakışmaz, eksik tercih "görünür" demektir ve ayrıntıları gizlemek
+    // toplamayı, uygunluğu ya da duraklatma işaretini değiştirmez.
+    let detailDefaults = UserDefaults(suiteName: "com.usagebar.selftest.detail-visibility")
+    detailDefaults?.removePersistentDomain(forName: "com.usagebar.selftest.detail-visibility")
+    let detailsMissing = detailDefaults.map {
+        ProviderDetailVisibilityPreference.areDetailsVisible(
+            in: $0,
+            forKey: ProviderDetailVisibilityPreference.codexKey
+        )
+    }
+    detailDefaults?.set(false, forKey: ProviderDetailVisibilityPreference.codexKey)
+    let detailsHidden = detailDefaults.map {
+        ProviderDetailVisibilityPreference.areDetailsVisible(
+            in: $0,
+            forKey: ProviderDetailVisibilityPreference.codexKey
+        )
+    }
+    let claudeUntouched = detailDefaults.map {
+        ProviderDetailVisibilityPreference.areDetailsVisible(
+            in: $0,
+            forKey: ProviderDetailVisibilityPreference.claudeKey
+        )
+    }
+    detailDefaults?.removePersistentDomain(forName: "com.usagebar.selftest.detail-visibility")
+
+    let hiddenWhileCollecting = ProviderDetailPresentationPolicy.card(
+        collectionEnabled: true,
+        detailsVisible: false,
+        hasIssue: false
+    )
+    let hiddenWhilePaused = ProviderDetailPresentationPolicy.card(
+        collectionEnabled: false,
+        detailsVisible: false,
+        hasIssue: true
+    )
+    let shownWhileCollecting = ProviderDetailPresentationPolicy.card(
+        collectionEnabled: true,
+        detailsVisible: true,
+        hasIssue: true
+    )
+
+    guard
+        turkish.showDetails == "Ayrıntıları göster",
+        english.showDetails == "Show details",
+        ProviderDetailVisibilityPreference.codexKey == "provider.codex.details.visible",
+        ProviderDetailVisibilityPreference.claudeKey == "provider.claude.details.visible",
+        ProviderDetailVisibilityPreference.codexKey != ProviderCollectionPreference.codexKey,
+        ProviderDetailVisibilityPreference.claudeKey != ProviderCollectionPreference.claudeKey,
+        detailsMissing == true,
+        detailsHidden == false,
+        claudeUntouched == true,
+        // Gizlenen ayrıntı yalnızca gövdeyi kaldırır: başlık, duraklatma
+        // işareti ve etkin hata satırı yerinde kalır.
+        hiddenWhileCollecting.showsDetailBody == false,
+        hiddenWhileCollecting.showsPausedMarker == false,
+        hiddenWhilePaused.showsDetailBody == false,
+        hiddenWhilePaused.showsPausedMarker,
+        hiddenWhilePaused.showsOperationalIssue == false,
+        shownWhileCollecting.showsDetailBody,
+        shownWhileCollecting.showsOperationalIssue,
+        // Ayrıntı görünürlüğü uygunluğa karışmaz.
+        ProviderCollectionPolicy.isEligible(connected: true, collectionEnabled: true)
+    else {
+        fputs("Ayrıntı görünürlüğü testi başarısız\n", stderr)
         return 1
     }
 

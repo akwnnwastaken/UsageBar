@@ -157,6 +157,39 @@ scan_forbidden_in_function() {
   fi
 }
 
+# Require a pattern inside one function's body. Fails closed the same way: a
+# missing function or a missing pattern both stop the gate. Scoping to the
+# function is what stops the packaged self-test, a comment or dead code from
+# standing in for the production wiring.
+require_present_in_function() {
+  local label="$1" signature="$2" pattern="$3" body rc
+  body=$(awk "/$signature/,/^    \}\$/" "$PROJECT_DIR/Sources/UsageBar/main.swift")
+  if [[ -z "$body" ]]; then
+    print -u2 "$label (fonksiyon bulunamadı: $signature)"
+    exit 1
+  fi
+  print -r -- "$body" | grep -Eq -- "$pattern" && rc=0 || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    print -u2 "$label"
+    exit 1
+  fi
+}
+
+# Scan one file for a forbidden pattern. Some rules are about what a specific
+# *policy* must never see, which a whole-Sources scan cannot express.
+scan_forbidden_in_file() {
+  local label="$1" file="$2" pattern="$3" matches rc
+  matches=$(grep -En -- "$pattern" "$PROJECT_DIR/$file") && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$matches"
+    exit 1
+  elif [[ $rc -ne 1 ]]; then
+    print -u2 "grep taraması başarısız oldu (exit $rc); güvenlik kapısı fail-closed"
+    exit 1
+  fi
+}
+
 # Pausing is not a selection change and not a rotation change: the stored
 # preferences must survive it untouched, so resuming restores what the user
 # chose. Disconnect keeps its own separate repair rules.
@@ -201,6 +234,132 @@ require_present \
 require_present \
   "Hepsi duraklatıldı durumu duraklatma metnini göstermiyor" \
   'text\.collectionPaused'
+
+# --- Ayrıntı görünürlüğü ---------------------------------------------------
+#
+# Ayrıntı görünürlüğü yalnızca bir sunum tercihidir. Aşağıdaki kapılar, onun
+# toplama yaşam döngüsüne, seçime, döndürmeye ya da menü çubuğuna sızmadığını
+# ve gizli gövde kararının üretim çiziminde gerçekten uygulandığını korur.
+
+# Denetim kanonik sunum yolundan geçer. Tercihi tıklama işleyicisinden yazmak,
+# tek mutasyon noktasını atlardı.
+require_present \
+  "Ayrıntı denetimi kanonik sunum yolunu çağırmıyor" \
+  'setDetailsVisible\(!detailsVisible\(providerName\), forProvider: providerName\)'
+
+require_occurrences \
+  "Codex ayrıntı tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.codexDetailsVisible\)' 1
+
+require_occurrences \
+  "Claude ayrıntı tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.claudeDetailsVisible\)' 1
+
+# Kanonik yol yalnızca tercihi saklar ve menüyü yeniden kurar. Toplama durumu,
+# nesil, bekleyen yenileme, önbellek, geçmiş, filtre, seçim ve döndürme
+# tercihinin hiçbirine dokunmaz.
+scan_forbidden_in_function \
+  "Ayrıntı görünürlüğü toplama yaşam döngüsüne dokunuyor" \
+  'private func setDetailsVisible' \
+  'setCollectionEnabled|CollectionEnabled = |bumpGeneration|pendingRefreshAfterEnable|displayFilter|usageHistory|usages|refresh\(\)|selectedProviderName|autoRotateProviders'
+
+# ... ve duraklatma da tersine ayrıntı görünürlüğünü değiştirmez.
+scan_forbidden_in_function \
+  "Duraklatma ayrıntı görünürlüğünü değiştiriyor" \
+  'private func setCollectionEnabled' \
+  'etailsVisible'
+
+# Bağlanmak toplama durumunu geri açar ama sunum tercihi kullanıcının kalır.
+scan_forbidden_in_function \
+  "Codex bağlantısı ayrıntı görünürlüğünü sıfırlıyor" \
+  '@objc private func connectCodex' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Claude bağlantısı ayrıntı görünürlüğünü sıfırlıyor" \
+  '@objc private func connectClaude' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Bağlantı kaldırma ayrıntı görünürlüğünü sıfırlıyor" \
+  'private func disconnectProvider' \
+  'etailsVisible'
+
+# Uygunluk, etkin sağlayıcı ve döndürme bu tercihi hiç görmez.
+scan_forbidden_in_file \
+  "Toplama politikası ayrıntı görünürlüğüne bakıyor" \
+  'Sources/UsageBarCore/ProviderCollectionPolicy.swift' \
+  'etailsVisible|DetailVisibility'
+
+scan_forbidden_in_file \
+  "Durum ve döndürme politikası ayrıntı görünürlüğüne bakıyor" \
+  'Sources/UsageBarCore/ProviderStatusPolicy.swift' \
+  'etailsVisible|DetailVisibility'
+
+scan_forbidden_in_function \
+  "Sağlayıcı toplama durumları ayrıntı görünürlüğü taşıyor" \
+  'private var providerCollectionStates' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Etkin sağlayıcı seçimi ayrıntı görünürlüğüne bakıyor" \
+  'private var statusProviderName' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Menü çubuğu başlığı ayrıntı görünürlüğüne bakıyor" \
+  'private func updateStatusTitle' \
+  'etailsVisible'
+
+# Sağlayıcı yönetimi satırı denetimi taşır, tercihi kendisi yazmaz ve toplama
+# durumuna dokunmaz. "Ayrıntıları göster" gizlediği gövdenin dışında durur.
+require_present_in_function \
+  "Ayrıntı denetimi sağlayıcı yönetimine eklenmiyor" \
+  'private func addProviderManagementItems' \
+  'title: text\.showDetails'
+
+require_present_in_function \
+  "Ayrıntı denetimi saklanan tercihi yansıtmıyor" \
+  'private func addProviderManagementItems' \
+  'detailsItem\.state = detailsVisible\(providerName\) \? \.on : \.off'
+
+scan_forbidden_in_function \
+  "Sağlayıcı yönetimi tercihi doğrudan yazıyor ya da toplamayı değiştiriyor" \
+  'private func addProviderManagementItems' \
+  'UserDefaults|setCollectionEnabled|setDetailsVisible'
+
+# Kart, canlı tercihten kurulan sunum planına göre çizilir ve kullanım
+# pencereleri yalnızca o plandan geçen listeden sayılır: gizli gövdede tek bir
+# kullanım satırı, sıfırlanma satırı, geçmiş özeti ya da grafik kalamaz.
+require_present \
+  "Kart canlı ayrıntı tercihiyle kurulmuyor" \
+  'detailsVisible: detailsVisible\(providerName\)'
+
+require_present_in_function \
+  "Sağlayıcı kartı sunum planından kurulmuyor" \
+  'private func addProvider\(_ usage' \
+  'ProviderDetailPresentationPolicy\.card\('
+
+require_present_in_function \
+  "Ayrıntı gövdesi tek bir kapıdan geçmiyor" \
+  'private func addProvider\(_ usage' \
+  'let detailWindows = plan\.showsDetailBody \? usage\.windows : \[\]'
+
+scan_forbidden_in_function \
+  "Kullanım pencereleri kapıdan geçmeyen bir listeden sayılıyor" \
+  'private func addProvider\(_ usage' \
+  'usage\.windows\.enumerated\(\)'
+
+require_present_in_function \
+  "Etkin hata satırı sunum planından geçmiyor" \
+  'private func addProvider\(_ usage' \
+  'plan\.showsOperationalIssue'
+
+# Duraklatma işareti de plandan gelir, böylece gizli kartta da yerinde kalır.
+require_present_in_function \
+  "Duraklatma işareti sunum planından gelmiyor" \
+  'private func addProvider\(_ usage' \
+  'plan\.showsPausedMarker \?'
 
 # Teşhis, bağlantı ve toplama durumunu ayrı ayrı bildirir; toplama durumu
 # politikadan türetilir, bağlantıdan ya da önbellekten değil.
