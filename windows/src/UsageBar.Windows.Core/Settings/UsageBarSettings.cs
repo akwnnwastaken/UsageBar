@@ -37,6 +37,21 @@ public sealed class UsageBarSettings
     [JsonPropertyName("claudeCollectionEnabled")]
     public bool? ClaudeCollectionEnabled { get; set; }
 
+    /// <summary>
+    /// Whether the provider's detailed body is drawn in the usage panel. A
+    /// presentation preference and nothing more: it is independent of both
+    /// <see cref="CodexConnected"/> and <see cref="CodexCollectionEnabled"/>, so
+    /// a provider whose details are hidden goes on collecting, recording and
+    /// speaking for the tray exactly as before. Null — the value written by
+    /// every build before the details could be hidden — means visible, so an
+    /// upgrade never collapses anyone's panel.
+    /// </summary>
+    [JsonPropertyName("codexDetailsVisible")]
+    public bool? CodexDetailsVisible { get; set; }
+
+    [JsonPropertyName("claudeDetailsVisible")]
+    public bool? ClaudeDetailsVisible { get; set; }
+
     [JsonPropertyName("selectedProvider")]
     public string? SelectedProvider { get; set; }
 
@@ -113,6 +128,8 @@ public static class UsageBarSettingsSanitizer
         value.ShowResetCountdown ??= false;
         value.CodexCollectionEnabled ??= true;
         value.ClaudeCollectionEnabled ??= true;
+        value.CodexDetailsVisible ??= true;
+        value.ClaudeDetailsVisible ??= true;
         value.RefreshInterval = UsageRefreshIntervals
             .Resolved(value.RefreshInterval)
             .StorageValue();
@@ -200,6 +217,22 @@ public static class UsageBarSettingsSanitizer
         return (providerName == Providers.ProviderNames.Codex
             ? settings.CodexCollectionEnabled
             : settings.ClaudeCollectionEnabled) ?? true;
+    }
+
+    /// <summary>
+    /// Whether the provider's detailed body is drawn; null means yes.
+    ///
+    /// Read apart from <see cref="IsCollectionEnabled"/> on purpose. Neither
+    /// may stand in for the other: pausing a provider must not collapse its
+    /// card, and collapsing a card must not pause it.
+    /// </summary>
+    public static bool AreDetailsVisible(this UsageBarSettings settings, string providerName)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return (providerName == Providers.ProviderNames.Codex
+            ? settings.CodexDetailsVisible
+            : settings.ClaudeDetailsVisible) ?? true;
     }
 
     /// <summary>

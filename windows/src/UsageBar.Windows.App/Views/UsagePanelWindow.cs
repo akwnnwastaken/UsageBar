@@ -323,21 +323,29 @@ internal sealed class UsagePanelWindow : Window
         var usage = _controller.DisplayUsages.TryGetValue(providerName, out var found) ? found : null;
         var isCollecting = _controller.Settings.IsCollectionEnabled(providerName);
 
+        // The whole rendering decision, taken once and owned by the controller's
+        // stored state. `usage` itself is never rewritten to produce the compact
+        // form: the readings, their history and their freshness are all still
+        // there, simply not drawn.
+        //
+        // A paused provider keeps whatever error it last had, but UsageBar is
+        // not trying to collect from it, so showing that error would blame the
+        // provider for a state the user chose.
+        var plan = ProviderDetailPresentationPolicy.Card(
+            isCollecting,
+            _controller.AreDetailsVisible(providerName),
+            usage?.Error is not null);
+
         var card = new StackPanel();
         card.Children.Add(new TextBlock
         {
             // A paused provider stays on the panel — it is still connected, and
-            // the marker says why it is not moving.
-            Text = isCollecting ? providerName : $"{providerName} · {text.Paused}",
+            // the marker says why it is not moving. So does a compact one.
+            Text = plan.ShowsPausedMarker ? $"{providerName} · {text.Paused}" : providerName,
             FontWeight = FontWeights.SemiBold,
             Foreground = _theme.Foreground,
             Margin = new Thickness(0, 0, 0, 4)
         });
-
-        // A paused provider keeps whatever error it last had, but UsageBar is
-        // not trying to collect from it, so showing that error would blame the
-        // provider for a state the user chose.
-        var showsError = ProviderCollectionPolicy.RendersActiveError(isCollecting, usage?.Error is not null);
 
         if (usage is null || usage.Windows.Count == 0)
         {
@@ -346,6 +354,9 @@ internal sealed class UsagePanelWindow : Window
                 return Section(card);
             }
 
+            // Operational state rather than quota data, so it survives a hidden
+            // body: without it a provider that has never read would look the
+            // same as a healthy one the user collapsed.
             var issue = usage?.Error ?? (_controller.IsRefreshing ? ProviderIssue.Refreshing : ProviderIssue.NoData);
             card.Children.Add(new TextBlock
             {
@@ -356,16 +367,27 @@ internal sealed class UsagePanelWindow : Window
         }
         else
         {
-            for (var position = 0; position < usage.Windows.Count; position++)
+            // The single gate on the detailed body. Making the *list* empty
+            // rather than skipping a loop is deliberate: there is one place
+            // windows are enumerated, so no usage row, reset line, history
+            // summary or chart can be built for a hidden provider by any other
+            // route.
+            var detailWindows = plan.ShowsDetailBody ? usage.Windows : Array.Empty<UsageWindow>();
+            for (var position = 0; position < detailWindows.Count; position++)
             {
-                card.Children.Add(WindowRow(text, usage, usage.Windows[position], position, colorsEnabled));
+                card.Children.Add(WindowRow(text, usage, detailWindows[position], position, colorsEnabled));
             }
 
-            if (showsError && usage.IsStale && usage.LastSuccessfulAt is DateTimeOffset lastGood)
+            if (plan.ShowsOperationalIssue && usage.IsStale && usage.LastSuccessfulAt is DateTimeOffset lastGood)
             {
+                // The stale line carries a last-successful clock, which is
+                // detail, so the concise form stands in while the body is
+                // hidden. Either way the failure is still reported.
                 card.Children.Add(new TextBlock
                 {
-                    Text = text.StaleData(text.FormattedTime(lastGood), usage.Error!),
+                    Text = plan.ShowsDetailBody
+                        ? text.StaleData(text.FormattedTime(lastGood), usage.Error!)
+                        : text.Issue(usage.Error!),
                     Foreground = _theme.Stale,
                     FontSize = 11,
                     TextWrapping = TextWrapping.Wrap,

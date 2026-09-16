@@ -434,6 +434,40 @@ internal sealed class UsageBarController : IDisposable
         }
     }
 
+    /// <summary>Whether the provider's detailed body is drawn.</summary>
+    public bool AreDetailsVisible(string providerName) => Settings.AreDetailsVisible(providerName);
+
+    /// <summary>
+    /// The one runtime path that shows or hides a provider's detailed body.
+    ///
+    /// Deliberately far smaller than <see cref="SetCollectionEnabled"/>: nothing
+    /// about the provider's lifecycle changes here. It stores the preference,
+    /// which raises the change notification the panel redraws from, and that is
+    /// the whole transition. No read is launched, no generation is bumped, no
+    /// cache, history, filter state, selection or rotation preference is
+    /// touched — a provider whose details the user just hid is collecting
+    /// exactly as it was a moment earlier.
+    /// </summary>
+    public void SetDetailsVisible(string providerName, bool detailsVisible)
+    {
+        if (AreDetailsVisible(providerName) == detailsVisible)
+        {
+            return;
+        }
+
+        UpdateSettings(settings =>
+        {
+            if (providerName == ProviderNames.Codex)
+            {
+                settings.CodexDetailsVisible = detailsVisible;
+            }
+            else
+            {
+                settings.ClaudeDetailsVisible = detailsVisible;
+            }
+        });
+    }
+
     public void UpdateSettings(Action<UsageBarSettings> mutate)
     {
         ArgumentNullException.ThrowIfNull(mutate);

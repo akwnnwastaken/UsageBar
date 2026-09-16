@@ -48,6 +48,10 @@ public sealed class CollectionWiringTests
     private static string Panel =>
         File.ReadAllText(RepositoryFile("windows/src/UsageBar.Windows.App/Views/UsagePanelWindow.cs"));
 
+    private static string DetailPresentationPolicy =>
+        File.ReadAllText(RepositoryFile(
+            "windows/src/UsageBar.Windows.Core/Policies/ProviderDetailPresentationPolicy.cs"));
+
     [Fact]
     public void EveryProviderLaunchDecisionGoesThroughTheCollectionPolicy()
     {
@@ -222,12 +226,23 @@ public sealed class CollectionWiringTests
     /// <summary>
     /// The panel keeps a paused provider visible and does not blame it for an
     /// error UsageBar is no longer trying to produce.
+    ///
+    /// The panel now asks <c>ProviderDetailPresentationPolicy</c> for the whole
+    /// card, and that policy is where <c>RendersActiveError</c> is applied — so
+    /// the rule is still the collection policy's, reached one step further out.
+    /// The second assertion below pins that step, so the decision cannot quietly
+    /// become the panel's own again.
     /// </summary>
     [Fact]
     public void ThePanelMarksAPausedProviderInsteadOfShowingItsRetainedError()
     {
         Assert.Contains("text.Paused", Panel, StringComparison.Ordinal);
-        Assert.Contains("ProviderCollectionPolicy.RendersActiveError(", Panel, StringComparison.Ordinal);
+        Assert.Contains("ProviderDetailPresentationPolicy.Card(", Panel, StringComparison.Ordinal);
+        Assert.Contains("plan.ShowsOperationalIssue", Panel, StringComparison.Ordinal);
+        Assert.Contains(
+            "ProviderCollectionPolicy.RendersActiveError(",
+            DetailPresentationPolicy,
+            StringComparison.Ordinal);
         Assert.Contains("EligibleProviderNames.Count > 0", Panel, StringComparison.Ordinal);
     }
 }

@@ -157,6 +157,63 @@ scan_forbidden_in_function() {
   fi
 }
 
+# Require a pattern inside one function's body. Fails closed the same way: a
+# missing function or a missing pattern both stop the gate. Scoping to the
+# function is what stops the packaged self-test, a comment or dead code from
+# standing in for the production wiring.
+require_present_in_function() {
+  local label="$1" signature="$2" pattern="$3" body rc
+  body=$(awk "/$signature/,/^    \}\$/" "$PROJECT_DIR/Sources/UsageBar/main.swift")
+  if [[ -z "$body" ]]; then
+    print -u2 "$label (fonksiyon bulunamadı: $signature)"
+    exit 1
+  fi
+  print -r -- "$body" | grep -Eq -- "$pattern" && rc=0 || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    print -u2 "$label"
+    exit 1
+  fi
+}
+
+# Require that, inside one function's body, the line right after the first
+# line matching `line_pattern` matches `next_pattern`. Pins the *order* of two
+# adjacent lines — an if/else whose branches were swapped still contains both
+# lines, so presence alone cannot catch it.
+require_next_line_in_function() {
+  local label="$1" signature="$2" line_pattern="$3" next_pattern="$4" body next rc
+  body=$(awk "/$signature/,/^    \}\$/" "$PROJECT_DIR/Sources/UsageBar/main.swift")
+  if [[ -z "$body" ]]; then
+    print -u2 "$label (fonksiyon bulunamadı: $signature)"
+    exit 1
+  fi
+  next=$(print -r -- "$body" | grep -E -A1 -m1 -- "$line_pattern" | tail -n +2)
+  if [[ -z "$next" ]]; then
+    print -u2 "$label (satır bulunamadı: $line_pattern)"
+    exit 1
+  fi
+  print -r -- "$next" | grep -Eq -- "$next_pattern" && rc=0 || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$next"
+    exit 1
+  fi
+}
+
+# Scan one file for a forbidden pattern. Some rules are about what a specific
+# *policy* must never see, which a whole-Sources scan cannot express.
+scan_forbidden_in_file() {
+  local label="$1" file="$2" pattern="$3" matches rc
+  matches=$(grep -En -- "$pattern" "$PROJECT_DIR/$file") && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$matches"
+    exit 1
+  elif [[ $rc -ne 1 ]]; then
+    print -u2 "grep taraması başarısız oldu (exit $rc); güvenlik kapısı fail-closed"
+    exit 1
+  fi
+}
+
 # Pausing is not a selection change and not a rotation change: the stored
 # preferences must survive it untouched, so resuming restores what the user
 # chose. Disconnect keeps its own separate repair rules.
@@ -201,6 +258,242 @@ require_present \
 require_present \
   "Hepsi duraklatıldı durumu duraklatma metnini göstermiyor" \
   'text\.collectionPaused'
+
+# --- Ayrıntı görünürlüğü ---------------------------------------------------
+#
+# Ayrıntı görünürlüğü yalnızca bir sunum tercihidir. Aşağıdaki kapılar, onun
+# toplama yaşam döngüsüne, seçime, döndürmeye ya da menü çubuğuna sızmadığını
+# ve gizli gövde kararının üretim çiziminde gerçekten uygulandığını korur.
+
+# Denetim kanonik sunum yolundan geçer. Tercihi tıklama işleyicisinden yazmak,
+# tek mutasyon noktasını atlardı.
+require_present \
+  "Ayrıntı denetimi kanonik sunum yolunu çağırmıyor" \
+  'setDetailsVisible\(!detailsVisible\(providerName\), forProvider: providerName\)'
+
+require_occurrences \
+  "Codex ayrıntı tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.codexDetailsVisible\)' 1
+
+require_occurrences \
+  "Claude ayrıntı tercihi birden fazla yerde yazılıyor" \
+  'forKey: PreferenceKey\.claudeDetailsVisible\)' 1
+
+# Kanonik yol yalnızca tercihi saklar ve menüyü yeniden kurar. Toplama durumu,
+# nesil, bekleyen yenileme, önbellek, geçmiş, filtre, seçim ve döndürme
+# tercihinin hiçbirine dokunmaz.
+scan_forbidden_in_function \
+  "Ayrıntı görünürlüğü toplama yaşam döngüsüne dokunuyor" \
+  'private func setDetailsVisible' \
+  'setCollectionEnabled|CollectionEnabled = |bumpGeneration|pendingRefreshAfterEnable|displayFilter|usageHistory|usages|refresh\(\)|selectedProviderName|autoRotateProviders'
+
+# ... ve duraklatma da tersine ayrıntı görünürlüğünü değiştirmez.
+scan_forbidden_in_function \
+  "Duraklatma ayrıntı görünürlüğünü değiştiriyor" \
+  'private func setCollectionEnabled' \
+  'etailsVisible'
+
+# Bağlanmak toplama durumunu geri açar ama sunum tercihi kullanıcının kalır.
+scan_forbidden_in_function \
+  "Codex bağlantısı ayrıntı görünürlüğünü sıfırlıyor" \
+  '@objc private func connectCodex' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Claude bağlantısı ayrıntı görünürlüğünü sıfırlıyor" \
+  '@objc private func connectClaude' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Bağlantı kaldırma ayrıntı görünürlüğünü sıfırlıyor" \
+  'private func disconnectProvider' \
+  'etailsVisible'
+
+# Uygunluk, etkin sağlayıcı ve döndürme bu tercihi hiç görmez.
+scan_forbidden_in_file \
+  "Toplama politikası ayrıntı görünürlüğüne bakıyor" \
+  'Sources/UsageBarCore/ProviderCollectionPolicy.swift' \
+  'etailsVisible|DetailVisibility'
+
+scan_forbidden_in_file \
+  "Durum ve döndürme politikası ayrıntı görünürlüğüne bakıyor" \
+  'Sources/UsageBarCore/ProviderStatusPolicy.swift' \
+  'etailsVisible|DetailVisibility'
+
+scan_forbidden_in_function \
+  "Sağlayıcı toplama durumları ayrıntı görünürlüğü taşıyor" \
+  'private var providerCollectionStates' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Etkin sağlayıcı seçimi ayrıntı görünürlüğüne bakıyor" \
+  'private var statusProviderName' \
+  'etailsVisible'
+
+scan_forbidden_in_function \
+  "Menü çubuğu başlığı ayrıntı görünürlüğüne bakıyor" \
+  'private func updateStatusTitle' \
+  'etailsVisible'
+
+# Çalışma zamanı karar noktaları. Yukarıdaki politika dosyası taramaları
+# politikanın bir görünürlük parametresi *edinmesini* engeller; bunlar ise
+# politikayı çağıran üretim noktalarının o parametreye kendi başına bir
+# görünürlük ifadesi eklemesini engeller — örneğin
+# `collectionEnabled: codexCollectionEnabled && codexDetailsVisible`. Toplama
+# planı, başlatma, sonuç kabulü, geçmiş kaydı, gösterim filtresi, uygun/bağlı
+# sağlayıcı listeleri ve döndürme zamanlayıcısı bu tercihin hiçbir biçimini
+# göremez: ne tercihin kendisini, ne anahtarını, ne de sunum planını.
+detail_presentation_tokens='etailsVisible|DetailVisibility|details\.visible|ProviderDetailPresentationPolicy|ProviderCardPlan|showsDetailBody'
+
+scan_forbidden_in_function \
+  "Yenileme planı ayrıntı görünürlüğüne bakıyor" \
+  '@objc private func refresh\(\)' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Sağlayıcı başlatma ayrıntı görünürlüğüne bakıyor" \
+  'private func launch\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Sonuç kabulü ayrıntı görünürlüğüne bakıyor" \
+  'private func acceptFetchedUsage\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Geçmiş kaydı ayrıntı görünürlüğüne bakıyor" \
+  'private func recordUsageHistory\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Saklama bakımı ayrıntı görünürlüğüne bakıyor" \
+  'private func maintainUsageHistoryRetention\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Gösterim filtresi ilerletmesi ayrıntı görünürlüğüne bakıyor" \
+  'private func advanceDisplayedRemaining\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Gösterilen okumalar ayrıntı görünürlüğüne bakıyor" \
+  'private var displayUsages' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Bağlı sağlayıcı listesi ayrıntı görünürlüğüne bakıyor" \
+  'private var connectedProviderNames' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Uygun sağlayıcı listesi ayrıntı görünürlüğüne bakıyor" \
+  'private var eligibleProviderNames' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Döndürme zamanlayıcısı ayrıntı görünürlüğüne bakıyor" \
+  'private func configureStatusPresentationTimer\(' \
+  "$detail_presentation_tokens"
+
+# Uygun sağlayıcı listesi politikanın verdiği listenin *kendisidir*; ona
+# eklenen bir süzgeç, hangi ölçütle olursa olsun, bir sağlayıcıyı sessizce
+# menü çubuğundan ve döndürmeden düşürür.
+require_present_in_function \
+  "Uygun sağlayıcı listesi politikadan olduğu gibi alınmıyor" \
+  'private var eligibleProviderNames' \
+  '^        ProviderStatusPolicy\.eligibleNames\(providerCollectionStates\)$'
+
+scan_forbidden_in_function \
+  "Uygun sağlayıcı listesi süzülüyor" \
+  'private var eligibleProviderNames' \
+  '\.filter|\.compactMap|\.first|\.prefix|\.dropFirst|\.removeAll'
+
+# Her ayrıntı denetimi kendi sağlayıcısını değiştirir. Kalıplar işleyicinin
+# tamamını yakalar — adını, çağırdığı yolu ve verdiği sağlayıcı adını — bu
+# yüzden iki adın dosyada bir yerlerde geçmesi yetmez: Codex işleyicisi Claude'a
+# yönlenirse, ya da ikisi aynı sağlayıcıya giderse, satırın biri kaybolur.
+require_occurrences \
+  "Codex ayrıntı denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleCodexDetails\(\) \{ toggleDetailsVisible\(for: "Codex"\) \}' 1
+
+require_occurrences \
+  "Claude ayrıntı denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleClaudeDetails\(\) \{ toggleDetailsVisible\(for: "Claude Code"\) \}' 1
+
+# ... ve toplama denetimleri için de aynı bağ geçerlidir; ayrıntı denetimi
+# onların yanına eklendiği için ikisi birlikte sabitlenir.
+require_occurrences \
+  "Codex toplama denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleCodexCollection\(\) \{ toggleCollection\(for: "Codex"\) \}' 1
+
+require_occurrences \
+  "Claude toplama denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleClaudeCollection\(\) \{ toggleCollection\(for: "Claude Code"\) \}' 1
+
+# Kanonik yol da doğru alanı yazar: Codex dalı Codex tercihini, Claude dalı
+# Claude tercihini. Her dal tek satırdır, bu yüzden dalın başlığından hemen
+# sonraki satır sabitlenir — iki atamanın yer değiştirmesi ikisini de bozar.
+require_next_line_in_function \
+  "Ayrıntı ayarlayıcısı Codex dalında Codex tercihini yazmıyor" \
+  'private func setDetailsVisible' \
+  '^        if providerName == "Codex" \{$' \
+  '^            codexDetailsVisible = visible$'
+
+require_next_line_in_function \
+  "Ayrıntı ayarlayıcısı Claude dalında Claude tercihini yazmıyor" \
+  'private func setDetailsVisible' \
+  '^        \} else \{$' \
+  '^            claudeDetailsVisible = visible$'
+
+# Sağlayıcı yönetimi satırı denetimi taşır, tercihi kendisi yazmaz ve toplama
+# durumuna dokunmaz. "Ayrıntıları göster" gizlediği gövdenin dışında durur.
+require_present_in_function \
+  "Ayrıntı denetimi sağlayıcı yönetimine eklenmiyor" \
+  'private func addProviderManagementItems' \
+  'title: text\.showDetails'
+
+require_present_in_function \
+  "Ayrıntı denetimi saklanan tercihi yansıtmıyor" \
+  'private func addProviderManagementItems' \
+  'detailsItem\.state = detailsVisible\(providerName\) \? \.on : \.off'
+
+scan_forbidden_in_function \
+  "Sağlayıcı yönetimi tercihi doğrudan yazıyor ya da toplamayı değiştiriyor" \
+  'private func addProviderManagementItems' \
+  'UserDefaults|setCollectionEnabled|setDetailsVisible'
+
+# Kart, canlı tercihten kurulan sunum planına göre çizilir ve kullanım
+# pencereleri yalnızca o plandan geçen listeden sayılır: gizli gövdede tek bir
+# kullanım satırı, sıfırlanma satırı, geçmiş özeti ya da grafik kalamaz.
+require_present \
+  "Kart canlı ayrıntı tercihiyle kurulmuyor" \
+  'detailsVisible: detailsVisible\(providerName\)'
+
+require_present_in_function \
+  "Sağlayıcı kartı sunum planından kurulmuyor" \
+  'private func addProvider\(_ usage' \
+  'ProviderDetailPresentationPolicy\.card\('
+
+require_present_in_function \
+  "Ayrıntı gövdesi tek bir kapıdan geçmiyor" \
+  'private func addProvider\(_ usage' \
+  'let detailWindows = plan\.showsDetailBody \? usage\.windows : \[\]'
+
+scan_forbidden_in_function \
+  "Kullanım pencereleri kapıdan geçmeyen bir listeden sayılıyor" \
+  'private func addProvider\(_ usage' \
+  'usage\.windows\.enumerated\(\)'
+
+require_present_in_function \
+  "Etkin hata satırı sunum planından geçmiyor" \
+  'private func addProvider\(_ usage' \
+  'plan\.showsOperationalIssue'
+
+# Duraklatma işareti de plandan gelir, böylece gizli kartta da yerinde kalır.
+require_present_in_function \
+  "Duraklatma işareti sunum planından gelmiyor" \
+  'private func addProvider\(_ usage' \
+  'plan\.showsPausedMarker \?'
 
 # Teşhis, bağlantı ve toplama durumunu ayrı ayrı bildirir; toplama durumu
 # politikadan türetilir, bağlantıdan ya da önbellekten değil.

@@ -135,6 +135,7 @@ internal sealed class TrayIconController : IDisposable
         else
         {
             _menu.Items.Add(CollectionToggle(text, ProviderNames.Codex));
+            _menu.Items.Add(DetailsToggle(text, ProviderNames.Codex));
             _menu.Items.Add(Item(
                 text.DisconnectCodex,
                 () => _controller.DisconnectProvider(ProviderNames.Codex)));
@@ -147,6 +148,7 @@ internal sealed class TrayIconController : IDisposable
         else
         {
             _menu.Items.Add(CollectionToggle(text, ProviderNames.ClaudeCode));
+            _menu.Items.Add(DetailsToggle(text, ProviderNames.ClaudeCode));
             _menu.Items.Add(Item(
                 text.DisconnectClaude,
                 () => _controller.DisconnectProvider(ProviderNames.ClaudeCode)));
@@ -193,6 +195,23 @@ internal sealed class TrayIconController : IDisposable
             $"{label}: {text.CollectUsage}",
             () => _controller.SetCollectionEnabled(providerName, !isCollecting));
         item.Checked = isCollecting;
+        return item;
+    }
+
+    /// <summary>
+    /// The presentation counterpart, offered here for parity with the
+    /// collection toggle. It is a separate control with a separate meaning: the
+    /// provider goes on collecting either way. Like its neighbour it goes
+    /// through the controller and never touches stored settings itself.
+    /// </summary>
+    private ToolStripMenuItem DetailsToggle(Localizer text, string providerName)
+    {
+        var detailsVisible = _controller.AreDetailsVisible(providerName);
+        var label = providerName == ProviderNames.ClaudeCode ? "Claude" : providerName;
+        var item = Item(
+            $"{label}: {text.ShowDetails}",
+            () => _controller.SetDetailsVisible(providerName, !detailsVisible));
+        item.Checked = detailsVisible;
         return item;
     }
 
