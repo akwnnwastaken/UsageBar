@@ -175,6 +175,30 @@ require_present_in_function() {
   fi
 }
 
+# Require that, inside one function's body, the line right after the first
+# line matching `line_pattern` matches `next_pattern`. Pins the *order* of two
+# adjacent lines — an if/else whose branches were swapped still contains both
+# lines, so presence alone cannot catch it.
+require_next_line_in_function() {
+  local label="$1" signature="$2" line_pattern="$3" next_pattern="$4" body next rc
+  body=$(awk "/$signature/,/^    \}\$/" "$PROJECT_DIR/Sources/UsageBar/main.swift")
+  if [[ -z "$body" ]]; then
+    print -u2 "$label (fonksiyon bulunamadı: $signature)"
+    exit 1
+  fi
+  next=$(print -r -- "$body" | grep -E -A1 -m1 -- "$line_pattern" | tail -n +2)
+  if [[ -z "$next" ]]; then
+    print -u2 "$label (satır bulunamadı: $line_pattern)"
+    exit 1
+  fi
+  print -r -- "$next" | grep -Eq -- "$next_pattern" && rc=0 || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$next"
+    exit 1
+  fi
+}
+
 # Scan one file for a forbidden pattern. Some rules are about what a specific
 # *policy* must never see, which a whole-Sources scan cannot express.
 scan_forbidden_in_file() {
@@ -310,6 +334,116 @@ scan_forbidden_in_function \
   "Menü çubuğu başlığı ayrıntı görünürlüğüne bakıyor" \
   'private func updateStatusTitle' \
   'etailsVisible'
+
+# Çalışma zamanı karar noktaları. Yukarıdaki politika dosyası taramaları
+# politikanın bir görünürlük parametresi *edinmesini* engeller; bunlar ise
+# politikayı çağıran üretim noktalarının o parametreye kendi başına bir
+# görünürlük ifadesi eklemesini engeller — örneğin
+# `collectionEnabled: codexCollectionEnabled && codexDetailsVisible`. Toplama
+# planı, başlatma, sonuç kabulü, geçmiş kaydı, gösterim filtresi, uygun/bağlı
+# sağlayıcı listeleri ve döndürme zamanlayıcısı bu tercihin hiçbir biçimini
+# göremez: ne tercihin kendisini, ne anahtarını, ne de sunum planını.
+detail_presentation_tokens='etailsVisible|DetailVisibility|details\.visible|ProviderDetailPresentationPolicy|ProviderCardPlan|showsDetailBody'
+
+scan_forbidden_in_function \
+  "Yenileme planı ayrıntı görünürlüğüne bakıyor" \
+  '@objc private func refresh\(\)' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Sağlayıcı başlatma ayrıntı görünürlüğüne bakıyor" \
+  'private func launch\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Sonuç kabulü ayrıntı görünürlüğüne bakıyor" \
+  'private func acceptFetchedUsage\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Geçmiş kaydı ayrıntı görünürlüğüne bakıyor" \
+  'private func recordUsageHistory\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Saklama bakımı ayrıntı görünürlüğüne bakıyor" \
+  'private func maintainUsageHistoryRetention\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Gösterim filtresi ilerletmesi ayrıntı görünürlüğüne bakıyor" \
+  'private func advanceDisplayedRemaining\(' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Gösterilen okumalar ayrıntı görünürlüğüne bakıyor" \
+  'private var displayUsages' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Bağlı sağlayıcı listesi ayrıntı görünürlüğüne bakıyor" \
+  'private var connectedProviderNames' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Uygun sağlayıcı listesi ayrıntı görünürlüğüne bakıyor" \
+  'private var eligibleProviderNames' \
+  "$detail_presentation_tokens"
+
+scan_forbidden_in_function \
+  "Döndürme zamanlayıcısı ayrıntı görünürlüğüne bakıyor" \
+  'private func configureStatusPresentationTimer\(' \
+  "$detail_presentation_tokens"
+
+# Uygun sağlayıcı listesi politikanın verdiği listenin *kendisidir*; ona
+# eklenen bir süzgeç, hangi ölçütle olursa olsun, bir sağlayıcıyı sessizce
+# menü çubuğundan ve döndürmeden düşürür.
+require_present_in_function \
+  "Uygun sağlayıcı listesi politikadan olduğu gibi alınmıyor" \
+  'private var eligibleProviderNames' \
+  '^        ProviderStatusPolicy\.eligibleNames\(providerCollectionStates\)$'
+
+scan_forbidden_in_function \
+  "Uygun sağlayıcı listesi süzülüyor" \
+  'private var eligibleProviderNames' \
+  '\.filter|\.compactMap|\.first|\.prefix|\.dropFirst|\.removeAll'
+
+# Her ayrıntı denetimi kendi sağlayıcısını değiştirir. Kalıplar işleyicinin
+# tamamını yakalar — adını, çağırdığı yolu ve verdiği sağlayıcı adını — bu
+# yüzden iki adın dosyada bir yerlerde geçmesi yetmez: Codex işleyicisi Claude'a
+# yönlenirse, ya da ikisi aynı sağlayıcıya giderse, satırın biri kaybolur.
+require_occurrences \
+  "Codex ayrıntı denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleCodexDetails\(\) \{ toggleDetailsVisible\(for: "Codex"\) \}' 1
+
+require_occurrences \
+  "Claude ayrıntı denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleClaudeDetails\(\) \{ toggleDetailsVisible\(for: "Claude Code"\) \}' 1
+
+# ... ve toplama denetimleri için de aynı bağ geçerlidir; ayrıntı denetimi
+# onların yanına eklendiği için ikisi birlikte sabitlenir.
+require_occurrences \
+  "Codex toplama denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleCodexCollection\(\) \{ toggleCollection\(for: "Codex"\) \}' 1
+
+require_occurrences \
+  "Claude toplama denetimi kendi sağlayıcısına yönlenmiyor" \
+  '@objc private func toggleClaudeCollection\(\) \{ toggleCollection\(for: "Claude Code"\) \}' 1
+
+# Kanonik yol da doğru alanı yazar: Codex dalı Codex tercihini, Claude dalı
+# Claude tercihini. Her dal tek satırdır, bu yüzden dalın başlığından hemen
+# sonraki satır sabitlenir — iki atamanın yer değiştirmesi ikisini de bozar.
+require_next_line_in_function \
+  "Ayrıntı ayarlayıcısı Codex dalında Codex tercihini yazmıyor" \
+  'private func setDetailsVisible' \
+  '^        if providerName == "Codex" \{$' \
+  '^            codexDetailsVisible = visible$'
+
+require_next_line_in_function \
+  "Ayrıntı ayarlayıcısı Claude dalında Claude tercihini yazmıyor" \
+  'private func setDetailsVisible' \
+  '^        \} else \{$' \
+  '^            claudeDetailsVisible = visible$'
 
 # Sağlayıcı yönetimi satırı denetimi taşır, tercihi kendisi yazmaz ve toplama
 # durumuna dokunmaz. "Ayrıntıları göster" gizlediği gövdenin dışında durur.

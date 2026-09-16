@@ -70,6 +70,27 @@ public sealed class DetailVisibilityWiringTests
         return end < 0 ? source[start..] : source[start..end];
     }
 
+    /// <summary>
+    /// One member's body, cut at the next member of <b>any</b> visibility or the
+    /// next doc comment. <see cref="MemberBody"/> stops only at the next
+    /// <c>public</c> member, which for a private helper would sweep in every
+    /// private member after it; the runtime-decision rules below need each
+    /// member on its own, so a token in a neighbour cannot mask or trip them.
+    /// </summary>
+    private static string RuntimeMemberBody(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Member not found: {signature}");
+
+        var from = start + signature.Length;
+        var end = new[] { "\n    public ", "\n    private ", "\n    internal ", "\n    /// " }
+            .Select(marker => source.IndexOf(marker, from, StringComparison.Ordinal))
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(-1)
+            .Min();
+        return end < 0 ? source[start..] : source[start..end];
+    }
+
     // MARK: - The control forwards to the one transition
 
     /// <summary>
@@ -216,6 +237,120 @@ public sealed class DetailVisibilityWiringTests
         var body = MemberBody(Controller, "public TrayPresentation Presentation =>");
 
         Assert.DoesNotContain("Details", body, StringComparison.Ordinal);
+    }
+
+    // MARK: - The runtime decision sites cannot see it either
+
+    /// <summary>
+    /// The file-level rule above stops the policy from <i>having</i> a visibility
+    /// parameter. This one stops the members that <i>call</i> the policy from
+    /// folding the preference into an argument themselves — the shape
+    /// <c>IsCollectionEnabled(p) &amp;&amp; AreDetailsVisible(p)</c> would pass
+    /// every policy test and still stop a hidden provider from being read.
+    /// Every member that decides what is launched, accepted, recorded, shown
+    /// in the tray or rotated through is listed, each scanned on its own.
+    /// </summary>
+    [Theory]
+    [InlineData("public async Task RefreshAsync(")]
+    [InlineData("private void Accept(")]
+    [InlineData("private ProviderCollectionAction ActionFor(")]
+    [InlineData("private bool IsConnected(")]
+    [InlineData("private bool IsCollectionEnabled(")]
+    [InlineData("private void MaintainHistoryRetention(")]
+    [InlineData("public void RotateProvider(")]
+    [InlineData("public IReadOnlyList<string> ConnectedProviderNames =>")]
+    [InlineData("public IReadOnlyList<string> EligibleProviderNames =>")]
+    [InlineData("public string? StatusProviderName =>")]
+    [InlineData("public IReadOnlyDictionary<string, ProviderUsage> DisplayUsages =>")]
+    public void RuntimeDecisionMembersHaveNoNotionOfDetailVisibility(string signature)
+    {
+        var body = RuntimeMemberBody(Controller, signature);
+
+        Assert.DoesNotContain("Details", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("ProviderCardPlan", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The three one-line decisions are pinned whole. A renamed preference
+    /// would slip past a token scan; a changed expression cannot slip past
+    /// this. The launch decision is the collection policy over live connected
+    /// and collection state and nothing else; the status and eligible lists
+    /// are the settings extensions' answers, unfiltered.
+    /// </summary>
+    [Fact]
+    public void TheLaunchStatusAndEligibilityDecisionsAreExactlyThePolicyAnswers()
+    {
+        Assert.Contains(
+            "private ProviderCollectionAction ActionFor(string providerName) =>\n"
+            + "        ProviderCollectionPolicy.Action(IsConnected(providerName), IsCollectionEnabled(providerName));",
+            Controller.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public IReadOnlyList<string> EligibleProviderNames => Settings.EligibleProviderNames();",
+            Controller,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public string? StatusProviderName => Settings.StatusProviderName(_rotatingProviderIndex);",
+            Controller,
+            StringComparison.Ordinal);
+    }
+
+    // MARK: - Each control and the setter reach their own provider
+
+    /// <summary>
+    /// The setter's Codex branch writes the Codex field and its Claude branch
+    /// the Claude field. Both assignments being present is not enough — they
+    /// could be swapped — so the branch structure is matched in order, and each
+    /// field is written exactly once.
+    /// </summary>
+    [Fact]
+    public void TheSetterWritesTheFieldOfTheProviderItWasGiven()
+    {
+        var body = RuntimeMemberBody(Controller, "public void SetDetailsVisible(");
+
+        Assert.Matches(
+            new Regex(
+                @"if \(providerName == ProviderNames\.Codex\)\s*\{\s*"
+                + @"settings\.CodexDetailsVisible = detailsVisible;\s*\}\s*"
+                + @"else\s*\{\s*settings\.ClaudeDetailsVisible = detailsVisible;\s*\}"),
+            body);
+        Assert.Single(Regex.Matches(body, @"CodexDetailsVisible ="));
+        Assert.Single(Regex.Matches(body, @"ClaudeDetailsVisible ="));
+    }
+
+    /// <summary>The collection setter is held to the same rule.</summary>
+    [Fact]
+    public void TheCollectionSetterWritesTheFieldOfTheProviderItWasGiven()
+    {
+        var body = RuntimeMemberBody(Controller, "public void SetCollectionEnabled(");
+
+        Assert.Matches(
+            new Regex(
+                @"if \(providerName == ProviderNames\.Codex\)\s*\{\s*"
+                + @"settings\.CodexCollectionEnabled = collectionEnabled;\s*\}\s*"
+                + @"else\s*\{\s*settings\.ClaudeCollectionEnabled = collectionEnabled;\s*\}"),
+            body);
+    }
+
+    /// <summary>
+    /// The tray builds each provider's toggles inside that provider's own
+    /// connected branch, and names the provider it is building for. Matched in
+    /// order so the Codex branch cannot carry a Claude toggle or vice versa.
+    /// </summary>
+    [Fact]
+    public void TheTrayTogglesNameTheProviderOfTheBranchTheyAreBuiltIn()
+    {
+        Assert.Matches(
+            new Regex(
+                @"if \(!_controller\.Settings\.CodexConnected\)[\s\S]*?"
+                + @"CollectionToggle\(text, ProviderNames\.Codex\)[\s\S]*?"
+                + @"DetailsToggle\(text, ProviderNames\.Codex\)[\s\S]*?"
+                + @"if \(!_controller\.Settings\.ClaudeConnected\)[\s\S]*?"
+                + @"CollectionToggle\(text, ProviderNames\.ClaudeCode\)[\s\S]*?"
+                + @"DetailsToggle\(text, ProviderNames\.ClaudeCode\)"),
+            TrayMenu);
+        Assert.Single(Regex.Matches(TrayMenu, @"DetailsToggle\(text, ProviderNames\.Codex\)"));
+        Assert.Single(Regex.Matches(TrayMenu, @"DetailsToggle\(text, ProviderNames\.ClaudeCode\)"));
     }
 
     // MARK: - The panel's body really is gated
