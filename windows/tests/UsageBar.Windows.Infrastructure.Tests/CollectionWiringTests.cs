@@ -224,6 +224,46 @@ public sealed class CollectionWiringTests
     }
 
     /// <summary>
+    /// The body of one controller member, cut at the next member of <b>any</b>
+    /// visibility. <see cref="ControllerMember"/> stops only at the next
+    /// <c>public</c> member, which for a private helper would sweep in every
+    /// private neighbour after it.
+    /// </summary>
+    private static string ControllerPrivateMember(string signature)
+    {
+        var source = Controller;
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Controller member not found: {signature}");
+
+        var from = start + signature.Length;
+        var end = new[] { "\n    public ", "\n    private ", "\n    internal ", "\n    /// " }
+            .Select(marker => source.IndexOf(marker, from, StringComparison.Ordinal))
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(-1)
+            .Min();
+        return end < 0 ? source[start..] : source[start..end];
+    }
+
+    /// <summary>
+    /// <c>ProviderDiagnostics</c> is a positional record whose <c>Connected</c>
+    /// and <c>Collecting</c> are adjacent <c>bool</c>s, so swapping the two
+    /// arguments compiles and only shows for a paused provider — connected but
+    /// not collecting — which would then read as disconnected yet collecting.
+    /// This pins the order at the one production construction. It is
+    /// whitespace-tolerant but not order-tolerant.
+    /// </summary>
+    [Fact]
+    public void DiagnosticsPassConnectedBeforeCollecting()
+    {
+        var body = ControllerPrivateMember("private ProviderDiagnostics ProviderDiagnosticsFor(");
+
+        Assert.Single(Regex.Matches(body, @"new ProviderDiagnostics\("));
+        Assert.Matches(
+            new Regex(@"new ProviderDiagnostics\(\s*providerName,\s*connected,\s*collecting,"),
+            body);
+    }
+
+    /// <summary>
     /// The panel keeps a paused provider visible and does not blame it for an
     /// error UsageBar is no longer trying to produce.
     ///
