@@ -524,6 +524,41 @@ public sealed class DiagnosticsTests
         Assert.Contains(DiagnosticsSanitizer.Redacted, report, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The one reachable state in which the two booleans differ: a connected
+    /// provider whose collection is paused. Every other fixture reports
+    /// true/true, which would hide a swapped field-to-label mapping — this pins
+    /// that <c>Connected</c> is printed under <c>connected:</c> and
+    /// <c>Collecting</c> under <c>collecting:</c>.
+    /// </summary>
+    [Fact]
+    public void APausedProviderReportsConnectedTrueAndCollectingFalse()
+    {
+        var input = Input() with
+        {
+            Providers = new[]
+            {
+                new ProviderDiagnostics(
+                    ProviderNames.Codex,
+                    Connected: true,
+                    Collecting: false,
+                    ProviderExecutableState.Trusted,
+                    ProviderAdapterKind.NativeExecutable,
+                    ProviderDataState.Fresh,
+                    new[] { "five-hour", "weekly" },
+                    "none")
+            }
+        };
+
+        var report = DiagnosticsReportBuilder.Build(input);
+
+        Assert.Contains(
+            "codex=connected:true,collecting:false,executable:trusted,adapter:native_exe,state:fresh,windows:five-hour+weekly,issue:none",
+            report,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("connected:false", report, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void UnknownIssueCodesAreRedactedRatherThanEchoed()
     {
