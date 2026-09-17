@@ -399,8 +399,6 @@ internal sealed class UsageBarController : IDisposable
     /// The one runtime path that pauses or resumes collection for a provider.
     /// The connection, the cached readings, the displayed values and the
     /// recorded history all survive a pause; only the half-proven rise does not.
-    ///
-    /// No control calls this yet — wiring the settings surface is a later step.
     /// </summary>
     public void SetCollectionEnabled(string providerName, bool collectionEnabled)
     {
