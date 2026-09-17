@@ -1125,8 +1125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The one runtime path that pauses or resumes collection for a provider.
     /// The connection, the cached readings, the displayed values and the
     /// recorded history all survive a pause; only the half-proven rise does not.
-    ///
-    /// No control calls this yet — wiring the menu and settings is a later step.
     private func setCollectionEnabled(_ enabled: Bool, forProvider providerName: String) {
         guard collectionEnabled(providerName) != enabled else { return }
         if providerName == "Codex" {
