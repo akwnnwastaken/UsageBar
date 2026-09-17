@@ -54,7 +54,7 @@ Version **2.0.1** is current for both platforms. macOS and Windows use separate 
 | Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.0.1/UsageBar-Windows-x64.zip) | [`windows-v2.0.1`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.0.1) |
 
 > [!NOTE]
-> The `main` branch contains the source for both platforms. Release packages, signing status, and first-launch guidance differ by platform; read the matching installation section below.
+> The `main` branch contains the source for both platforms and already carries changes merged after 2.0.1 that are not in the packages above — currently the per-provider **Show details** toggle, listed under *Unreleased* in the [changelog](CHANGELOG.md). Release packages, signing status, and first-launch guidance differ by platform; read the matching installation section below.
 
 ---
 
