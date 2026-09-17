@@ -37,9 +37,10 @@
 
 - **Codex + Claude Code** — Track both providers from one app and switch manually or automatically.
 - **Remaining usage** — See the selected provider's percentage in the menu bar or system tray.
-- **Reset countdowns** — Know when each available limit refreshes.
+- **Reset times** — Know when each available limit refreshes, as a local clock time with a countdown.
 - **Every usage window** — Inspect five-hour, weekly, and any additional windows returned for your account.
 - **Local history** — Keep up to 24 hours of percentage-only history for each provider and window.
+- **Per-provider controls** — Pause collection with **Collect usage** or collapse a card with **Show details**, without disconnecting.
 - **macOS + Windows** — Use a native menu bar app on macOS or system tray app on Windows.
 - **Local-first** — Reuse existing provider sessions and keep raw provider output out of history.
 
@@ -69,10 +70,12 @@ UsageBar, seçtiğiniz sağlayıcının kalan kullanım oranını macOS menü ç
 - **Codex + Claude Code:** İki sağlayıcıyı tek uygulamada izler.
 - **Kalan kullanım:** Simgede kullanılan değil, kalan yüzdeyi gösterir.
 - **Birden çok pencere:** 5 saatlik, haftalık ve sağlayıcının döndürdüğü diğer süreli pencereleri ayrı ayrı listeler.
-- **Sıfırlama süreleri:** Her pencere için sıfırlanmaya kalan süreyi gösterir.
+- **Sıfırlama süreleri:** Sıfırlanma zamanı bildiren her pencere için yerel saati ve kalan süreyi birlikte gösterir; örneğin `Sıfırlama: 18:45 · 3sa 12dk`.
 - **Yerel geçmiş:** Her sağlayıcı/pencere çifti için 24 saate kadar kalan yüzde grafiği tutar.
 - **Güvenilir durum:** Geçici hatalarda son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder.
 - **Sağlayıcı seçimi:** `Otomatik | Codex | Claude` ile sabit seçim veya 30 saniyelik otomatik geçiş sunar.
+- **Kullanımı topla:** Veri toplama her sağlayıcı için bağlantı kesilmeden duraklatılıp sürdürülebilir (macOS'ta sağlayıcının alt menüsünde, Windows'ta Ayarlar ve tepsi menüsünde). Duraklatılan sağlayıcı bağlı kalır ve **Duraklatıldı** olarak işaretlenir; son değerleri ile kayıtlı geçmişi korunur; simgedeki değer toplanmaya devam eden sağlayıcıları izler.
+- **Ayrıntıları göster:** Her sağlayıcının ayrıntı gövdesi (pencere değerleri, kalan yüzdeler, sıfırlama satırları, geçmiş özetleri ve grafikler) ayrı ayrı gizlenebilir; varsayılan olarak açıktır. Yalnızca görünümü etkiler: bağlantı, toplama ve geçmiş kaydı değişmez; başlık, geçerliyse duraklatma işareti ve etkin hata satırı yerinde kalır. Tercih sağlayıcı başına, **Kullanımı topla**'dan bağımsız saklanır.
 - **Esnek görünüm:** Renkler kapatılabilir; üç uyarı eşiği profili ve 1, 2 veya 5 dakikalık yenileme aralığı seçilebilir.
 - **Otomatik başlatma:** İsteğe bağlı olarak kullanıcı oturum açtığında başlar.
 - **İki dil, iki platform:** Türkçe ve İngilizce arayüz; macOS ve Windows desteği.
@@ -357,10 +360,12 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Codex + Claude Code:** Track both providers from one app.
 - **Remaining usage:** See the percentage left, not the percentage used.
 - **Multiple windows:** List five-hour, weekly, and any other duration returned by the provider.
-- **Reset times:** See a countdown for every available window.
+- **Reset times:** Show the local clock time and the countdown together for every window that reports a reset; for example `Resets: 6:45 PM · 3h 12m`.
 - **Local history:** Keep up to 24 hours of remaining-percentage history for each provider/window pair.
 - **Resilient status:** Keep the last successful value visible with its timestamp and failure reason during temporary errors.
 - **Provider selection:** Pin a provider or rotate every 30 seconds with `Auto | Codex | Claude`.
+- **Collect usage:** Pause and resume collection per provider without disconnecting it (macOS: the provider's submenu; Windows: Settings and the tray menu). A paused provider stays connected and is marked **Paused**; its last readings and recorded history are kept, and the menu bar or tray value follows the providers still being collected.
+- **Show details:** Hide or show each provider's detail body (window values, remaining percentages, reset lines, history summaries and charts) separately; on by default. It is presentation only: connection, collection and history recording are unaffected, and the heading, the paused marker where it applies, and any active issue line stay visible. The preference is stored per provider, independently of **Collect usage**.
 - **Flexible display:** Disable colors, choose from three alert-threshold profiles, and refresh every 1, 2, or 5 minutes.
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
