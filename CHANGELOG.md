@@ -9,6 +9,27 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Added
+- Each connected provider has a **Show details** toggle — macOS in the
+  provider's management submenu beside **Collect usage**, Windows in Settings
+  and in the tray menu. Hiding details collapses that provider's card to its
+  heading: usage-window values, remaining percentages, reset times, history
+  summaries and charts are not drawn. The provider stays connected, keeps
+  collecting while collection is enabled, keeps recording history and keeps its
+  cached readings, and it remains eligible for the menu-bar/tray value, the
+  provider selector and auto-rotation. The paused marker and one concise
+  operational issue line stay visible where they apply.
+- Detail visibility is a separate preference from **Collect usage**; either can
+  change without affecting the other. It is stored per provider, defaults to
+  visible, persists across a restart, and is preserved by a disconnect and
+  reconnect.
+
+### Internal
+- The macOS security acceptance gate and the Windows wiring tests pin the
+  runtime decision sites (refresh planning, eligibility, status selection) and
+  the provider identity behind each detail-visibility control, so a hidden
+  provider cannot be folded into a collection or status decision.
+
 ## [2.0.1] - 2026-09-01
 
 ### Added
