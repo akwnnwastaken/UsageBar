@@ -167,6 +167,49 @@ public sealed class SourceRevisionPipelineTests
     }
 
     /// <summary>
+    /// Archive entries are dated from the resolved revision's commit date, and
+    /// when that object cannot be read — a shallow pull-request checkout has
+    /// only the merge commit — from one fixed epoch, so the ZIP stays
+    /// byte-identical either way. That fallback is deliberate and must stay;
+    /// what must not happen is for it to be silent: the provenance block has
+    /// to print the timestamp actually chosen together with where it came
+    /// from. Each origin is matched inside its own branch, so two stray
+    /// strings elsewhere in the script cannot satisfy this.
+    /// </summary>
+    [Fact]
+    public void TheArchiveTimestampFallbackIsDeterministicAndObservable()
+    {
+        // The date still comes from the resolved revision, never from HEAD.
+        Assert.Matches(
+            @"git\s+-C\s+\$repositoryRoot\s+show\s+-s\s+--format=%cI\s+\$resolvedRevision",
+            PackageScript);
+
+        // A successful lookup records the real origin in the same branch.
+        Assert.Matches(
+            new Regex(
+                @"if \(\$code -eq 0 -and \$raw\)\s*\{[^}]*?"
+                + @"\$commitDate\s*=\s*\[datetimeoffset\]::Parse\(\$raw\)\.UtcDateTime[^}]*?"
+                + @"\$commitDateOrigin\s*=\s*'source commit date'[^}]*\}"),
+            PackageScript);
+
+        // The fallback keeps the exact fixed epoch and records that it was used.
+        Assert.Single(Regex.Matches(PackageScript, @"2020-01-01T00:00:00"));
+        Assert.Matches(
+            new Regex(
+                @"if \(-not \$commitDate\)\s*\{[^}]*?"
+                + @"\[datetime\]::Parse\('2020-01-01T00:00:00'\)[^}]*?"
+                + @"\$commitDateOrigin\s*=\s*'fixed fallback epoch;[^']*'[^}]*\}"),
+            PackageScript);
+
+        // The chosen timestamp and its origin are always printed, as
+        // information: an expected fallback is not a warning.
+        Assert.Matches(
+            @"Write-Host\s+""Timestamp\s+:\s+\$\(\$commitDate\.ToString\('o'\)\)\s+\(\$commitDateOrigin\)""",
+            PackageScript);
+        Assert.DoesNotMatch(@"Write-Warning[^\n]*(commitDate|Timestamp|epoch)", PackageScript);
+    }
+
+    /// <summary>
     /// The fallback exists for local builds only, and an unresolvable revision
     /// stops the build instead of producing an unstamped artifact.
     /// </summary>

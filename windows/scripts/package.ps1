@@ -148,11 +148,13 @@ $revisionOrigin = if ($SourceRevision) { 'supplied explicitly' } else { 'checked
 # object is not in the checkout — a shallow CI clone has only the merge
 # commit — the fixed epoch keeps the archive reproducible.
 $commitDate = $null
+$commitDateOrigin = $null
 try {
     $raw = (& git -C $repositoryRoot show -s --format=%cI $resolvedRevision 2>$null)
     $code = if (Test-Path variable:global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
     if ($code -eq 0 -and $raw) {
         $commitDate = [datetimeoffset]::Parse($raw).UtcDateTime
+        $commitDateOrigin = 'source commit date'
     }
 }
 catch {
@@ -161,12 +163,17 @@ catch {
 
 if (-not $commitDate) {
     # A fixed timestamp keeps the archive reproducible outside a git checkout.
+    # Expected on a shallow pull-request checkout, so it is reported below as
+    # information rather than as a warning — but it is always reported, because
+    # the surrounding log looks the same either way.
     $commitDate = [datetime]::SpecifyKind([datetime]::Parse('2020-01-01T00:00:00'), [datetimekind]::Utc)
+    $commitDateOrigin = 'fixed fallback epoch; source commit date unavailable in this checkout'
 }
 
 Write-Host "Repository : $repositoryRoot"
 Write-Host "Revision   : $resolvedRevision ($revisionOrigin)"
 Write-Host "Build id   : $buildId"
+Write-Host "Timestamp  : $($commitDate.ToString('o')) ($commitDateOrigin)"
 Write-Host "Output     : $OutputDirectory"
 
 # ------------------------------------------------------------- pipeline -----
