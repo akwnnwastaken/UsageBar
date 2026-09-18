@@ -54,6 +54,58 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Static analysis of the seven scripts under scripts/ before any build
+      # work. The analyzer is the PSScriptAnalyzer module the runner image
+      # already ships; nothing is installed or downloaded. The exact version is
+      # asserted, not pinned: if the image drops or upgrades 1.25.0 this fails
+      # loudly and the next version is chosen deliberately. Every finding of
+      # every severity blocks; the baseline in scripts/PSScriptAnalyzerSettings.psd1
+      # exempts only documented, deliberate patterns.
+      - name: Static analysis (PowerShell)
+        run: |
+          $requiredVersion = [version]'1.25.0'
+
+          $available = Get-Module -ListAvailable PSScriptAnalyzer |
+              Where-Object Version -eq $requiredVersion |
+              Select-Object -First 1
+          if (-not $available) {
+            $found = (Get-Module -ListAvailable PSScriptAnalyzer | ForEach-Object { $_.Version.ToString() }) -join ', '
+            if (-not $found) { $found = 'none' }
+            throw "PSScriptAnalyzer $requiredVersion is not available on this runner image (found: $found)."
+          }
+
+          Import-Module PSScriptAnalyzer -RequiredVersion $requiredVersion -ErrorAction Stop
+          $loaded = (Get-Module PSScriptAnalyzer).Version
+          Write-Host "PSScriptAnalyzer version : $loaded"
+          if ($loaded -ne $requiredVersion) {
+            throw "Loaded PSScriptAnalyzer $loaded, expected $requiredVersion."
+          }
+
+          # Exactly the scripts, never the settings file itself; a silently
+          # empty set must not pass as "0 findings".
+          $scripts = @(Get-ChildItem -Path scripts -Filter *.ps1 -File | Sort-Object Name)
+          if ($scripts.Count -eq 0) {
+            throw 'No PowerShell scripts found under scripts/.'
+          }
+          Write-Host "Scripts analyzed         : $($scripts.Count)"
+          $scripts | ForEach-Object { Write-Host "  $($_.Name)" }
+
+          $findings = @(
+            Invoke-ScriptAnalyzer `
+              -Path scripts/*.ps1 `
+              -Settings scripts/PSScriptAnalyzerSettings.psd1
+          )
+
+          if ($findings.Count -ne 0) {
+            $findings |
+              Sort-Object ScriptName, Line, RuleName |
+              Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize |
+              Out-String -Width 4096 |
+              Write-Host
+            throw "PSScriptAnalyzer reported $($findings.Count) finding(s)."
+          }
+          Write-Host 'PSScriptAnalyzer: 0 findings'
+
       - name: Install the .NET 8 SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
