@@ -208,6 +208,23 @@ scan_forbidden_in_file() {
   fi
 }
 
+# A finished read is applied to the provider it was launched for, never to the
+# provider its result claims to be. The identity check is the first thing the
+# acceptance path does: it must exist, and it must sit directly above the
+# collection-policy gate -- and so above every cache and measurement write --
+# because a check that runs after a write has already let the wrong provider's
+# reading through.
+require_present_in_function \
+  "Sonuç kabulü yanlış sağlayıcıyı adlandıran sonucu reddetmiyor" \
+  'private func acceptFetchedUsage\(' \
+  '^        guard fetched\.name == providerName else \{ return \}$'
+
+require_next_line_in_function \
+  "Sağlayıcı kimlik denetimi toplama politikası kapısından önce gelmiyor" \
+  'private func acceptFetchedUsage\(' \
+  '^        guard fetched\.name == providerName else \{ return \}$' \
+  '^        guard ProviderCollectionPolicy\.shouldAccept\($'
+
 # Pausing clears the half-proven rise and nothing more of the display state;
 # disconnect is the only transition allowed to forget the displayed value as
 # well. A whole-file presence check cannot tell those two apart -- the pause

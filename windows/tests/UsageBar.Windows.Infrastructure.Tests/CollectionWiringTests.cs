@@ -271,6 +271,27 @@ public sealed class CollectionWiringTests
     }
 
     /// <summary>
+    /// A finished read is applied to the provider it was launched for, never to
+    /// the provider its result claims to be. The identity check must be the
+    /// first thing <c>Accept</c> does: matched as one ordered pattern so that
+    /// deleting the mismatch rejection, or moving it below the policy gate and
+    /// the cache writes that follow it, fails here even though
+    /// <c>fetched.Name</c> and <c>ShouldAccept</c> both still appear somewhere.
+    /// </summary>
+    [Fact]
+    public void AcceptanceRejectsAResultNamingAnotherProvider()
+    {
+        var body = ControllerPrivateMember("private void Accept(");
+
+        Assert.Matches(
+            new Regex(
+                @"if \(!string\.Equals\(\s*fetched\.Name,\s*providerName,\s*StringComparison\.Ordinal\)\)"
+                + @"\s*\{\s*return;\s*\}"
+                + @"[\s\S]*?ProviderCollectionPolicy\.ShouldAccept\("),
+            body);
+    }
+
+    /// <summary>
     /// The panel keeps a paused provider visible and does not blame it for an
     /// error UsageBar is no longer trying to produce.
     ///
