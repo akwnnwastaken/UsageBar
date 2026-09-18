@@ -10,9 +10,15 @@ namespace UsageBar.Windows.Core.Parsing;
 /// <code>
 /// Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
 /// Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+/// Current week (Opus): 7% used · resets Jul 26 at 10pm (Europe/Istanbul)
 /// </code>
 /// There are no terminal cursor moves, so none of the space-collapse or
 /// overlay-height fragility of the interactive panel applies.
+///
+/// Every "Current week" row is kept: the qualifier decides whether it is the
+/// ordinary all-models limit or a model-specific one, so the order of the rows
+/// never decides which value becomes <see cref="ProviderUsage.Weekly"/>. The
+/// first row per resulting kind wins; a later duplicate is ignored.
 /// </summary>
 public static partial class ClaudeUsageParser
 {
@@ -28,10 +34,11 @@ public static partial class ClaudeUsageParser
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex SessionPattern();
 
-    // The label suffix ("(all models)") is lazy so the first percentage after the
+    // Group 1 is the optional parenthesised qualifier ("all models", "Opus").
+    // The rest of the label suffix is lazy so the first percentage after the
     // label wins. A greedy suffix would backtrack into "18% used" and read "8".
     [GeneratedRegex(
-        @"Current\s+week[^:\n]*?\s*:?\s*(\d{1,3}(?:[.,]\d+)?)\s*%\s*used(?:[^\n]*?resets?\s+([^\n]+))?",
+        @"Current\s+week(?:\s*\(([^)\n]*)\))?[^:\n]*?\s*:?\s*(\d{1,3}(?:[.,]\d+)?)\s*%\s*used(?:[^\n]*?resets?\s+([^\n]+))?",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex WeeklyPattern();
 
@@ -65,9 +72,9 @@ public static partial class ClaudeUsageParser
     {
         var text = raw ?? string.Empty;
         var session = MatchWindow(SessionPattern(), text, now);
-        var weekly = MatchWindow(WeeklyPattern(), text, now);
+        var weeklyWindows = WeeklyWindows(text, now);
 
-        if (session is null && weekly is null)
+        if (session is null && weeklyWindows.Count == 0)
         {
             var lower = text.ToLowerInvariant();
             var notLoggedIn = NotLoggedInKeywords.Any(keyword => lower.Contains(keyword, StringComparison.Ordinal));
@@ -76,7 +83,7 @@ public static partial class ClaudeUsageParser
                 notLoggedIn ? ProviderIssue.ClaudeNotLoggedIn : ProviderIssue.ClaudeUsageUnreadable);
         }
 
-        var windows = new List<UsageWindow>(2);
+        var windows = new List<UsageWindow>(1 + weeklyWindows.Count);
         if (session is { } sessionWindow)
         {
             windows.Add(new UsageWindow(
@@ -86,27 +93,48 @@ public static partial class ClaudeUsageParser
                 FiveHourWindowMinutes));
         }
 
-        if (weekly is { } weeklyWindow)
+        windows.AddRange(weeklyWindows);
+        return new ProviderUsage(ProviderNames.ClaudeCode, windows, error: null);
+    }
+
+    /// <summary>
+    /// Every weekly row in document order, one window per distinct kind. A
+    /// qualifier that normalizes to nothing safe is skipped, never promoted to
+    /// the all-models limit.
+    /// </summary>
+    private static List<UsageWindow> WeeklyWindows(string text, DateTimeOffset now)
+    {
+        var windows = new List<UsageWindow>();
+        foreach (Match match in WeeklyPattern().Matches(text))
         {
-            windows.Add(new UsageWindow(
-                UsageWindowKind.Weekly,
-                weeklyWindow.Percent,
-                weeklyWindow.Reset,
-                WeeklyWindowMinutes));
+            var qualifier = match.Groups[1].Success ? match.Groups[1].Value : null;
+            if (UsageWindowKind.WeeklyKind(qualifier) is not { } kind ||
+                windows.Any(window => window.Kind == kind) ||
+                WindowValues(match, percentGroup: 2, resetGroup: 3, text, now) is not { } values)
+            {
+                continue;
+            }
+
+            windows.Add(new UsageWindow(kind, values.Percent, values.Reset, WeeklyWindowMinutes));
         }
 
-        return new ProviderUsage(ProviderNames.ClaudeCode, windows, error: null);
+        return windows;
     }
 
     private static (int Percent, DateTimeOffset? Reset)? MatchWindow(Regex pattern, string text, DateTimeOffset now)
     {
         var match = pattern.Match(text);
-        if (!match.Success)
-        {
-            return null;
-        }
+        return match.Success ? WindowValues(match, percentGroup: 1, resetGroup: 2, text, now) : null;
+    }
 
-        var normalized = match.Groups[1].Value.Replace(',', '.');
+    private static (int Percent, DateTimeOffset? Reset)? WindowValues(
+        Match match,
+        int percentGroup,
+        int resetGroup,
+        string text,
+        DateTimeOffset now)
+    {
+        var normalized = match.Groups[percentGroup].Value.Replace(',', '.');
         if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
             return null;
@@ -114,9 +142,9 @@ public static partial class ClaudeUsageParser
 
         var percent = Math.Clamp((int)Math.Round(value, MidpointRounding.AwayFromZero), 0, 100);
         DateTimeOffset? reset = null;
-        if (match.Groups.Count > 2 && match.Groups[2].Success)
+        if (match.Groups.Count > resetGroup && match.Groups[resetGroup].Success)
         {
-            reset = ClaudeResetParser.Parse(match.Groups[2].Value.Trim(), now);
+            reset = ClaudeResetParser.Parse(match.Groups[resetGroup].Value.Trim(), now);
         }
 
         reset ??= FollowingLineReset(text, match.Index + match.Length, now);

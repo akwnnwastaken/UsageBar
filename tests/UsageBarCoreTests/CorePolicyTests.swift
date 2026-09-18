@@ -369,6 +369,186 @@ final class CorePolicyTests: XCTestCase {
         }
     }
 
+    // MARK: - Claude model-specific weekly windows
+
+    /// The exact three lines of `shared/fixtures/claude/print-usage-extra-window.txt`.
+    private let extraWindowFixture = """
+    Current session: 41% used · resets Jul 23 at 5pm (Europe/Istanbul)
+    Current week (all models): 18% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    Current week (Opus): 7% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    """
+
+    func testClaudePrintUsageKeepsModelSpecificWeeklyWindows() {
+        let usage = UsageParser.claudePrintUsage(extraWindowFixture)
+        XCTAssertNil(usage.error)
+        XCTAssertEqual(usage.windows.count, 3)
+        XCTAssertEqual(usage.windows.map(\.kind), [.fiveHour, .weekly, .weeklyScoped(scope: "opus")])
+        XCTAssertEqual(usage.windows.map(\.usedPercent), [41, 18, 7])
+        let opus = usage.windows.first { $0.kind == .weeklyScoped(scope: "opus") }
+        XCTAssertEqual(opus?.durationMinutes, 10_080)
+        XCTAssertNotNil(opus?.resetsAt)
+    }
+
+    func testClaudePrintUsageOrdinaryWeeklyIsTheAllModelsRowRegardlessOfOrder() {
+        let opusFirst = UsageParser.claudePrintUsage("""
+        Current week (Opus): 92% used · resets Jul 26 at 10pm (Europe/Istanbul)
+        Current week (all models): 18% used · resets Jul 26 at 10pm (Europe/Istanbul)
+        """)
+        XCTAssertEqual(opusFirst.windows.count, 2)
+        XCTAssertEqual(opusFirst.weekly?.usedPercent, 18)
+        XCTAssertEqual(opusFirst.weekly?.kind, .weekly)
+        XCTAssertNil(opusFirst.session)
+
+        // A weekly-only account still summarises the all-models limit, never the
+        // scoped one, however constrained the scoped one is.
+        let summary = UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": opusFirst])
+        XCTAssertEqual(summary?.remainingPercent, 82)
+        XCTAssertEqual(summary?.windowKind, .weekly)
+
+        // With a session window the session still drives the summary.
+        let withSession = UsageParser.claudePrintUsage("""
+        Current week (Opus): 92% used
+        Current session: 41% used · resets Jul 23 at 5pm (Europe/Istanbul)
+        Current week (all models): 18% used
+        """)
+        let sessionSummary = UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": withSession])
+        XCTAssertEqual(sessionSummary?.remainingPercent, 59)
+        XCTAssertEqual(sessionSummary?.windowKind, .fiveHour)
+    }
+
+    func testWeeklyQualifierNormalization() {
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: nil), .weekly)
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "  "), .weekly)
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "all models"), .weekly)
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: " All Models "), .weekly)
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Opus"), .weeklyScoped(scope: "opus"))
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Opus only"), .weeklyScoped(scope: "opus"))
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Sonnet only"), .weeklyScoped(scope: "sonnet"))
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Fable"), .weeklyScoped(scope: "fable"))
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Premium models"), .weeklyScoped(scope: "premium-models"))
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "--Opus / 4.x--"), .weeklyScoped(scope: "opus-4-x"))
+        // A lone "only" is not a suffix to strip; it is the whole qualifier.
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "only"), .weeklyScoped(scope: "only"))
+        // Non-ASCII letters are unsupported characters, collapsed like any other.
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "Ünlü"), .weeklyScoped(scope: "nl"))
+        // Nothing safe left: the row is skipped, never treated as all-models.
+        XCTAssertNil(UsageWindowKind.weeklyKind(qualifier: "???"))
+        XCTAssertNil(UsageWindowKind.weeklyKind(qualifier: "( )"))
+        // Bounded: the slug never grows with the provider's text.
+        let long = String(repeating: "a", count: 100)
+        if case .weeklyScoped(let scope)? = UsageWindowKind.weeklyKind(qualifier: long) {
+            XCTAssertEqual(scope.count, UsageWindowKind.maximumWeeklyScopeLength)
+        } else {
+            XCTFail("expected a bounded scoped kind")
+        }
+    }
+
+    /// The bound is the last step of normalization, so it holds at every
+    /// separator and "only" boundary — not only for one unbroken token.
+    func testWeeklyScopeLengthBoundary() {
+        let limit = UsageWindowKind.maximumWeeklyScopeLength
+        XCTAssertEqual(limit, 32)
+        func scope(_ qualifier: String) -> String? {
+            if case .weeklyScoped(let scope)? = UsageWindowKind.weeklyKind(qualifier: qualifier) { return scope }
+            return nil
+        }
+        let a = { (count: Int) in String(repeating: "a", count: count) }
+
+        // A. One unbroken token is cut to the bound.
+        XCTAssertEqual(scope(a(100)), a(32))
+
+        // B. A separator right at the bound: the cut lands on the "-", which
+        // is dropped rather than left dangling — never 33 characters.
+        XCTAssertEqual(scope(a(31) + " b"), a(31))
+        XCTAssertEqual(scope(a(30) + " bc"), a(30) + "-b")
+
+        // C. A trailing "only" around the bound is removed whole, never cut to
+        // a partial "-on" / "-onl".
+        XCTAssertEqual(scope(a(27) + " only"), a(27))
+        XCTAssertEqual(scope(a(28) + " only"), a(28))
+        XCTAssertEqual(scope(a(30) + " only"), a(30))
+        XCTAssertEqual(scope(a(31) + " only"), a(31))
+        XCTAssertEqual(scope(a(40) + " only"), a(32))
+
+        // D. Separator-heavy: leading/trailing/multiple separators collapse,
+        // and the cut never leaves a trailing "-".
+        XCTAssertEqual(scope("--" + a(30) + " / _ " + "bcd!!"), a(30) + "-b")
+        XCTAssertEqual(scope("--" + a(31) + " / _ " + "bcd!!"), a(31))
+
+        // E. The ordinary cases are untouched by the ordering.
+        XCTAssertEqual(scope("Opus"), "opus")
+        XCTAssertEqual(scope("Opus only"), "opus")
+        XCTAssertEqual(scope("Sonnet only"), "sonnet")
+        XCTAssertEqual(scope("Fable"), "fable")
+        XCTAssertEqual(scope("Premium models"), "premium-models")
+        XCTAssertEqual(UsageWindowKind.weeklyKind(qualifier: "all models"), .weekly)
+        XCTAssertNil(UsageWindowKind.weeklyKind(qualifier: "???"))
+
+        // Every case above, plus every prefix of a long mixed input, stays
+        // within the bound and never ends with a separator.
+        let mixed = "--" + a(31) + " only / " + a(40) + " only"
+        for length in 0...mixed.count {
+            guard let value = scope(String(mixed.prefix(length))) else { continue }
+            XCTAssertLessThanOrEqual(value.count, limit, "prefix \(length)")
+            XCTAssertFalse(value.hasSuffix("-"), "prefix \(length)")
+        }
+    }
+
+    func testClaudePrintUsageKeepsUnknownQualifiersAndSkipsUnusableOnes() {
+        let usage = UsageParser.claudePrintUsage("""
+        Current session: 41% used
+        Current week (Premium models): 40% used · resets Jul 26 at 10pm (Europe/Istanbul)
+        Current week (???): 60% used
+        """)
+        XCTAssertNil(usage.error)
+        XCTAssertEqual(usage.windows.map(\.kind), [.fiveHour, .weeklyScoped(scope: "premium-models")])
+        let premium = usage.windows.first { $0.kind == .weeklyScoped(scope: "premium-models") }
+        XCTAssertEqual(premium?.usedPercent, 40)
+        XCTAssertEqual(premium?.kind.historyKey, "weekly-premium-models")
+        // The unusable row did not become the ordinary weekly limit.
+        XCTAssertNil(usage.weekly)
+    }
+
+    func testClaudePrintUsageKeepsTheFirstRowPerWeeklyIdentity() {
+        let usage = UsageParser.claudePrintUsage("""
+        Current week (all models): 18% used
+        Current week (Opus): 7% used
+        Current week (Opus only): 50% used
+        Current week (all models): 99% used
+        Current week (Sonnet only): 33% used
+        """)
+        XCTAssertEqual(usage.windows.map(\.kind), [.weekly, .weeklyScoped(scope: "opus"), .weeklyScoped(scope: "sonnet")])
+        XCTAssertEqual(usage.windows.map(\.usedPercent), [18, 7, 33])
+    }
+
+    func testScopedWeeklyHistoryKeysAreDistinctAndAdditive() {
+        XCTAssertEqual(UsageWindowKind.weekly.historyKey, "weekly")
+        XCTAssertEqual(UsageWindowKind.weeklyScoped(scope: "opus").historyKey, "weekly-opus")
+        XCTAssertEqual(UsageHistoryRecorder.seriesKey(providerName: "Claude Code", windowKind: .weekly), "Claude Code|weekly")
+        XCTAssertEqual(
+            UsageHistoryRecorder.seriesKey(providerName: "Claude Code", windowKind: .weeklyScoped(scope: "opus")),
+            "Claude Code|weekly-opus"
+        )
+        XCTAssertNotEqual(UsageWindowKind.weekly, UsageWindowKind.weeklyScoped(scope: "opus"))
+        XCTAssertNotEqual(UsageWindowKind.weeklyScoped(scope: "opus"), UsageWindowKind.weeklyScoped(scope: "sonnet"))
+
+        // Two parsed weekly windows record into two series; the all-models
+        // series keeps the all-models value instead of the scoped one.
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        let usage = UsageParser.claudePrintUsage(extraWindowFixture, now: at)
+        let history = UsageHistoryRecorder.recording([:], measurements: ["Claude Code": usage], at: at)
+        XCTAssertEqual(history.keys.sorted(), ["Claude Code|five-hour", "Claude Code|weekly", "Claude Code|weekly-opus"])
+        XCTAssertEqual(history["Claude Code|weekly"]?.map(\.remainingPercent), [82])
+        XCTAssertEqual(history["Claude Code|weekly-opus"]?.map(\.remainingPercent), [93])
+    }
+
+    func testWeeklyScopeDisplayNames() {
+        XCTAssertEqual(UsageWindowKind.weeklyScopeDisplayName("opus"), "Opus")
+        XCTAssertEqual(UsageWindowKind.weeklyScopeDisplayName("sonnet"), "Sonnet")
+        XCTAssertEqual(UsageWindowKind.weeklyScopeDisplayName("fable"), "Fable")
+        XCTAssertEqual(UsageWindowKind.weeklyScopeDisplayName("premium-models"), "Premium Models")
+    }
+
     // MARK: - Reset time zone / DST
 
     private func instant(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ mi: Int, _ zone: String) -> Date {

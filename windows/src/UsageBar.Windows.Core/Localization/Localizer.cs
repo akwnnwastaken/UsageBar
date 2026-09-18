@@ -316,6 +316,9 @@ public sealed class Localizer
                 return FiveHours;
             case UsageWindowKind.Category.Weekly:
                 return Weekly;
+            case UsageWindowKind.Category.WeeklyScoped:
+                // Model names are proper nouns; only the "Weekly" part is localized.
+                return $"{Weekly} · {UsageWindowKind.WeeklyScopeDisplayName(window.Kind.Scope)}";
             case UsageWindowKind.Category.Duration:
             {
                 var minutes = window.Kind.Value;

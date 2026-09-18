@@ -215,7 +215,13 @@ public enum ProviderConnectionTransition {
 
 public enum UsageWindowKind: Equatable {
     case fiveHour
+    /// The ordinary weekly limit that applies across all models.
     case weekly
+    /// A weekly limit that applies to one model or model family only, reported
+    /// beside the ordinary one (`Current week (Opus)`). `scope` is the
+    /// normalized slug from `weeklyKind(qualifier:)`, never raw provider text:
+    /// it becomes part of the history series key.
+    case weeklyScoped(scope: String)
     case duration(minutes: Int)
     case unknown(position: Int)
 
@@ -230,8 +236,64 @@ public enum UsageWindowKind: Equatable {
         switch self {
         case .fiveHour: return "five-hour"
         case .weekly: return "weekly"
+        case .weeklyScoped(let scope): return "weekly-\(scope)"
         case .duration(let minutes): return "duration-\(minutes)"
         case .unknown(let position): return "unknown-\(position)"
+        }
+    }
+
+    /// Longest scope slug kept; anything past it is cut so a history key can
+    /// never grow with whatever the provider printed.
+    public static let maximumWeeklyScopeLength = 32
+
+    /// Maps the parenthesised qualifier of a `Current week (…)` row to a kind.
+    /// No qualifier or "all models" is the ordinary weekly limit. Anything else
+    /// is a scoped weekly limit whose scope is a lowercase ASCII slug: runs of
+    /// other characters collapsed to "-", one trailing "only" dropped, then cut
+    /// to `maximumWeeklyScopeLength`. A qualifier that leaves no safe slug
+    /// behind yields nil: the row is skipped rather than mistaken for the
+    /// all-models limit.
+    public static func weeklyKind(qualifier: String?) -> UsageWindowKind? {
+        let trimmed = (qualifier ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty || trimmed == "all models" { return .weekly }
+
+        // The whole slug first; a separator is only ever written in front of a
+        // safe character, so it never leads or trails.
+        var slug = ""
+        var pendingSeparator = false
+        for character in trimmed.unicodeScalars {
+            let isSafe = ("a"..."z").contains(character) || ("0"..."9").contains(character)
+            if isSafe {
+                if pendingSeparator, !slug.isEmpty { slug.append("-") }
+                pendingSeparator = false
+                slug.unicodeScalars.append(character)
+            } else {
+                pendingSeparator = true
+            }
+        }
+        // The semantic suffix goes before the bound, so a cut can never leave
+        // a partial "-on" / "-onl" behind.
+        if slug.hasSuffix("-only") { slug.removeLast("-only".count) }
+        // The bound is the last step; a cut that lands on a separator drops it.
+        if slug.count > maximumWeeklyScopeLength { slug = String(slug.prefix(maximumWeeklyScopeLength)) }
+        while slug.hasSuffix("-") { slug.removeLast() }
+        return slug.isEmpty ? nil : .weeklyScoped(scope: slug)
+    }
+
+    /// Display name for a scoped weekly limit. Known model families are proper
+    /// nouns and are not translated; an unknown slug is shown word by word with
+    /// initial capitals ("premium-models" → "Premium Models").
+    public static func weeklyScopeDisplayName(_ scope: String) -> String {
+        switch scope {
+        case "opus": return "Opus"
+        case "sonnet": return "Sonnet"
+        case "haiku": return "Haiku"
+        case "fable": return "Fable"
+        default:
+            return scope
+                .split(separator: "-")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                .joined(separator: " ")
         }
     }
 }
@@ -660,13 +722,19 @@ public enum UsageParser {
     /// one line per window, e.g.
     ///   Current session: 100% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
     ///   Current week (all models): 53% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    ///   Current week (Opus): 7% used · resets Jul 26 at 10pm (Europe/Istanbul)
     /// There are no terminal cursor moves, so there is none of the space-collapse
     /// or overlay-height fragility of the interactive `/usage` panel.
+    ///
+    /// Every `Current week` row is kept: the qualifier decides whether it is the
+    /// ordinary all-models limit or a model-specific one, so the order of the
+    /// rows never decides which value becomes `weekly`. The first row per
+    /// resulting kind wins; a later duplicate is ignored.
     public static func claudePrintUsage(_ raw: String, now: Date = Date()) -> ProviderUsage {
         let session = printWindow("Current session", in: raw, now: now)
-        let weekly = printWindow("Current week[^:\\n]*", in: raw, now: now)
+        let weeklyWindows = printWeeklyWindows(in: raw, now: now)
 
-        if session == nil && weekly == nil {
+        if session == nil && weeklyWindows.isEmpty {
             let lower = raw.lowercased()
             let notLoggedIn = lower.contains("log in")
                 || lower.contains("login")
@@ -679,18 +747,14 @@ public enum UsageParser {
             )
         }
 
-        return ProviderUsage(
-            name: "Claude Code",
-            windows: [
-                session.map {
-                    UsageWindow(kind: .fiveHour, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 300)
-                },
-                weekly.map {
-                    UsageWindow(kind: .weekly, usedPercent: $0.percent, resetsAt: $0.reset, durationMinutes: 10_080)
-                }
-            ].compactMap { $0 },
-            error: nil
-        )
+        var windows: [UsageWindow] = []
+        if let session {
+            windows.append(
+                UsageWindow(kind: .fiveHour, usedPercent: session.percent, resetsAt: session.reset, durationMinutes: 300)
+            )
+        }
+        windows.append(contentsOf: weeklyWindows)
+        return ProviderUsage(name: "Claude Code", windows: windows, error: nil)
     }
 
     private static func printWindow(
@@ -701,15 +765,49 @@ public enum UsageParser {
         let pattern = "(?is)\(labelPattern)\\s*:\\s*(\\d{1,3}(?:[.,]\\d+)?)\\s*%\\s*used(?:[^\\n]*?resets?\\s+([^\\n]+))?"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard
-            let match = regex.firstMatch(in: text, range: range),
-            let percentRange = Range(match.range(at: 1), in: text)
-        else { return nil }
+        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
+        return printValues(of: match, percentGroup: 1, resetGroup: 2, in: text, now: now)
+    }
+
+    /// All weekly rows in document order. Group 1 is the optional parenthesised
+    /// qualifier ("all models", "Opus"); the label may still carry other text
+    /// up to the colon, exactly as the single-row parser tolerated.
+    private static func printWeeklyWindows(in text: String, now: Date) -> [UsageWindow] {
+        let pattern = "(?is)Current\\s+week(?:\\s*\\(([^)\\n]*)\\))?[^:\\n]*\\s*:\\s*(\\d{1,3}(?:[.,]\\d+)?)\\s*%\\s*used(?:[^\\n]*?resets?\\s+([^\\n]+))?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+
+        var windows: [UsageWindow] = []
+        for match in regex.matches(in: text, range: range) {
+            var qualifier: String?
+            if let qualifierRange = Range(match.range(at: 1), in: text) {
+                qualifier = String(text[qualifierRange])
+            }
+            guard
+                let kind = UsageWindowKind.weeklyKind(qualifier: qualifier),
+                !windows.contains(where: { $0.kind == kind }),
+                let values = printValues(of: match, percentGroup: 2, resetGroup: 3, in: text, now: now)
+            else { continue }
+            windows.append(
+                UsageWindow(kind: kind, usedPercent: values.percent, resetsAt: values.reset, durationMinutes: 10_080)
+            )
+        }
+        return windows
+    }
+
+    private static func printValues(
+        of match: NSTextCheckingResult,
+        percentGroup: Int,
+        resetGroup: Int,
+        in text: String,
+        now: Date
+    ) -> (percent: Int, reset: Date?)? {
+        guard let percentRange = Range(match.range(at: percentGroup), in: text) else { return nil }
         let normalized = text[percentRange].replacingOccurrences(of: ",", with: ".")
         guard let value = Double(normalized) else { return nil }
         let percent = min(100, max(0, Int(value.rounded())))
         var reset: Date?
-        if match.numberOfRanges > 2, let resetRange = Range(match.range(at: 2), in: text) {
+        if match.numberOfRanges > resetGroup, let resetRange = Range(match.range(at: resetGroup), in: text) {
             let resetText = String(text[resetRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             reset = parseClaudeReset(resetText, now: now)
         }

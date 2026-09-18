@@ -65,17 +65,21 @@ public sealed class ClaudeUsageReaderTests
     }
 
     /// <summary>
-    /// Every window Claude returns must survive to the panel, including one the
-    /// five-hour/weekly pair does not cover.
+    /// Every window Claude returns must survive to the panel, including a
+    /// model-specific weekly limit the five-hour/weekly pair does not cover.
     /// </summary>
     [Fact]
-    public void ExtraDurationWindowsAreKept()
+    public void ModelSpecificWeeklyWindowsAreKept()
     {
         var usage = Interpret("print-usage-extra-window.txt");
 
         Assert.Null(usage.Error);
+        Assert.Equal(3, usage.Windows.Count);
         Assert.Equal(41, usage.Session?.UsedPercent);
         Assert.Equal(18, usage.Weekly?.UsedPercent);
+        var opus = Assert.Single(usage.Windows, window => window.Kind == UsageWindowKind.WeeklyScoped("opus"));
+        Assert.Equal(7, opus.UsedPercent);
+        Assert.Equal("weekly-opus", opus.Kind.HistoryKey);
 
         // The five-hour window drives the tray summary even with more present.
         var summary = UsageSummaryCalculator.Summary(
