@@ -10,15 +10,28 @@ public readonly record struct UsageWindowKind
     public enum Category
     {
         FiveHour,
+        /// <summary>The ordinary weekly limit that applies across all models.</summary>
         Weekly,
+        /// <summary>
+        /// A weekly limit that applies to one model or model family only,
+        /// reported beside the ordinary one ("Current week (Opus)").
+        /// </summary>
+        WeeklyScoped,
         Duration,
         Unknown
     }
 
-    private UsageWindowKind(Category category, int value)
+    /// <summary>
+    /// Longest scope slug kept; anything past it is cut so a history key can
+    /// never grow with whatever the provider printed.
+    /// </summary>
+    public const int MaximumWeeklyScopeLength = 32;
+
+    private UsageWindowKind(Category category, int value, string scope = "")
     {
         CategoryKind = category;
         Value = value;
+        Scope = scope;
     }
 
     public Category CategoryKind { get; }
@@ -26,13 +39,97 @@ public readonly record struct UsageWindowKind
     /// <summary>Duration in minutes for <see cref="Category.Duration"/>, position for <see cref="Category.Unknown"/>.</summary>
     public int Value { get; }
 
+    /// <summary>
+    /// Normalized slug for <see cref="Category.WeeklyScoped"/> (see
+    /// <see cref="WeeklyKind"/>), empty for every other category. Never raw
+    /// provider text: it becomes part of the history series key.
+    /// </summary>
+    public string Scope { get; }
+
     public static UsageWindowKind FiveHour { get; } = new(Category.FiveHour, 0);
 
     public static UsageWindowKind Weekly { get; } = new(Category.Weekly, 0);
 
+    public static UsageWindowKind WeeklyScoped(string scope) => new(Category.WeeklyScoped, 0, scope);
+
     public static UsageWindowKind Duration(int minutes) => new(Category.Duration, minutes);
 
     public static UsageWindowKind Unknown(int position) => new(Category.Unknown, position);
+
+    /// <summary>
+    /// Maps the parenthesised qualifier of a "Current week (…)" row to a kind.
+    /// No qualifier or "all models" is the ordinary weekly limit. Anything else
+    /// is a scoped weekly limit whose scope is a lowercase ASCII slug: runs of
+    /// other characters collapsed to "-", one trailing "only" dropped, then cut
+    /// to <see cref="MaximumWeeklyScopeLength"/>. A qualifier that leaves no
+    /// safe slug behind yields null: the row is skipped rather than mistaken
+    /// for the all-models limit.
+    /// </summary>
+    public static UsageWindowKind? WeeklyKind(string? qualifier)
+    {
+        var trimmed = (qualifier ?? string.Empty).Trim().ToLowerInvariant();
+        if (trimmed.Length == 0 || trimmed == "all models")
+        {
+            return Weekly;
+        }
+
+        // The whole slug first; a separator is only ever written in front of a
+        // safe character, so it never leads or trails.
+        var slug = new System.Text.StringBuilder(trimmed.Length);
+        var pendingSeparator = false;
+        foreach (var character in trimmed)
+        {
+            var isSafe = character is >= 'a' and <= 'z' or >= '0' and <= '9';
+            if (isSafe)
+            {
+                if (pendingSeparator && slug.Length > 0)
+                {
+                    slug.Append('-');
+                }
+
+                pendingSeparator = false;
+                slug.Append(character);
+            }
+            else
+            {
+                pendingSeparator = true;
+            }
+        }
+
+        // The semantic suffix goes before the bound, so a cut can never leave
+        // a partial "-on" / "-onl" behind.
+        var scope = slug.ToString();
+        if (scope.EndsWith("-only", StringComparison.Ordinal))
+        {
+            scope = scope[..^"-only".Length];
+        }
+
+        // The bound is the last step; a cut that lands on a separator drops it.
+        if (scope.Length > MaximumWeeklyScopeLength)
+        {
+            scope = scope[..MaximumWeeklyScopeLength];
+        }
+
+        scope = scope.TrimEnd('-');
+        return scope.Length == 0 ? null : WeeklyScoped(scope);
+    }
+
+    /// <summary>
+    /// Display name for a scoped weekly limit. Known model families are proper
+    /// nouns and are not translated; an unknown slug is shown word by word with
+    /// initial capitals ("premium-models" → "Premium Models").
+    /// </summary>
+    public static string WeeklyScopeDisplayName(string scope) => scope switch
+    {
+        "opus" => "Opus",
+        "sonnet" => "Sonnet",
+        "haiku" => "Haiku",
+        "fable" => "Fable",
+        _ => string.Join(
+            ' ',
+            scope.Split('-', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => char.ToUpperInvariant(word[0]) + word[1..]))
+    };
 
     /// <summary>
     /// Duration-based classification, matching the macOS rule: 4–6 hours is the
@@ -64,6 +161,7 @@ public readonly record struct UsageWindowKind
     {
         Category.FiveHour => "five-hour",
         Category.Weekly => "weekly",
+        Category.WeeklyScoped => $"weekly-{Scope}",
         Category.Duration => $"duration-{Value}",
         _ => $"unknown-{Value}"
     };

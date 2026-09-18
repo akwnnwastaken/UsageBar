@@ -66,6 +66,9 @@ struct Localizer {
             return fiveHours
         case .weekly:
             return weekly
+        case .weeklyScoped(let scope):
+            // Model names are proper nouns; only the "Weekly" part is localized.
+            return "\(weekly) · \(UsageWindowKind.weeklyScopeDisplayName(scope))"
         case .duration(let minutes):
             let days = minutes / (24 * 60)
             let hours = (minutes % (24 * 60)) / 60
@@ -2873,6 +2876,27 @@ private func runSelfTest() -> Int32 {
         printClaude.error == nil
     else {
         fputs("Claude print-mode kullanım testi başarısız\n", stderr)
+        return 1
+    }
+
+    // A model-specific weekly row is kept beside the all-models one and shown
+    // with its own label; the ordinary weekly value is still the all-models row.
+    let printScoped = UsageParser.claudePrintUsage("""
+    Current session: 41% used · resets Jul 23 at 5pm (Europe/Istanbul)
+    Current week (all models): 18% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    Current week (Opus): 7% used · resets Jul 26 at 10pm (Europe/Istanbul)
+    """)
+    guard
+        printScoped.windows.count == 3,
+        printScoped.session?.usedPercent == 41,
+        printScoped.weekly?.usedPercent == 18,
+        printScoped.windows.contains(where: { $0.kind == .weeklyScoped(scope: "opus") && $0.usedPercent == 7 }),
+        UsageWindowKind.weeklyScoped(scope: "opus").historyKey == "weekly-opus",
+        english.usageWindowLabel(printScoped.windows[2], position: 2) == "Weekly · Opus",
+        turkish.usageWindowLabel(printScoped.windows[2], position: 2) == "Haftalık · Opus",
+        UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": printScoped])?.remainingPercent == 59
+    else {
+        fputs("Claude modele özel haftalık pencere testi başarısız\n", stderr)
         return 1
     }
 

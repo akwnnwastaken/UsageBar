@@ -49,6 +49,25 @@ public sealed class LocalizationAndTrayPresentationTests
             Turkish.UsageWindowLabel(UsageWindow.Classified(10, null, 90), 0));
     }
 
+    /// <summary>
+    /// A model-specific weekly limit carries its model name (a proper noun,
+    /// never translated) after the localized "Weekly"; the ordinary weekly
+    /// label stays exactly as it was.
+    /// </summary>
+    [Fact]
+    public void ScopedWeeklyLabelsNameTheModel()
+    {
+        Assert.Equal("Weekly · Opus", English.UsageWindowLabel(Window(UsageWindowKind.WeeklyScoped("opus"), 10_080), 1));
+        Assert.Equal("Haftalık · Opus", Turkish.UsageWindowLabel(Window(UsageWindowKind.WeeklyScoped("opus"), 10_080), 1));
+        Assert.Equal("Weekly · Sonnet", English.UsageWindowLabel(Window(UsageWindowKind.WeeklyScoped("sonnet"), 10_080), 1));
+        Assert.Equal("Haftalık · Fable", Turkish.UsageWindowLabel(Window(UsageWindowKind.WeeklyScoped("fable"), 10_080), 1));
+        Assert.Equal(
+            "Weekly · Premium Models",
+            English.UsageWindowLabel(Window(UsageWindowKind.WeeklyScoped("premium-models"), 10_080), 1));
+        Assert.Equal("Weekly", English.UsageWindowLabel(Window(UsageWindowKind.Weekly, 10_080), 0));
+        Assert.Equal("Haftalık", Turkish.UsageWindowLabel(Window(UsageWindowKind.Weekly, 10_080), 0));
+    }
+
     [Fact]
     public void HistoryRangeAndSummaryMatchMacOs()
     {

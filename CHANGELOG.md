@@ -9,6 +9,16 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Fixed
+- Claude Code model-specific weekly limits reported by `/usage` (for example
+  `Current week (Opus)` beside `Current week (all models)`) are now preserved
+  and shown as their own detail row — **Weekly · Opus** / **Haftalık · Opus** —
+  with their own history series instead of being silently dropped, on both
+  macOS and Windows. The ordinary weekly row keeps meaning the all-models
+  limit whatever order Claude prints the rows in, the menu-bar/tray value is
+  unchanged (five-hour, then the all-models weekly), and existing history keys
+  are untouched.
+
 ## [2.1.0] - 2026-09-17
 
 ### Added
