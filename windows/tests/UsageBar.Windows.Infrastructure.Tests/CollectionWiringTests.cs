@@ -101,13 +101,20 @@ public sealed class CollectionWiringTests
 
     /// <summary>
     /// Pausing clears the half-proven rise; forgetting the displayed value as
-    /// well is disconnect's job and must stay that way.
+    /// well is disconnect's job and must stay that way. Both calls exist
+    /// legitimately somewhere in the controller, so a whole-file scan cannot
+    /// tell a pause that also forgets from one that does not: each call is
+    /// pinned to the member it belongs to.
     /// </summary>
     [Fact]
     public void PausingClearsThePendingRiseWithoutForgettingTheProvider()
     {
-        Assert.Contains("_displayState.ClearPendingRise(providerName)", Controller, StringComparison.Ordinal);
-        Assert.Contains("_displayState.Forget(providerName)", Controller, StringComparison.Ordinal);
+        var pauseBody = ControllerMember("public void SetCollectionEnabled(");
+        var disconnectBody = ControllerMember("public void DisconnectProvider(");
+
+        Assert.Contains("_displayState.ClearPendingRise(providerName)", pauseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("_displayState.Forget(providerName)", pauseBody, StringComparison.Ordinal);
+        Assert.Contains("_displayState.Forget(providerName)", disconnectBody, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -116,12 +116,6 @@ scan_forbidden \
   "Ölçüm tüketicilerine önbelleğin tamamı veriliyor" \
   '(advanceDisplayedRemaining\(with:|recordUsageHistory\(of:) (self\.)?usages'
 
-# Pausing clears the half-proven rise; disconnect is the only thing allowed to
-# forget the displayed value as well.
-require_present \
-  "Duraklatma bekletilen yükselişi temizlemiyor" \
-  'displayFilter\.clearPendingRise\('
-
 # The pause/resume control goes through the one runtime mutation path. Writing
 # the preference from the click handler would skip the generation bump, the
 # pending-rise clearing and the coalesced refresh.
@@ -213,6 +207,26 @@ scan_forbidden_in_file() {
     exit 1
   fi
 }
+
+# Pausing clears the half-proven rise and nothing more of the display state;
+# disconnect is the only transition allowed to forget the displayed value as
+# well. A whole-file presence check cannot tell those two apart -- the pause
+# path's clear and the disconnect path's forget both legitimately exist -- so
+# each call is pinned to the function it belongs to.
+require_present_in_function \
+  "Duraklatma bekletilen yükselişi temizlemiyor" \
+  'private func setCollectionEnabled' \
+  'displayFilter\.clearPendingRise\('
+
+scan_forbidden_in_function \
+  "Duraklatma gösterilen değeri unutuyor" \
+  'private func setCollectionEnabled' \
+  'displayFilter\.forget\('
+
+require_present_in_function \
+  "Bağlantı kaldırma gösterim durumunu unutmuyor" \
+  'private func disconnectProvider' \
+  'displayFilter\.forget\(provider: providerName\)'
 
 # Pausing is not a selection change and not a rotation change: the stored
 # preferences must survive it untouched, so resuming restores what the user
