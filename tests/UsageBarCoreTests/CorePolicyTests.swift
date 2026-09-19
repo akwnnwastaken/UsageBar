@@ -369,6 +369,54 @@ final class CorePolicyTests: XCTestCase {
         }
     }
 
+    /// The exact line of `shared/fixtures/claude/print-usage-weekly-only.txt`:
+    /// an account that exposes no session window at all.
+    func testClaudePrintUsageAcceptsWeeklyOnlyOutput() {
+        let usage = UsageParser.claudePrintUsage(
+            "Current week (all models): 26% used · resets Jul 29, 11:59pm (Europe/Istanbul)"
+        )
+        XCTAssertNil(usage.error)
+        XCTAssertNil(usage.session)
+        XCTAssertEqual(usage.windows.count, 1)
+        XCTAssertEqual(usage.weekly?.kind, .weekly)
+        XCTAssertEqual(usage.weekly?.usedPercent, 26)
+
+        // The weekly fallback then drives the summary.
+        let summary = UsageSummaryCalculator.summary(for: "Claude Code", in: ["Claude Code": usage])
+        XCTAssertEqual(summary?.remainingPercent, 74)
+        XCTAssertEqual(summary?.windowKind, .weekly)
+    }
+
+    /// The exact lines of `shared/fixtures/claude/print-usage-truncated.txt`: the
+    /// reader waits for process exit, so this documents what the parser does if
+    /// it ever saw a partially written weekly line — it keeps the complete
+    /// window and invents nothing from the fragment.
+    func testClaudePrintUsageIgnoresIncompleteTrailingWindow() {
+        let usage = UsageParser.claudePrintUsage("""
+        Current session: 12% used · resets Jul 23 at 10:20pm (Europe/Istanbul)
+        Current week (all mod
+        """)
+        XCTAssertNil(usage.error)
+        XCTAssertEqual(usage.session?.usedPercent, 12)
+        XCTAssertEqual(usage.windows.count, 1)
+        XCTAssertNil(usage.weekly)
+    }
+
+    /// The exact lines of `shared/fixtures/claude/print-usage-fractional-and-partial.txt`.
+    func testClaudePrintUsageRoundsFractionalPercentAndAllowsMissingReset() {
+        let usage = UsageParser.claudePrintUsage("""
+        Current session: 8.6% used · resets Jul 23 at 5pm (Europe/Istanbul)
+        Current week (all models): 47% used
+        Last 24h · 640 requests · 8 sessions
+        """)
+        XCTAssertNil(usage.error)
+        XCTAssertEqual(usage.session?.usedPercent, 9) // 8.6 rounds up
+        XCTAssertNotNil(usage.session?.resetsAt)
+        XCTAssertEqual(usage.weekly?.usedPercent, 47)
+        XCTAssertNil(usage.weekly?.resetsAt) // no "resets" text on that row
+        XCTAssertEqual(usage.windows.count, 2)
+    }
+
     // MARK: - Claude model-specific weekly windows
 
     /// The exact three lines of `shared/fixtures/claude/print-usage-extra-window.txt`.
