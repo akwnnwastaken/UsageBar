@@ -940,8 +940,10 @@ version, and — for WSL — the distribution name.
 - [ ] In UsageBar, **Connect Claude Code** succeeds.
 - [ ] Diagnostics show `claude=connected:true,executable:trusted,adapter:native_exe`
       (or `native_local` for a legacy install).
-- [ ] Both the five-hour and weekly windows appear, with values matching what
-      `claude` reports itself.
+- [ ] The five-hour/session and all-models weekly windows appear, and any
+      model-specific weekly row Claude exposes (for example **Weekly · Opus**)
+      appears as its own detail row, with values matching what `claude`
+      reports itself.
 - [ ] The reset countdowns are plausible and count down.
 - [ ] Ten refreshes in a row leave **no** stray `claude`, `node`, `bash`, `cmd`
       or `conhost` process in Task Manager.
