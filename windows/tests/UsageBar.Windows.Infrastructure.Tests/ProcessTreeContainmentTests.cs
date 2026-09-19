@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using UsageBar.Windows.Infrastructure.Process;
@@ -9,9 +11,12 @@ namespace UsageBar.Windows.Infrastructure.Tests;
 /// The containment guarantee: closing the Job Object terminates the process
 /// UsageBar started <b>and</b> everything it spawned.
 ///
-/// The helper parent below is started through PowerShell purely because it is a
-/// convenient way to create a real two-level process tree and report the child's
-/// process id. Providers themselves are never launched through a shell — see
+/// Two helper parents create the two-level tree. The job-close and cancellation
+/// tests start PowerShell, which reports the child's process id on stdout. The
+/// timeout test starts cmd.exe and finds the child through a Toolhelp32 process
+/// snapshot instead: PowerShell's start-up on a loaded runner has eaten that
+/// test's whole deadline before the id could be observed. Providers themselves
+/// are never launched through a shell — see
 /// <see cref="ProviderProcessLauncher"/>.
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -24,6 +29,21 @@ public sealed class ProcessTreeContainmentTests
         Path.Combine(SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
 
     private static string PingPath => Path.Combine(SystemDirectory, "PING.EXE");
+
+    private static string CmdPath => Path.Combine(SystemDirectory, "cmd.exe");
+
+    /// <summary>
+    /// A parent that spawns a long-running child without a script or any output:
+    /// cmd.exe runs ping, waits for it, and both are native binaries that start in
+    /// milliseconds. <c>/d</c> skips AutoRun so the tree is exactly cmd → ping.
+    /// The child is found with <see cref="FindTestProcessTree"/>, not on stdout.
+    /// </summary>
+    private static ProviderProcessRequest CmdSpawningPingRequest(TimeSpan timeout) => new()
+    {
+        ExecutablePath = CmdPath,
+        Arguments = new[] { "/d", "/c", "ping", "-n", "300", "127.0.0.1", ">", "nul" },
+        Timeout = timeout
+    };
 
     /// <summary>
     /// How long the helper is given to start and report its child. PowerShell's
@@ -123,42 +143,47 @@ public sealed class ProcessTreeContainmentTests
     [WindowsFact]
     public async Task ATimedOutRunLeavesNoProcessesBehind()
     {
-        await WarmUpPowerShellAsync().ConfigureAwait(false);
-
-        // Long enough for the helper to report its child even on a slow, loaded
-        // runner — PowerShell start-up has been observed at over 25 seconds —
-        // and still far short of the helper's own 300-second sleep, so it is
-        // unambiguously the deadline that ends the run.
+        // Far short of ping's own five minutes, so it is unambiguously the
+        // deadline that ends the run. Nothing else is measured against it: the
+        // tree is observed through a process snapshot while the run is live, so
+        // no shell start-up or stdout round trip has to fit inside the window.
         var timeout = TimeSpan.FromSeconds(60);
-        int? childId = null;
-
-        // The child id is captured as it streams in rather than from the final
-        // snapshot, so it is recorded even though the run is about to be cut
-        // short. Returning false keeps this from ending the run early — the
-        // deadline is what must end it.
-        var request = ParentSpawningChildRequest(timeout) with
-        {
-            IsComplete = output =>
-            {
-                childId ??= ParseFirstProcessId(output.ToArray());
-                return false;
-            }
-        };
 
         var before = DateTimeOffset.UtcNow;
-        var result = await ProviderProcessLauncher.RunAsync(request).ConfigureAwait(false);
+        var run = ProviderProcessLauncher.RunAsync(CmdSpawningPingRequest(timeout));
+
+        // Capture both ids while the tree is alive, so the assertions below are
+        // about these exact processes. The launcher's deadline bounds this loop.
+        (int ParentId, int ChildId)? tree = null;
+        while (!run.IsCompleted)
+        {
+            tree = FindTestProcessTree(startedAtOrAfter: before);
+            if (tree is not null)
+            {
+                break;
+            }
+
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+
+        var result = await run.ConfigureAwait(false);
         var elapsed = DateTimeOffset.UtcNow - before;
 
         Assert.True(result.Launched);
         Assert.True(result.TimedOut, "A run that outlived its deadline must be classified as a timeout.");
         Assert.True(elapsed < timeout + TimeSpan.FromSeconds(30), $"The deadline was not enforced (took {elapsed}).");
 
-        // The assertion is not allowed to pass vacuously: the child must have
-        // been observed, and it must be gone.
-        Assert.True(childId is not null, "The helper never reported a child, so nothing was verified.");
+        // The assertion is not allowed to pass vacuously: the tree must have
+        // been observed, and both processes must be gone.
         Assert.True(
-            await WaitUntilGoneAsync(childId!.Value).ConfigureAwait(false),
+            tree is not null,
+            "The helper never spawned an observable child before the deadline, so nothing was verified.");
+        Assert.True(
+            await WaitUntilGoneAsync(tree!.Value.ChildId).ConfigureAwait(false),
             "The child outlived the timeout.");
+        Assert.True(
+            await WaitUntilGoneAsync(tree.Value.ParentId).ConfigureAwait(false),
+            "The parent outlived the timeout.");
     }
 
     [WindowsFact]
@@ -275,4 +300,144 @@ public sealed class ProcessTreeContainmentTests
 
         return false;
     }
+
+    // --- process-tree discovery -----------------------------------------------
+
+    /// <summary>
+    /// The cmd → ping tree this test process created: a cmd.exe whose parent is
+    /// this process, and a PING.EXE whose parent is that cmd.exe, both started at
+    /// or after <paramref name="startedAtOrAfter"/> and still running. Anything
+    /// else on the machine — another ping, a cmd.exe started by someone else, a
+    /// tree left over from an earlier test — is not accepted. Null while the tree
+    /// does not exist yet; an exception, never a guess, if more than one tree
+    /// qualifies.
+    /// </summary>
+    private static (int ParentId, int ChildId)? FindTestProcessTree(DateTimeOffset startedAtOrAfter)
+    {
+        var processes = TakeProcessSnapshot();
+        var self = Environment.ProcessId;
+
+        var trees = new List<(int ParentId, int ChildId)>();
+        foreach (var parent in processes)
+        {
+            if (parent.ParentId != self
+                || !string.Equals(parent.Name, "cmd.exe", StringComparison.OrdinalIgnoreCase)
+                || !StartedAtOrAfter(parent.Id, startedAtOrAfter))
+            {
+                continue;
+            }
+
+            foreach (var child in processes)
+            {
+                if (child.ParentId == parent.Id
+                    && string.Equals(child.Name, "PING.EXE", StringComparison.OrdinalIgnoreCase)
+                    && StartedAtOrAfter(child.Id, startedAtOrAfter))
+                {
+                    trees.Add((parent.Id, child.Id));
+                }
+            }
+        }
+
+        return trees.Count switch
+        {
+            0 => null,
+            1 => trees[0],
+            _ => throw new InvalidOperationException(
+                "More than one cmd → ping tree belongs to this test process, so the one under test cannot be told apart: "
+                + string.Join(", ", trees.Select(tree => $"cmd {tree.ParentId} → ping {tree.ChildId}")))
+        };
+    }
+
+    /// <summary>
+    /// Whether the process is still running and was created at or after the
+    /// given moment. A process that has gone, or cannot be opened, does not count.
+    /// </summary>
+    private static bool StartedAtOrAfter(int processId, DateTimeOffset moment)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return !process.HasExited && process.StartTime.ToUniversalTime() >= moment.UtcDateTime;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private readonly record struct ProcessSnapshotEntry(int Id, int ParentId, string Name);
+
+    /// <summary>
+    /// Every process on the machine with its parent id and image name, from a
+    /// Toolhelp32 snapshot. Mirrors the production walker in
+    /// <c>Diagnostics/ProcessParentInspector</c>, which keeps its interop private.
+    /// A snapshot that cannot be taken is an error here, not an empty result.
+    /// </summary>
+    private static List<ProcessSnapshotEntry> TakeProcessSnapshot()
+    {
+        var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot == InvalidHandle)
+        {
+            throw new InvalidOperationException($"CreateToolhelp32Snapshot failed ({Marshal.GetLastWin32Error()}).");
+        }
+
+        try
+        {
+            var entries = new List<ProcessSnapshotEntry>();
+            var entry = new PROCESSENTRY32W { dwSize = Marshal.SizeOf<PROCESSENTRY32W>() };
+            if (!Process32FirstW(snapshot, ref entry))
+            {
+                throw new InvalidOperationException($"Process32FirstW failed ({Marshal.GetLastWin32Error()}).");
+            }
+
+            do
+            {
+                entries.Add(new ProcessSnapshotEntry((int)entry.th32ProcessID, (int)entry.th32ParentProcessID, entry.szExeFile));
+            }
+            while (Process32NextW(snapshot, ref entry));
+
+            return entries;
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
+    }
+
+    private const uint TH32CS_SNAPPROCESS = 0x00000002;
+
+    private static readonly IntPtr InvalidHandle = new(-1);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct PROCESSENTRY32W
+    {
+        public int dwSize;
+        public uint cntUsage;
+        public uint th32ProcessID;
+        public IntPtr th32DefaultHeapID;
+        public uint th32ModuleID;
+        public uint cntThreads;
+        public uint th32ParentProcessID;
+        public int pcPriClassBase;
+        public uint dwFlags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32FirstW(IntPtr hSnapshot, ref PROCESSENTRY32W lppe);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32NextW(IntPtr hSnapshot, ref PROCESSENTRY32W lppe);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
 }
