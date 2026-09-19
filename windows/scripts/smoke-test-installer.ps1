@@ -5,24 +5,40 @@
 .DESCRIPTION
     Runs the produced Setup EXE silently and checks what it actually did:
 
-      * fresh install lands under the user profile, with the expected files, a
-        Start Menu shortcut and one uninstall entry under HKCU;
+      * fresh install lands under the user profile with exactly the verified
+        payload (same relative files, same bytes) plus Inno's own uninstaller
+        files, a Start Menu shortcut and one uninstall entry under HKCU;
       * an upgrade over a deliberately older build keeps the same AppId and the
-        same single entry, updates the files, and leaves user settings and the
-        autostart preference untouched;
+        same single entry, leaves the installed tree matching the current
+        verified payload, and leaves user settings and the autostart preference
+        untouched;
       * uninstall removes the program files, the shortcut and the entry — and
         leaves settings and history behind.
 
     The upgrade half is only meaningful because a *different, older* installer
-    is built first; installing identical bytes twice would prove nothing.
+    is built first; installing identical bytes twice would prove nothing. That
+    older installer is compiled from the same staging payload with only its
+    version changed, so the payload checks prove what the current installer
+    lays down — not that a file dropped from an older release would be removed.
 
     All state is created under temporary directories and a scratch settings
     folder, and removed afterwards even when a check fails.
+
+.PARAMETER SetupPath
+    The current Setup EXE under test.
+
+.PARAMETER PreviousSetupPath
+    The deliberately older Setup EXE the upgrade starts from.
+
+.PARAMETER StagingDirectory
+    The verified payload both installers were compiled from. Defaults to what
+    package.ps1 produced, the same default package-installer.ps1 uses.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $SetupPath,
-    [Parameter(Mandatory)] [string] $PreviousSetupPath
+    [Parameter(Mandatory)] [string] $PreviousSetupPath,
+    [string] $StagingDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -48,6 +64,117 @@ function Test-Requirement {
     }
 }
 
+# --- installed payload parity ------------------------------------------------
+
+<#
+    Every file below a root, keyed by its root-relative path with "/" separators.
+    Windows file identity is case-insensitive, so the keys compare that way.
+    A file whose full path does not sit under the root is refused outright:
+    nothing outside the two trees being compared may enter the comparison.
+#>
+function Get-RelativeFileMap {
+    param([Parameter(Mandatory)] [string] $Root)
+
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $prefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    $map = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force)) {
+        if (-not $file.FullName.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to compare '$($file.FullName)': it is not under '$rootFull'."
+        }
+
+        $map[$file.FullName.Substring($prefix.Length).Replace('\', '/')] = $file.FullName
+    }
+
+    return $map
+}
+
+<#
+    Bounded, sorted diagnostics: enough to see what went wrong, never a dump.
+#>
+function Format-PathList {
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[string]] $Paths)
+
+    $sorted = $Paths.ToArray()
+    [System.Array]::Sort($sorted, [System.StringComparer]::OrdinalIgnoreCase)
+    $shown = @($sorted | Select-Object -First 20)
+    $text = $shown -join ', '
+    if ($sorted.Count -gt $shown.Count) {
+        $text += ", … and $($sorted.Count - $shown.Count) more"
+    }
+
+    return "($text)"
+}
+
+<#
+    The installed tree must be the verified payload and nothing else: no payload
+    file missing, no file present that is neither payload nor one of the files
+    Inno Setup itself writes beside it, those installer-owned files present, and
+    every payload file byte-identical (SHA-256) to its staged original.
+#>
+function Test-InstalledPayloadParity {
+    param(
+        [Parameter(Mandatory)] [string] $Label,
+        [Parameter(Mandatory)] [string] $StagingRoot,
+        [Parameter(Mandatory)] [string] $InstallRoot,
+        [Parameter(Mandatory)] [string[]] $InstallerOwnedFiles
+    )
+
+    $expected = Get-RelativeFileMap -Root $StagingRoot
+    $installed = Get-RelativeFileMap -Root $InstallRoot
+
+    $missing = [System.Collections.Generic.List[string]]::new()
+    foreach ($relative in $expected.Keys) {
+        if (-not $installed.ContainsKey($relative)) { $missing.Add($relative) }
+    }
+
+    $unexpected = [System.Collections.Generic.List[string]]::new()
+    foreach ($relative in $installed.Keys) {
+        if ($expected.ContainsKey($relative)) { continue }
+        if ($InstallerOwnedFiles -contains $relative) { continue }
+        $unexpected.Add($relative)
+    }
+
+    $absentExtras = [System.Collections.Generic.List[string]]::new()
+    foreach ($relative in $InstallerOwnedFiles) {
+        if (-not $installed.ContainsKey($relative)) { $absentExtras.Add($relative) }
+    }
+
+    $mismatched = [System.Collections.Generic.List[string]]::new()
+    foreach ($relative in $expected.Keys) {
+        if (-not $installed.ContainsKey($relative)) { continue }
+        $expectedHash = (Get-FileHash -LiteralPath $expected[$relative] -Algorithm SHA256).Hash
+        $installedHash = (Get-FileHash -LiteralPath $installed[$relative] -Algorithm SHA256).Hash
+        if ($expectedHash -ne $installedHash) {
+            $mismatched.Add("$relative expected $($expectedHash.ToLowerInvariant()) installed $($installedHash.ToLowerInvariant())")
+        }
+    }
+
+    Test-Requirement "${Label}: every verified payload file is installed" ($missing.Count -eq 0) (Format-PathList $missing)
+    Test-Requirement "${Label}: nothing but the payload and the installer-owned files is installed" ($unexpected.Count -eq 0) (Format-PathList $unexpected)
+    Test-Requirement "${Label}: the installer-owned files are present" ($absentExtras.Count -eq 0) (Format-PathList $absentExtras)
+    Test-Requirement "${Label}: every payload file has the verified bytes" ($mismatched.Count -eq 0) (Format-PathList $mismatched)
+}
+
+$windowsRoot = Split-Path -Parent $PSScriptRoot
+
+# The payload both installers were compiled from — the same default
+# package-installer.ps1 resolves — and the reference every installed tree is
+# compared against. Checked first, before any machine state is touched, so a
+# missing payload fails the smoke test outright instead of silently weakening it.
+if (-not $StagingDirectory) { $StagingDirectory = Join-Path $windowsRoot 'artifacts\staging\UsageBar' }
+$StagingDirectory = [System.IO.Path]::GetFullPath($StagingDirectory)
+if (-not (Test-Path -LiteralPath (Join-Path $StagingDirectory 'UsageBar.exe') -PathType Leaf)) {
+    throw "No verified payload at ${StagingDirectory}: UsageBar.exe is missing. Run scripts/package.ps1 first."
+}
+
+# The files Inno Setup itself writes into {app} beside the payload: the
+# uninstaller and its log (see [Setup] UninstallFilesDir). Root-relative and
+# explicit on purpose — no wildcard, so any other file the installer lays down
+# is reported rather than waved through.
+$installerOwnedFiles = @('unins000.exe', 'unins000.dat')
+
 $appId = '{7F3B1C64-9A2E-4D58-B0E7-3C6A5D142E90}'
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\${appId}_is1"
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -58,7 +185,7 @@ $historyPath = Join-Path $dataDir 'history.json'
 $unrelatedPath = Join-Path $env:LOCALAPPDATA 'UsageBarSmokeTestUnrelated.txt'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UsageBar.lnk'
 $startupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'UsageBar.lnk'
-$installerSource = Join-Path (Split-Path -Parent $PSScriptRoot) 'installer\UsageBar.iss'
+$installerSource = Join-Path $windowsRoot 'installer\UsageBar.iss'
 
 $settingsBackup = $null
 $historyBackup = $null
@@ -158,6 +285,12 @@ try {
     $previousVersion = if ($entry) { $entry.DisplayVersion } else { '' }
     Test-Requirement 'The entry records the older version' ($previousVersion -eq '0.0.1') "(got '$previousVersion')"
 
+    # What the compiled installer actually laid down, compared with the
+    # verified staging payload it was compiled from: same relative files, same
+    # bytes, and only the installer-owned files beside them.
+    Test-InstalledPayloadParity -Label 'Installed tree matches the verified payload' `
+        -StagingRoot $StagingDirectory -InstallRoot $installDir -InstallerOwnedFiles $installerOwnedFiles
+
     # --- upgrade ------------------------------------------------------------
 
     Write-Host ''
@@ -196,6 +329,16 @@ try {
     Start-Sleep -Seconds 3
     Test-Requirement 'Nothing starts a moment after the upgrade either' (
         @(Get-Process -Name 'UsageBar' -ErrorAction SilentlyContinue).Count -eq 0)
+
+    # The resulting installed tree must again be exactly the current verified
+    # payload. This proves what the upgrade leaves behind — nothing more: the
+    # older installer is compiled from this same payload with only its version
+    # changed, so no file exists that the current payload lacks, and the check
+    # cannot tell whether a file dropped from an older release would be removed.
+    # Inno Setup does not remove such files unless told to; that question is
+    # deliberately out of scope here.
+    Test-InstalledPayloadParity -Label 'Upgraded installed tree matches the current verified payload' `
+        -StagingRoot $StagingDirectory -InstallRoot $installDir -InstallerOwnedFiles $installerOwnedFiles
 
     # --- uninstall ----------------------------------------------------------
 
