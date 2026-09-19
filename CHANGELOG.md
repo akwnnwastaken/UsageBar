@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-19
+
 ### Fixed
 - Claude Code model-specific weekly limits reported by `/usage` (for example
   `Current week (Opus)` beside `Current week (all models)`) are now preserved
@@ -201,7 +203,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/akwnnwastaken/UsageBar/compare/v1.9.0...v2.0.0
