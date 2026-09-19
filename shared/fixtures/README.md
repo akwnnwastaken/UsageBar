@@ -29,9 +29,12 @@ claude/   plain-text output of Claude Code's print-mode usage query
 | `codex/malformed.jsonl` | truncated and non-JSON lines |
 | `codex/incompatible-flag-stderr.txt` | stderr of a CLI that rejects the safe-disable flags |
 | `claude/print-usage-both-windows.txt` | session + weekly with reset times |
+| `claude/print-usage-extra-window.txt` | session + all-models weekly + a model-specific weekly row (Opus) |
 | `claude/print-usage-fractional-and-partial.txt` | `8.6%` rounding, weekly without a reset |
 | `claude/print-usage-weekly-only.txt` | weekly fallback when no session window exists |
 | `claude/print-usage-not-logged-in.txt` | signed-out verdict |
+| `claude/print-usage-login-required.txt` | signed-out verdict, alternate `/login` wording |
 | `claude/print-usage-unreadable.txt` | unreadable verdict |
 | `claude/print-usage-truncated.txt` | partially written output (weekly line incomplete) |
 | `claude/screen-usage-panel.txt` | legacy interactive-panel shape, kept as a parser check |
+| `claude/native-git-bash-missing.txt` | stderr of a native Claude that cannot find Git Bash |
