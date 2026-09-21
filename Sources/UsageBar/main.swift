@@ -1575,22 +1575,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// The menu in two halves. The upper half — the quit control, every
-    /// connected provider's card and the connection actions for the rest — is
-    /// always there. Everything below the disclosure row is built the same
-    /// way it always was, but only while `menuDisclosure` reveals it; nothing
-    /// about a provider is decided down there.
+    /// The menu in two halves. The upper half — every connected provider's
+    /// card, the first of them carrying the quick refresh and quit controls on
+    /// its title row, and the connection actions for the rest — is always
+    /// there. Everything below the disclosure row is built the same way it
+    /// always was, but only while `menuDisclosure` reveals it; nothing about a
+    /// provider is decided down there.
     private func rebuildMenu() {
         menu.removeAllItems()
-        addQuitHeader()
         let connectedNames = connectedProviderNames
+        if connectedNames.isEmpty {
+            addQuickControlsRow()
+        }
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
             addProvider(
                 displayUsages[providerName] ?? .unavailable(providerName, fallback),
                 collectionEnabled: collectionEnabled(providerName),
-                detailsVisible: detailsVisible(providerName)
+                detailsVisible: detailsVisible(providerName),
+                hostsQuickControls: index == 0
             )
         }
 
@@ -1646,9 +1650,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         refreshItem.target = self
-        // Nothing to refresh while every connected provider is paused: the
-        // action would launch no provider, so it must not look available.
-        refreshItem.isEnabled = !isRefreshing && !eligibleProviderNames.isEmpty
+        refreshItem.isEnabled = canRefreshNow
         menu.addItem(refreshItem)
 
         let diagnosticsItem = NSMenuItem(
@@ -1669,19 +1671,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(versionItem)
     }
 
-    /// A slim row whose only content is the quit control, right-aligned so it
-    /// sits in the menu's upper-right corner above the first card. It is the
-    /// same action the bottom "Quit UsageBar" row used to send: the app quits,
-    /// the menu is not merely dismissed.
-    private func addQuitHeader() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 22))
-        let button = menuIconButton(
-            symbolName: "xmark",
-            label: text.quit,
-            action: #selector(quit)
+    /// Whether a refresh can be started right now: not while one is in
+    /// flight, and not while every connected provider is paused — the action
+    /// would launch no provider, so it must not look available. The quick
+    /// refresh control and the textual "Refresh now" row both read this, so
+    /// they can never disagree.
+    private var canRefreshNow: Bool {
+        !isRefreshing && !eligibleProviderNames.isEmpty
+    }
+
+    /// Where the quick controls begin: the refresh control at this x, the
+    /// power control after it, both ending at the card's 12 pt right inset.
+    private static let quickControlsLeft: CGFloat = 226
+
+    /// The menu's two quick actions — refresh, then power — right-aligned on
+    /// the row whose vertical centre is `centerY`. They live on the first
+    /// provider card's title row (or on the small row that stands in for it
+    /// when nothing is connected) so no header pushes the status area down.
+    /// Both act on the whole app: refresh runs the ordinary refresh cycle for
+    /// every eligible provider, power quits UsageBar — the same action the
+    /// bottom "Quit UsageBar" row used to send, not a dismissal of the menu.
+    private func addQuickControls(to container: NSView, centerY: CGFloat) {
+        let refreshButton = menuIconButton(
+            symbolName: "arrow.clockwise",
+            label: isRefreshing ? text.refreshing : text.refreshNow,
+            action: #selector(refresh)
         )
-        button.frame = NSRect(x: 276 - 12 - 20, y: 1, width: 20, height: 20)
-        container.addSubview(button)
+        refreshButton.isEnabled = canRefreshNow
+        refreshButton.frame = NSRect(x: Self.quickControlsLeft, y: centerY - 9, width: 18, height: 18)
+        container.addSubview(refreshButton)
+
+        let quitButton = menuIconButton(symbolName: "power", label: text.quit, action: #selector(quit))
+        quitButton.frame = NSRect(x: 276 - 12 - 18, y: centerY - 9, width: 18, height: 18)
+        container.addSubview(quitButton)
+    }
+
+    /// The stand-in for the first card's title row while no provider is
+    /// connected: there is no status to push down, and quitting must stay
+    /// reachable. Refresh is disabled here because nothing is eligible.
+    private func addQuickControlsRow() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 22))
+        addQuickControls(to: container, centerY: 11)
 
         let item = NSMenuItem()
         item.view = container
@@ -1975,7 +2005,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func addProvider(_ usage: ProviderUsage, collectionEnabled: Bool, detailsVisible: Bool) {
+    private func addProvider(
+        _ usage: ProviderUsage,
+        collectionEnabled: Bool,
+        detailsVisible: Bool,
+        hostsQuickControls: Bool
+    ) {
         // The whole rendering decision, taken once. `usage` itself is never
         // rewritten to produce the compact form: the readings, their history
         // and their freshness are all still there, simply not drawn.
@@ -2034,8 +2069,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .labelColor
-        title.frame = NSRect(x: 38, y: height - 34, width: width - 50, height: 23)
+        // The first card lends the right end of its title row to the menu's
+        // quick controls; the title stops short of them. They are menu chrome,
+        // not part of this provider: nothing about the card's own content
+        // changes, and every other card keeps the full row.
+        let titleRight = hostsQuickControls ? Self.quickControlsLeft : width - 12
+        title.frame = NSRect(x: 38, y: height - 34, width: titleRight - 38, height: 23)
         container.addSubview(title)
+        if hostsQuickControls {
+            addQuickControls(to: container, centerY: height - 22)
+        }
 
         var rowTop = height - 42
         for (index, rowData) in rows.enumerated() {
@@ -2911,7 +2954,8 @@ private func runSelfTest() -> Int32 {
     }
 
     // Menü açılır bölümü: paketlenmiş ikili dosyada da kapalı başlar, tek
-    // dokunuşla açılıp kapanır ve denetim metinleri iki dilde de vardır.
+    // dokunuşla açılıp kapanır ve denetim metinleri — hızlı yenileme / çıkış
+    // simgelerinin erişilebilirlik etiketleri dahil — iki dilde de vardır.
     var disclosure = MenuDisclosureState()
     let launchCollapsed = !disclosure.isExpanded && disclosure.chevronSymbolName == "chevron.down"
     disclosure.toggle()
@@ -2926,7 +2970,11 @@ private func runSelfTest() -> Int32 {
         turkish.hideControls == "Denetimleri gizle",
         english.hideControls == "Hide controls",
         turkish.quit == "UsageBar'dan çık",
-        english.quit == "Quit UsageBar"
+        english.quit == "Quit UsageBar",
+        turkish.refreshNow == "Şimdi yenile",
+        english.refreshNow == "Refresh now",
+        turkish.refreshing == "Yenileniyor…",
+        english.refreshing == "Refreshing…"
     else {
         fputs("Menü açılır bölümü testi başarısız\n", stderr)
         return 1

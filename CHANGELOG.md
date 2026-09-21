@@ -11,13 +11,19 @@ Releases before v1.5.2 are listed on the
 
 ### Changed
 - The macOS menu opens in a compact form. Provider cards, connection actions
-  and the usage information stay immediately visible; the settings, provider
-  management, language, launch-at-login, refresh, diagnostics and version rows
-  sit behind a small chevron control below the provider area and expand inline
-  when it is clicked. The section starts collapsed on each launch and keeps its
-  state while the app runs.
-- **Quit UsageBar** moved from the bottom of the menu to a small **✕** icon in
-  the menu's upper-right corner. It still quits the app.
+  and the usage information stay immediately visible at the top of the menu,
+  with no separate header above them; the settings, provider management,
+  language, launch-at-login, refresh, diagnostics and version rows sit behind
+  a small chevron control below the provider area and expand inline when it is
+  clicked. The section starts collapsed on each launch and keeps its state
+  while the app runs.
+- Two quick controls sit at the right end of the first provider card's title
+  row: a **refresh** icon that runs the ordinary refresh for every eligible
+  provider (unavailable while a refresh is in flight or when nothing is being
+  collected, exactly like **Refresh now**), and a native **power** icon that
+  replaces the bottom **Quit UsageBar** row and still quits the app. When no
+  provider is connected the same controls appear on a small row above the
+  connection actions.
 
 ## [2.1.1] - 2026-09-19
 

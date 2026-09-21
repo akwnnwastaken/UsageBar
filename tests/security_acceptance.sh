@@ -180,7 +180,9 @@ require_next_line_in_function() {
     print -u2 "$label (fonksiyon bulunamadı: $signature)"
     exit 1
   fi
-  next=$(print -r -- "$body" | grep -E -A1 -m1 -- "$line_pattern" | tail -n +2)
+  # `|| true` keeps a no-match from tripping `set -e` inside the substitution
+  # silently; the empty result below still fails closed, now with its label.
+  next=$({ print -r -- "$body" | grep -E -A1 -m1 -- "$line_pattern" || true; } | tail -n +2)
   if [[ -z "$next" ]]; then
     print -u2 "$label (satır bulunamadı: $line_pattern)"
     exit 1
@@ -502,39 +504,41 @@ require_present \
 
 require_present_in_function \
   "Sağlayıcı kartı sunum planından kurulmuyor" \
-  'private func addProvider\(_ usage' \
+  'private func addProvider\($' \
   'ProviderDetailPresentationPolicy\.card\('
 
 require_present_in_function \
   "Ayrıntı gövdesi tek bir kapıdan geçmiyor" \
-  'private func addProvider\(_ usage' \
+  'private func addProvider\($' \
   'let detailWindows = plan\.showsDetailBody \? usage\.windows : \[\]'
 
 scan_forbidden_in_function \
   "Kullanım pencereleri kapıdan geçmeyen bir listeden sayılıyor" \
-  'private func addProvider\(_ usage' \
+  'private func addProvider\($' \
   'usage\.windows\.enumerated\(\)'
 
 require_present_in_function \
   "Etkin hata satırı sunum planından geçmiyor" \
-  'private func addProvider\(_ usage' \
+  'private func addProvider\($' \
   'plan\.showsOperationalIssue'
 
 # Duraklatma işareti de plandan gelir, böylece gizli kartta da yerinde kalır.
 require_present_in_function \
   "Duraklatma işareti sunum planından gelmiyor" \
-  'private func addProvider\(_ usage' \
+  'private func addProvider\($' \
   'plan\.showsPausedMarker \?'
 
-# --- Menü açılır bölümü --------------------------------------------------
+# --- Menü açılır bölümü ve hızlı denetimler --------------------------------
 #
 # Menünün alt denetimlerini açıp kapayan durum yalnızca oturum içi bir sunum
 # durumudur. Aşağıdaki kapılar onun saklanmadığını, yalnızca kendi denetiminden
 # değiştiğini, olağan menü kurulumlarının onu sıfırlamadığını ve hiçbir
-# sağlayıcı kararına sızmadığını korur; ayrıca eski alttaki "Çık" satırının
-# geri gelmediğini ve sağ üstteki simgenin gerçekten uygulamadan çıktığını
-# sabitler.
-menu_disclosure_tokens='menuDisclosure|MenuDisclosureState|revealsLowerControls|chevronSymbolName'
+# sağlayıcı kararına sızmadığını korur. Aynı aile, ilk sağlayıcı kartının
+# başlık satırındaki hızlı yenileme / güç denetimlerini de sabitler: eski
+# alttaki "Çık" satırı ve ara sürümdeki ayrı üst başlık satırı geri gelmez,
+# güç simgesi gerçekten uygulamadan çıkar, yenileme simgesi mevcut yenileme
+# yolunu ve metin satırıyla aynı uygunluk kuralını kullanır.
+menu_disclosure_tokens='menuDisclosure|MenuDisclosureState|revealsLowerControls|chevronSymbolName|hostsQuickControls|addQuickControls|quickControlsLeft|canRefreshNow'
 
 # Durum tek bir yerde kurulur, tek bir yerde değişir ve hiçbir yerde saklanmaz.
 require_occurrences \
@@ -578,33 +582,120 @@ require_next_line_in_function \
   '^        menuDisclosure\.toggle\(\)$' \
   '^        rebuildMenu\(\)$'
 
-# Alttaki metin satırı "Çık" artık üretilmez; sağ üstteki simge mevcut çıkış
-# eylemine bağlıdır ve o eylem hâlâ uygulamayı sonlandırır.
+# Alttaki metin satırı "Çık" artık üretilmez; ara sürümün ayrı üst başlık
+# satırı ve "xmark" simgesi de yoktur.
 scan_forbidden \
   "Alttaki metin satırı Çık öğesi hâlâ üretiliyor" \
   'NSMenuItem\(title: text\.quit'
 
-require_present_in_function \
-  "Sağ üst çıkış simgesi mevcut çıkış eylemine bağlı değil" \
-  'private func addQuitHeader\(\)' \
-  'action: #selector\(quit\)'
+scan_forbidden \
+  "Ara sürümün ayrı üst başlık satırı hâlâ var" \
+  'addQuitHeader'
 
+scan_forbidden \
+  "Çıkış denetimi hâlâ xmark simgesini kullanıyor" \
+  '"xmark"'
+
+# Güç simgesi: yerel "power" sembolü, mevcut çıkış eylemi, yerelleştirilmiş
+# erişilebilirlik etiketi — tek satırda, tek düğmede; o eylem hâlâ uygulamayı
+# sonlandırır.
 require_present_in_function \
-  "Sağ üst çıkış simgesi erişilebilirlik etiketi taşımıyor" \
-  'private func addQuitHeader\(\)' \
-  'label: text\.quit'
+  "Güç simgesi power sembolü + mevcut çıkış eylemi + etiketle kurulmuyor" \
+  'private func addQuickControls\(to' \
+  '^        let quitButton = menuIconButton\(symbolName: "power", label: text\.quit, action: #selector\(quit\)\)$'
 
 require_present_in_function \
   "Çıkış eylemi uygulamayı sonlandırmıyor" \
   '@objc private func quit\(\)' \
   'NSApp\.terminate\(nil\)'
 
+# Yenileme simgesi: yerel "arrow.clockwise" sembolü, mevcut yenileme eylemi,
+# mevcut yenileme metinleri; ardışık satırlar sabitlenir ki simge başka bir
+# eyleme ya da ikinci bir yenileme uygulamasına bağlanamasın.
+require_next_line_in_function \
+  "Yenileme simgesi arrow.clockwise sembolüyle mevcut yenileme metinlerini taşımıyor" \
+  'private func addQuickControls\(to' \
+  '^            symbolName: "arrow\.clockwise",$' \
+  '^            label: isRefreshing \? text\.refreshing : text\.refreshNow,$'
+
+require_next_line_in_function \
+  "Yenileme simgesi mevcut yenileme eylemine bağlı değil" \
+  'private func addQuickControls\(to' \
+  '^            label: isRefreshing \? text\.refreshing : text\.refreshNow,$' \
+  '^            action: #selector\(refresh\)$'
+
+# Yenileme uygunluğu tek bir kuraldır: yenileme sürerken ya da uygun sağlayıcı
+# yokken ne simge ne metin satırı etkindir. Kural tek yerde yazılır, iki yerde
+# okunur.
+require_present_in_function \
+  "Yenileme uygunluk kuralı beklenen ifade değil" \
+  'private var canRefreshNow' \
+  '^        !isRefreshing && !eligibleProviderNames\.isEmpty$'
+
+require_present_in_function \
+  "Yenileme simgesi ortak uygunluk kuralını okumuyor" \
+  'private func addQuickControls\(to' \
+  '^        refreshButton\.isEnabled = canRefreshNow$'
+
+require_present_in_function \
+  "Metin Şimdi yenile satırı ortak uygunluk kuralını okumuyor" \
+  'private func rebuildMenu\(\)' \
+  '^        refreshItem\.isEnabled = canRefreshNow$'
+
+require_next_line_in_function \
+  "Metin Şimdi yenile satırı mevcut yenileme eylemini kaybetti" \
+  'private func rebuildMenu\(\)' \
+  '^            title: isRefreshing \? text\.refreshing : text\.refreshNow,$' \
+  '^            action: #selector\(refresh\),$'
+
+scan_forbidden \
+  "Yenileme uygunluğu ortak kuralın dışında yeniden yazılıyor" \
+  'isEnabled = !isRefreshing'
+
+# Hızlı denetimler yalnızca ilk sağlayıcı kartında (bağlı sağlayıcı yokken
+# onun yerine geçen tek küçük satırda) kurulur; ikinci kart onları
+# yinelemez; yenileme yolu (`refresh()`) bu sunum bayrağını hiç görmez.
+require_present_in_function \
+  "İlk sağlayıcı kartı hızlı denetimleri barındırmıyor" \
+  'private func rebuildMenu\(\)' \
+  '^                hostsQuickControls: index == 0$'
+
+require_occurrences \
+  "Hızlı denetim barındırma bayrağı birden fazla kart kurulumunda veriliyor" \
+  'hostsQuickControls: index == 0' 1
+
+scan_forbidden \
+  "Hızlı denetimler bir karta koşulsuz veriliyor" \
+  'hostsQuickControls: true'
+
+require_next_line_in_function \
+  "Sağlayıcısız satır yalnızca bağlı sağlayıcı yokken kurulmuyor" \
+  'private func rebuildMenu\(\)' \
+  '^        if connectedNames\.isEmpty \{$' \
+  '^            addQuickControlsRow\(\)$'
+
+require_occurrences \
+  "Hızlı denetim kurulum noktası sayısı beklenenden farklı" \
+  'addQuickControls\(to: container' 2
+
+require_present_in_function \
+  "Sağlayıcı kartı hızlı denetimleri yalnızca barındırma bayrağıyla eklemiyor" \
+  'private func addProvider\($' \
+  '^        if hostsQuickControls \{$'
+
+require_next_line_in_function \
+  "Sağlayıcı kartındaki hızlı denetim ekleme bayrağın içinde değil" \
+  'private func addProvider\($' \
+  '^        if hostsQuickControls \{$' \
+  '^            addQuickControls\(to: container, centerY: height - 22\)$'
+
 # Sağlayıcı kartı ve bağlantı satırları açılır bölümün dışında, ondan
-# bağımsız kurulur.
+# bağımsız kurulur; kart, hızlı denetimlerin varlığından bağımsız olarak aynı
+# sunum planından çizilir.
 scan_forbidden_in_function \
   "Sağlayıcı kartı açılır durumuna bakıyor" \
-  'private func addProvider\(_ usage' \
-  "$menu_disclosure_tokens"
+  'private func addProvider\($' \
+  'menuDisclosure|MenuDisclosureState|revealsLowerControls|chevronSymbolName|canRefreshNow'
 
 scan_forbidden_in_function \
   "Bağlantı satırı açılır durumuna bakıyor" \
