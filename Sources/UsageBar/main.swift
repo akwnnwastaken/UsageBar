@@ -43,6 +43,10 @@ struct Localizer {
     var collectionPaused: String { pick("Kullanım toplama duraklatıldı", "Usage collection paused") }
     var refreshNow: String { pick("Şimdi yenile", "Refresh now") }
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
+    /// Accessibility label and tooltip of the icon-only disclosure control that
+    /// reveals or hides the menu's settings and utility rows.
+    var showControls: String { pick("Denetimleri göster", "Show controls") }
+    var hideControls: String { pick("Denetimleri gizle", "Hide controls") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
     var languageTitle: String { pick("Dil", "Language") }
     var usageColorsTitle: String { pick("Kullanım renkleri", "Usage colors") }
@@ -979,6 +983,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// the next one.
     private var acceptedMeasurements: [String: ProviderUsage] = [:]
 
+    /// Whether the menu's lower controls are revealed. Session state only: it
+    /// starts collapsed on every launch, is never persisted, and is mutated by
+    /// the disclosure control alone, so a routine rebuild — refresh, language
+    /// change — keeps whatever the user last chose. It decides what is drawn
+    /// and nothing else.
+    private var menuDisclosure = MenuDisclosureState()
+
     private var language: AppLanguage {
         get {
             guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.language) else {
@@ -1564,8 +1575,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The menu in two halves. The upper half — the quit control, every
+    /// connected provider's card and the connection actions for the rest — is
+    /// always there. Everything below the disclosure row is built the same
+    /// way it always was, but only while `menuDisclosure` reveals it; nothing
+    /// about a provider is decided down there.
     private func rebuildMenu() {
         menu.removeAllItems()
+        addQuitHeader()
         let connectedNames = connectedProviderNames
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
@@ -1577,18 +1594,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
         }
 
-        if !connectedNames.isEmpty {
-            menu.addItem(.separator())
-            addProviderSelector()
-            addMenuBarAppearanceSettings()
-            addUsageColorSettings()
-            addUsageHistorySettings()
-            addRefreshIntervalSettings()
-            addProviderManagementItems(connectedNames)
-        }
-
         if !codexConnected || !claudeConnected {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            if !connectedNames.isEmpty { menu.addItem(.separator()) }
             if !codexConnected {
                 addConnectionItem(
                     title: text.connectCodex,
@@ -1606,6 +1613,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        addDisclosureControl()
+        guard menuDisclosure.revealsLowerControls else { return }
+
+        if !connectedNames.isEmpty {
+            addProviderSelector()
+            addMenuBarAppearanceSettings()
+            addUsageColorSettings()
+            addUsageHistorySettings()
+            addRefreshIntervalSettings()
+            addProviderManagementItems(connectedNames)
+            menu.addItem(.separator())
+        }
+
         addLanguageSelector()
         addLaunchAtLoginItem()
         menu.addItem(.separator())
@@ -1647,10 +1667,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         versionItem.isEnabled = false
         menu.addItem(versionItem)
+    }
 
-        let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
-        quitItem.target = self
-        menu.addItem(quitItem)
+    /// A slim row whose only content is the quit control, right-aligned so it
+    /// sits in the menu's upper-right corner above the first card. It is the
+    /// same action the bottom "Quit UsageBar" row used to send: the app quits,
+    /// the menu is not merely dismissed.
+    private func addQuitHeader() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 22))
+        let button = menuIconButton(
+            symbolName: "xmark",
+            label: text.quit,
+            action: #selector(quit)
+        )
+        button.frame = NSRect(x: 276 - 12 - 20, y: 1, width: 20, height: 20)
+        container.addSubview(button)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    /// The row between the status area and the collapsible controls. The
+    /// chevron is the whole visible control; its symbol and accessibility text
+    /// follow `menuDisclosure`, so a rebuild always draws the current state.
+    private func addDisclosureControl() {
+        let revealed = menuDisclosure.revealsLowerControls
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 20))
+        let button = menuIconButton(
+            symbolName: menuDisclosure.chevronSymbolName,
+            label: revealed ? text.hideControls : text.showControls,
+            action: #selector(toggleMenuDisclosure)
+        )
+        button.frame = NSRect(x: (276 - 60) / 2, y: 1, width: 60, height: 18)
+        container.addSubview(button)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    /// A borderless, icon-only button for a menu row: the native template
+    /// rendering of one SF Symbol, with the given text as both its accessibility
+    /// label and its tooltip. The image initializer is deliberate: it is the
+    /// form the menu's 276 pt width was physically verified with, while a button
+    /// set up from `init(frame:)` was measured widening the open menu.
+    private func menuIconButton(symbolName: String, label: String, action: Selector) -> NSButton {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)?
+            .withSymbolConfiguration(configuration) ?? NSImage()
+        image.isTemplate = true
+        let button = NSButton(image: image, target: self, action: action)
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.setButtonType(.momentaryPushIn)
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        return button
+    }
+
+    /// Rebuilding is the same live update the menu already gets when a refresh
+    /// starts or finishes while it is open, so the lower controls open and
+    /// close in place beneath the chevron.
+    @objc private func toggleMenuDisclosure() {
+        menuDisclosure.toggle()
+        rebuildMenu()
     }
 
     private func addProviderSelector() {
@@ -2825,6 +2907,28 @@ private func runSelfTest() -> Int32 {
         ProviderCollectionPolicy.isEligible(connected: true, collectionEnabled: true)
     else {
         fputs("Ayrıntı görünürlüğü testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Menü açılır bölümü: paketlenmiş ikili dosyada da kapalı başlar, tek
+    // dokunuşla açılıp kapanır ve denetim metinleri iki dilde de vardır.
+    var disclosure = MenuDisclosureState()
+    let launchCollapsed = !disclosure.isExpanded && disclosure.chevronSymbolName == "chevron.down"
+    disclosure.toggle()
+    let expandedOnce = disclosure.isExpanded && disclosure.chevronSymbolName == "chevron.up"
+    disclosure.toggle()
+    guard
+        launchCollapsed,
+        expandedOnce,
+        disclosure == MenuDisclosureState(),
+        turkish.showControls == "Denetimleri göster",
+        english.showControls == "Show controls",
+        turkish.hideControls == "Denetimleri gizle",
+        english.hideControls == "Hide controls",
+        turkish.quit == "UsageBar'dan çık",
+        english.quit == "Quit UsageBar"
+    else {
+        fputs("Menü açılır bölümü testi başarısız\n", stderr)
         return 1
     }
 

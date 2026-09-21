@@ -9,6 +9,16 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Changed
+- The macOS menu opens in a compact form. Provider cards, connection actions
+  and the usage information stay immediately visible; the settings, provider
+  management, language, launch-at-login, refresh, diagnostics and version rows
+  sit behind a small chevron control below the provider area and expand inline
+  when it is clicked. The section starts collapsed on each launch and keeps its
+  state while the app runs.
+- **Quit UsageBar** moved from the bottom of the menu to a small **✕** icon in
+  the menu's upper-right corner. It still quits the app.
+
 ## [2.1.1] - 2026-09-19
 
 ### Fixed

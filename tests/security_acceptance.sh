@@ -526,6 +526,131 @@ require_present_in_function \
   'private func addProvider\(_ usage' \
   'plan\.showsPausedMarker \?'
 
+# --- Menü açılır bölümü --------------------------------------------------
+#
+# Menünün alt denetimlerini açıp kapayan durum yalnızca oturum içi bir sunum
+# durumudur. Aşağıdaki kapılar onun saklanmadığını, yalnızca kendi denetiminden
+# değiştiğini, olağan menü kurulumlarının onu sıfırlamadığını ve hiçbir
+# sağlayıcı kararına sızmadığını korur; ayrıca eski alttaki "Çık" satırının
+# geri gelmediğini ve sağ üstteki simgenin gerçekten uygulamadan çıktığını
+# sabitler.
+menu_disclosure_tokens='menuDisclosure|MenuDisclosureState|revealsLowerControls|chevronSymbolName'
+
+# Durum tek bir yerde kurulur, tek bir yerde değişir ve hiçbir yerde saklanmaz.
+require_occurrences \
+  "Menü açılır durumu tek bir üye olarak kurulmuyor" \
+  'private var menuDisclosure = MenuDisclosureState\(\)' 1
+
+require_occurrences \
+  "Menü açılır durumu yalnızca kendi denetiminden değişmiyor" \
+  'menuDisclosure\.toggle\(\)' 1
+
+require_present_in_function \
+  "Açılır denetim durumu değiştirmiyor" \
+  '@objc private func toggleMenuDisclosure\(\)' \
+  'menuDisclosure\.toggle\(\)'
+
+scan_forbidden \
+  "Menü açılır durumu yeniden atanıyor" \
+  '(self\.|^[[:space:]]*)menuDisclosure = '
+
+scan_forbidden_in_file \
+  "Menü açılır durumu UserDefaults'a yazılıyor" \
+  'Sources/UsageBarCore/MenuDisclosure.swift' \
+  'UserDefaults[.(]|forKey:'
+
+scan_forbidden_in_function \
+  "Menü kurulumu açılır durumunu sıfırlıyor" \
+  'private func rebuildMenu\(\)' \
+  'MenuDisclosureState\(|\.toggle\('
+
+# Kurulum bellekteki durumu okur ve alt bölümü yalnızca o açıkken kurar; dil
+# değişimi, yenileme ve diğer olağan kurulumlar aynı yoldan geçer. Denetim ise
+# durumu çevirip aynı kurulumu çağırır.
+require_present_in_function \
+  "Menü kurulumu alt bölümü açılır durumuna göre kurmuyor" \
+  'private func rebuildMenu\(\)' \
+  '^        guard menuDisclosure\.revealsLowerControls else \{ return \}$'
+
+require_next_line_in_function \
+  "Açılır denetim durumu çevirdikten sonra menüyü yeniden kurmuyor" \
+  '@objc private func toggleMenuDisclosure\(\)' \
+  '^        menuDisclosure\.toggle\(\)$' \
+  '^        rebuildMenu\(\)$'
+
+# Alttaki metin satırı "Çık" artık üretilmez; sağ üstteki simge mevcut çıkış
+# eylemine bağlıdır ve o eylem hâlâ uygulamayı sonlandırır.
+scan_forbidden \
+  "Alttaki metin satırı Çık öğesi hâlâ üretiliyor" \
+  'NSMenuItem\(title: text\.quit'
+
+require_present_in_function \
+  "Sağ üst çıkış simgesi mevcut çıkış eylemine bağlı değil" \
+  'private func addQuitHeader\(\)' \
+  'action: #selector\(quit\)'
+
+require_present_in_function \
+  "Sağ üst çıkış simgesi erişilebilirlik etiketi taşımıyor" \
+  'private func addQuitHeader\(\)' \
+  'label: text\.quit'
+
+require_present_in_function \
+  "Çıkış eylemi uygulamayı sonlandırmıyor" \
+  '@objc private func quit\(\)' \
+  'NSApp\.terminate\(nil\)'
+
+# Sağlayıcı kartı ve bağlantı satırları açılır bölümün dışında, ondan
+# bağımsız kurulur.
+scan_forbidden_in_function \
+  "Sağlayıcı kartı açılır durumuna bakıyor" \
+  'private func addProvider\(_ usage' \
+  "$menu_disclosure_tokens"
+
+scan_forbidden_in_function \
+  "Bağlantı satırı açılır durumuna bakıyor" \
+  'private func addConnectionItem\(' \
+  "$menu_disclosure_tokens"
+
+# Politikalar ve çalışma zamanı karar noktaları bu durumu hiç görmez.
+scan_forbidden_in_file \
+  "Toplama politikası menü açılır durumuna bakıyor" \
+  'Sources/UsageBarCore/ProviderCollectionPolicy.swift' \
+  "$menu_disclosure_tokens|isExpanded"
+
+scan_forbidden_in_file \
+  "Durum ve döndürme politikası menü açılır durumuna bakıyor" \
+  'Sources/UsageBarCore/ProviderStatusPolicy.swift' \
+  "$menu_disclosure_tokens|isExpanded"
+
+scan_forbidden_in_file \
+  "Ayrıntı sunum politikası menü açılır durumuna bakıyor" \
+  'Sources/UsageBarCore/ProviderDetailVisibility.swift' \
+  "$menu_disclosure_tokens|isExpanded"
+
+for signature in \
+  '@objc private func refresh\(\)' \
+  'private func launch\(' \
+  'private func acceptFetchedUsage\(' \
+  'private func recordUsageHistory\(' \
+  'private func maintainUsageHistoryRetention\(' \
+  'private func advanceDisplayedRemaining\(' \
+  'private var displayUsages' \
+  'private var connectedProviderNames' \
+  'private var eligibleProviderNames' \
+  'private var providerCollectionStates' \
+  'private var statusProviderName' \
+  'private func configureStatusPresentationTimer\(' \
+  'private func updateStatusTitle' \
+  'private func setCollectionEnabled' \
+  'private func setDetailsVisible' \
+  'private func disconnectProvider'
+do
+  scan_forbidden_in_function \
+    "Karar noktası menü açılır durumuna bakıyor: $signature" \
+    "$signature" \
+    "$menu_disclosure_tokens"
+done
+
 # Teşhis, bağlantı ve toplama durumunu ayrı ayrı bildirir; toplama durumu
 # politikadan türetilir, bağlantıdan ya da önbellekten değil.
 require_present \
