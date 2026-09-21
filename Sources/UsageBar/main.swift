@@ -43,6 +43,10 @@ struct Localizer {
     var collectionPaused: String { pick("Kullanım toplama duraklatıldı", "Usage collection paused") }
     var refreshNow: String { pick("Şimdi yenile", "Refresh now") }
     var quit: String { pick("UsageBar'dan çık", "Quit UsageBar") }
+    /// Accessibility label and tooltip of the icon-only disclosure control that
+    /// reveals or hides the menu's settings and utility rows.
+    var showControls: String { pick("Denetimleri göster", "Show controls") }
+    var hideControls: String { pick("Denetimleri gizle", "Hide controls") }
     var showInMenuBar: String { pick("Üst çubukta göster", "Show in menu bar") }
     var languageTitle: String { pick("Dil", "Language") }
     var usageColorsTitle: String { pick("Kullanım renkleri", "Usage colors") }
@@ -979,6 +983,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// the next one.
     private var acceptedMeasurements: [String: ProviderUsage] = [:]
 
+    /// Whether the menu's lower controls are revealed. Session state only: it
+    /// starts collapsed on every launch, is never persisted, and is mutated by
+    /// the disclosure control alone, so a routine rebuild — refresh, language
+    /// change — keeps whatever the user last chose. It decides what is drawn
+    /// and nothing else.
+    private var menuDisclosure = MenuDisclosureState()
+
     private var language: AppLanguage {
         get {
             guard let raw = UserDefaults.standard.string(forKey: PreferenceKey.language) else {
@@ -1564,31 +1575,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The menu in two halves. The upper half — every connected provider's
+    /// card, the first of them carrying the quick refresh and quit controls on
+    /// its title row, and the connection actions for the rest — is always
+    /// there. Everything below the disclosure row is built the same way it
+    /// always was, but only while `menuDisclosure` reveals it; nothing about a
+    /// provider is decided down there.
     private func rebuildMenu() {
         menu.removeAllItems()
         let connectedNames = connectedProviderNames
+        if connectedNames.isEmpty {
+            addQuickControlsRow()
+        }
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
             addProvider(
                 displayUsages[providerName] ?? .unavailable(providerName, fallback),
                 collectionEnabled: collectionEnabled(providerName),
-                detailsVisible: detailsVisible(providerName)
+                detailsVisible: detailsVisible(providerName),
+                hostsQuickControls: index == 0
             )
         }
 
-        if !connectedNames.isEmpty {
-            menu.addItem(.separator())
-            addProviderSelector()
-            addMenuBarAppearanceSettings()
-            addUsageColorSettings()
-            addUsageHistorySettings()
-            addRefreshIntervalSettings()
-            addProviderManagementItems(connectedNames)
-        }
-
         if !codexConnected || !claudeConnected {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            if !connectedNames.isEmpty { menu.addItem(.separator()) }
             if !codexConnected {
                 addConnectionItem(
                     title: text.connectCodex,
@@ -1606,6 +1617,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        addDisclosureControl()
+        guard menuDisclosure.revealsLowerControls else { return }
+
+        if !connectedNames.isEmpty {
+            addProviderSelector()
+            addMenuBarAppearanceSettings()
+            addUsageColorSettings()
+            addUsageHistorySettings()
+            addRefreshIntervalSettings()
+            addProviderManagementItems(connectedNames)
+            menu.addItem(.separator())
+        }
+
         addLanguageSelector()
         addLaunchAtLoginItem()
         menu.addItem(.separator())
@@ -1626,9 +1650,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         refreshItem.target = self
-        // Nothing to refresh while every connected provider is paused: the
-        // action would launch no provider, so it must not look available.
-        refreshItem.isEnabled = !isRefreshing && !eligibleProviderNames.isEmpty
+        refreshItem.isEnabled = canRefreshNow
         menu.addItem(refreshItem)
 
         let diagnosticsItem = NSMenuItem(
@@ -1647,10 +1669,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         versionItem.isEnabled = false
         menu.addItem(versionItem)
+    }
 
-        let quitItem = NSMenuItem(title: text.quit, action: #selector(quit), keyEquivalent: "")
-        quitItem.target = self
-        menu.addItem(quitItem)
+    /// Whether a refresh can be started right now: not while one is in
+    /// flight, and not while every connected provider is paused — the action
+    /// would launch no provider, so it must not look available. The quick
+    /// refresh control and the textual "Refresh now" row both read this, so
+    /// they can never disagree.
+    private var canRefreshNow: Bool {
+        !isRefreshing && !eligibleProviderNames.isEmpty
+    }
+
+    /// Where the quick controls begin: the refresh control at this x, the
+    /// power control after it, both ending at the card's 12 pt right inset.
+    private static let quickControlsLeft: CGFloat = 226
+
+    /// The menu's two quick actions — refresh, then power — right-aligned on
+    /// the row whose vertical centre is `centerY`. They live on the first
+    /// provider card's title row (or on the small row that stands in for it
+    /// when nothing is connected) so no header pushes the status area down.
+    /// Both act on the whole app: refresh runs the ordinary refresh cycle for
+    /// every eligible provider, power quits UsageBar — the same action the
+    /// bottom "Quit UsageBar" row used to send, not a dismissal of the menu.
+    private func addQuickControls(to container: NSView, centerY: CGFloat) {
+        let refreshButton = menuIconButton(
+            symbolName: "arrow.clockwise",
+            label: isRefreshing ? text.refreshing : text.refreshNow,
+            action: #selector(refresh)
+        )
+        refreshButton.isEnabled = canRefreshNow
+        refreshButton.frame = NSRect(x: Self.quickControlsLeft, y: centerY - 9, width: 18, height: 18)
+        container.addSubview(refreshButton)
+
+        let quitButton = menuIconButton(symbolName: "power", label: text.quit, action: #selector(quit))
+        quitButton.frame = NSRect(x: 276 - 12 - 18, y: centerY - 9, width: 18, height: 18)
+        container.addSubview(quitButton)
+    }
+
+    /// The stand-in for the first card's title row while no provider is
+    /// connected: there is no status to push down, and quitting must stay
+    /// reachable. Refresh is disabled here because nothing is eligible.
+    private func addQuickControlsRow() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 22))
+        addQuickControls(to: container, centerY: 11)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    /// The row between the status area and the collapsible controls. The
+    /// chevron is the whole visible control; its symbol and accessibility text
+    /// follow `menuDisclosure`, so a rebuild always draws the current state.
+    private func addDisclosureControl() {
+        let revealed = menuDisclosure.revealsLowerControls
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 276, height: 20))
+        let button = menuIconButton(
+            symbolName: menuDisclosure.chevronSymbolName,
+            label: revealed ? text.hideControls : text.showControls,
+            action: #selector(toggleMenuDisclosure)
+        )
+        button.frame = NSRect(x: (276 - 60) / 2, y: 1, width: 60, height: 18)
+        container.addSubview(button)
+
+        let item = NSMenuItem()
+        item.view = container
+        menu.addItem(item)
+    }
+
+    /// A borderless, icon-only button for a menu row: the native template
+    /// rendering of one SF Symbol, with the given text as both its accessibility
+    /// label and its tooltip. The image initializer is deliberate: it is the
+    /// form the menu's 276 pt width was physically verified with, while a button
+    /// set up from `init(frame:)` was measured widening the open menu.
+    private func menuIconButton(symbolName: String, label: String, action: Selector) -> NSButton {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)?
+            .withSymbolConfiguration(configuration) ?? NSImage()
+        image.isTemplate = true
+        let button = NSButton(image: image, target: self, action: action)
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.setButtonType(.momentaryPushIn)
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        return button
+    }
+
+    /// Rebuilding is the same live update the menu already gets when a refresh
+    /// starts or finishes while it is open, so the lower controls open and
+    /// close in place beneath the chevron.
+    @objc private func toggleMenuDisclosure() {
+        menuDisclosure.toggle()
+        rebuildMenu()
     }
 
     private func addProviderSelector() {
@@ -1893,7 +2005,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func addProvider(_ usage: ProviderUsage, collectionEnabled: Bool, detailsVisible: Bool) {
+    private func addProvider(
+        _ usage: ProviderUsage,
+        collectionEnabled: Bool,
+        detailsVisible: Bool,
+        hostsQuickControls: Bool
+    ) {
         // The whole rendering decision, taken once. `usage` itself is never
         // rewritten to produce the compact form: the readings, their history
         // and their freshness are all still there, simply not drawn.
@@ -1952,8 +2069,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .labelColor
-        title.frame = NSRect(x: 38, y: height - 34, width: width - 50, height: 23)
+        // The first card lends the right end of its title row to the menu's
+        // quick controls; the title stops short of them. They are menu chrome,
+        // not part of this provider: nothing about the card's own content
+        // changes, and every other card keeps the full row.
+        let titleRight = hostsQuickControls ? Self.quickControlsLeft : width - 12
+        title.frame = NSRect(x: 38, y: height - 34, width: titleRight - 38, height: 23)
         container.addSubview(title)
+        if hostsQuickControls {
+            addQuickControls(to: container, centerY: height - 22)
+        }
 
         var rowTop = height - 42
         for (index, rowData) in rows.enumerated() {
@@ -2825,6 +2950,33 @@ private func runSelfTest() -> Int32 {
         ProviderCollectionPolicy.isEligible(connected: true, collectionEnabled: true)
     else {
         fputs("Ayrıntı görünürlüğü testi başarısız\n", stderr)
+        return 1
+    }
+
+    // Menü açılır bölümü: paketlenmiş ikili dosyada da kapalı başlar, tek
+    // dokunuşla açılıp kapanır ve denetim metinleri — hızlı yenileme / çıkış
+    // simgelerinin erişilebilirlik etiketleri dahil — iki dilde de vardır.
+    var disclosure = MenuDisclosureState()
+    let launchCollapsed = !disclosure.isExpanded && disclosure.chevronSymbolName == "chevron.down"
+    disclosure.toggle()
+    let expandedOnce = disclosure.isExpanded && disclosure.chevronSymbolName == "chevron.up"
+    disclosure.toggle()
+    guard
+        launchCollapsed,
+        expandedOnce,
+        disclosure == MenuDisclosureState(),
+        turkish.showControls == "Denetimleri göster",
+        english.showControls == "Show controls",
+        turkish.hideControls == "Denetimleri gizle",
+        english.hideControls == "Hide controls",
+        turkish.quit == "UsageBar'dan çık",
+        english.quit == "Quit UsageBar",
+        turkish.refreshNow == "Şimdi yenile",
+        english.refreshNow == "Refresh now",
+        turkish.refreshing == "Yenileniyor…",
+        english.refreshing == "Refreshing…"
+    else {
+        fputs("Menü açılır bölümü testi başarısız\n", stderr)
         return 1
     }
 
