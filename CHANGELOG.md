@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-21
+
 ### Changed
 - The macOS menu opens in a compact form. Provider cards, connection actions
   and the usage information stay immediately visible at the top of the menu,
@@ -219,7 +221,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.0...v2.0.1
