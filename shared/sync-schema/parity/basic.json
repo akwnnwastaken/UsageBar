@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-04T09:00:00Z",
+  "providers": [
+    {
+      "providerId": "codex",
+      "connected": true,
+      "collecting": true,
+      "measurement": {
+        "measuredAt": "2026-03-04T09:00:00Z",
+        "headlineRemainingPercent": 64,
+        "headlineWindowId": "five-hour",
+        "windows": [
+          {
+            "windowId": "five-hour",
+            "kind": "fiveHour",
+            "durationMinutes": 300,
+            "remainingPercent": 64,
+            "resetsAt": "2026-03-04T13:00:00Z"
+          },
+          {
+            "windowId": "weekly",
+            "kind": "weekly",
+            "durationMinutes": 10080,
+            "remainingPercent": 81,
+            "resetsAt": "2026-03-08T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "providerId": "claude-code",
+      "connected": true,
+      "collecting": true,
+      "measurement": {
+        "measuredAt": "2026-03-04T08:55:00Z",
+        "headlineRemainingPercent": 52,
+        "headlineWindowId": "five-hour",
+        "windows": [
+          {
+            "windowId": "five-hour",
+            "kind": "fiveHour",
+            "durationMinutes": 300,
+            "remainingPercent": 52,
+            "resetsAt": "2026-03-04T12:30:00Z"
+          },
+          {
+            "windowId": "weekly",
+            "kind": "weekly",
+            "durationMinutes": 10080,
+            "remainingPercent": 76,
+            "resetsAt": "2026-03-09T19:00:00Z"
+          }
+        ]
+      }
+    }
+  ]
+}

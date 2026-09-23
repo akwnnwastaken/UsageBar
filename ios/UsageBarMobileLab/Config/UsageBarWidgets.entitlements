@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The app and its widget extension share exactly one thing: the connection
+	  credentials.
+
+	  Both halves of this string are substituted at build time.
+	  $(AppIdentifierPrefix) expands to the signing team prefix, so the literal
+	  Team ID never appears in source and the group can only be joined by
+	  targets signed with the same team. $(USAGEBAR_KEYCHAIN_GROUP_SUFFIX) comes
+	  from Config/Signing.xcconfig, so a self-builder who re-namespaces the
+	  project in their own untracked LocalSigning.xcconfig moves the app and the
+	  extension to the same new group together — which is the only way the
+	  widget can still read what the app paired with.
+
+	  There is deliberately no App Group entitlement here. A free Personal Team
+	  cannot create one, and this architecture does not need one: the app and
+	  the widget share credentials only, never a container, and each keeps its
+	  own private snapshot cache.
+	-->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(USAGEBAR_KEYCHAIN_GROUP_SUFFIX)</string>
+	</array>
+</dict>
+</plist>

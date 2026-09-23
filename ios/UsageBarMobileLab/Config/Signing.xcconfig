@@ -1,0 +1,58 @@
+// Project identity and signing for UsageBar Mobile.
+//
+// Two things in this project differ per person rather than per release: the
+// Apple Team the app is signed with, and the bundle namespace it is registered
+// under. Neither is source. A Team ID identifies a developer account, and a
+// bundle namespace can only be registered by one Apple account — so a shared
+// public project cannot assume that everyone who builds it may use
+// `com.usagebar.mobilelab`.
+//
+// Both therefore resolve through this file, which defines maintainer-compatible
+// defaults and then includes the untracked LocalSigning.xcconfig LAST, so a
+// local file always wins.
+//
+// To build for your own device:
+//
+//     cp Config/LocalSigning.example.xcconfig Config/LocalSigning.xcconfig
+//     # then edit it, or run scripts/configure_ios_self_build.sh
+//
+// LocalSigning.xcconfig is untracked (excluded through .git/info/exclude, not
+// through the repository .gitignore) and must never be committed.
+
+// MARK: - Release version
+//
+// One place, read by every target. The Mac host carries the same number in
+// mobile-lab/macos/Info.plist, and a release test asserts the two agree.
+USAGEBAR_MOBILE_VERSION = 0.1.0
+USAGEBAR_MOBILE_BUILD = 1
+
+// MARK: - Bundle namespace
+//
+// Everything derives from one base, so overriding a single value in
+// LocalSigning.xcconfig re-namespaces the app, the widget/control extension,
+// the test bundle and the shared Keychain group together. They must move as a
+// set: the extension's identifier has to be a child of the app's, and the
+// Keychain group has to be identical on both targets or the widget cannot read
+// the credential the app stored.
+USAGEBAR_BUNDLE_ID_BASE = com.usagebar.mobilelab
+
+USAGEBAR_MOBILE_BUNDLE_ID = $(USAGEBAR_BUNDLE_ID_BASE)
+USAGEBAR_WIDGET_BUNDLE_ID = $(USAGEBAR_BUNDLE_ID_BASE).widgets
+USAGEBAR_TEST_BUNDLE_ID = $(USAGEBAR_BUNDLE_ID_BASE).tests
+
+// Joined to $(AppIdentifierPrefix) — the team prefix Xcode substitutes at build
+// time — inside both entitlement files. The literal Team ID never appears in
+// source, and the group can only be joined by targets signed with the same team.
+USAGEBAR_KEYCHAIN_GROUP_SUFFIX = $(USAGEBAR_BUNDLE_ID_BASE).shared
+
+// MARK: - Local overrides
+//
+// Included last on purpose: a value set here beats every default above, whether
+// it re-points the whole namespace by setting USAGEBAR_BUNDLE_ID_BASE or
+// overrides one derived identifier directly.
+//
+// The include is optional on purpose too. Without that file the project still
+// opens, configures, builds for the simulator and runs its whole test suite.
+// Only building for a physical device needs a team, so a missing local file
+// degrades to "cannot install on hardware" rather than "cannot build at all".
+#include? "LocalSigning.xcconfig"

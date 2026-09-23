@@ -1,0 +1,46 @@
+// UsageBar Mobile — local signing template.
+//
+//   cp Config/LocalSigning.example.xcconfig Config/LocalSigning.xcconfig
+//
+// Then replace the placeholders below. The copy is YOUR machine's
+// configuration: it is untracked, it must never be committed, and nothing in
+// this repository will ever read a Team ID from anywhere else.
+//
+// You only need this file to install on a physical iPhone. The simulator
+// builds and the whole test suite run without it.
+//
+// scripts/configure_ios_self_build.sh writes the same file interactively.
+
+// Your Apple Team ID: 10 uppercase letters and digits.
+//
+// Xcode ▸ Settings ▸ Accounts ▸ (your Apple ID) ▸ Manage Certificates, or the
+// membership page at developer.apple.com. A free Personal Team has one too.
+// It is not a secret, but it is account metadata — keep it out of Git.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+
+// Your own bundle namespace.
+//
+// Change this. `com.usagebar.mobilelab` is already registered to the
+// maintainer's Apple account, and two Apple accounts cannot claim the same
+// identifier — Xcode will refuse to create the App ID and tell you the bundle
+// identifier is unavailable.
+//
+// Use a namespace you control, in reverse-DNS form, for example
+// `com.yourname.usagebarmobile`. Do not ship `com.example...` to a real device.
+//
+// Overriding this one value re-namespaces the app, the widget/control
+// extension, the test bundle and the shared Keychain group together.
+USAGEBAR_BUNDLE_ID_BASE = com.example.usagebarmobile
+
+// Derived automatically from the base above. Uncomment only if you need a
+// specific identifier that does not follow the pattern — the widget extension's
+// identifier must stay a child of the app's.
+//
+// USAGEBAR_MOBILE_BUNDLE_ID = com.example.usagebarmobile
+// USAGEBAR_WIDGET_BUNDLE_ID = com.example.usagebarmobile.widgets
+// USAGEBAR_TEST_BUNDLE_ID   = com.example.usagebarmobile.tests
+//
+// The app and the widget extension MUST resolve to the same Keychain group or
+// the widget cannot read the credential the app paired with.
+//
+// USAGEBAR_KEYCHAIN_GROUP_SUFFIX = com.example.usagebarmobile.shared

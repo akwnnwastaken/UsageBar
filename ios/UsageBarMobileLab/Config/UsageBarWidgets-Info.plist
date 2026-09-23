@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Without this dictionary the bundle builds and embeds cleanly but iOS never
+	  recognises it as a widget extension, so nothing appears in the widget
+	  gallery. The rest of the Info.plist is generated from build settings.
+	-->
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+</dict>
+</plist>

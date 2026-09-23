@@ -39,6 +39,27 @@ scan_forbidden \
   "Sağlayıcı ortamına hassas değişken aktarımı bulundu" \
   'ProcessInfo\.processInfo\.environment\[[^]]*(TOKEN|KEY|SECRET|PASSWORD)'
 
+# Scan ONE directory for a forbidden pattern. Some claims are only meaningful
+# inside a module: "no Tailscale mutation verb" cannot be asserted across all of
+# Sources, because provider parsing legitimately looks for words like "login" in
+# CLI output. Fails closed exactly like scan_forbidden.
+scan_forbidden_in() {
+  local label="$1" directory="$2" pattern="$3" matches rc
+  if [[ ! -d "$PROJECT_DIR/$directory" ]]; then
+    print -u2 "$label (dizin bulunamadı: $directory)"
+    exit 1
+  fi
+  matches=$(grep -rEn -- "$pattern" "$PROJECT_DIR/$directory") && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    print -u2 "$label"
+    print -u2 "$matches"
+    exit 1
+  elif [[ $rc -ne 1 ]]; then
+    print -u2 "grep taraması başarısız oldu (exit $rc); güvenlik kapısı fail-closed"
+    exit 1
+  fi
+}
+
 # Require a pattern to be present. Absence means the production wiring it stands
 # for is gone, so this fails closed exactly like the forbidden scans: any exit
 # status other than "match found" (0) stops the gate.
@@ -751,6 +772,103 @@ require_present \
 require_present \
   "Teşhis toplama durumu toplama politikasından türetilmiyor" \
   'let collecting = ProviderCollectionPolicy\.isEligible\('
+
+# --- Mobile Sync -------------------------------------------------------------
+#
+# Mobile Sync ships inside UsageBar, so the guards that keep it from running by
+# accident are production guards now. The behavioural claims are proved by
+# UsageBarMobileSyncHostTests; these are the wiring contracts a unit test cannot
+# see, because they are about which call site main.swift uses.
+
+# One permitted identity, and it is UsageBar's own. A second entry would let a
+# lab build and a shipping build serve the same phone from the same machine.
+require_present \
+  "Mobil eşitleme kimlik kapısı üretim paket kimliğinden okumuyor" \
+  'productionBundleIdentifier = "local\.codex\.usagebar"'
+
+scan_forbidden \
+  "Mobil eşitlemede laboratuvar paket kimliği hâlâ kabul ediliyor" \
+  'labHostBundleIdentifier|isEnabledForBundle\("com\.usagebar\.mobilelab'
+
+# New namespaces, never the lab's. Nothing migrates: users pair once more.
+require_present \
+  "Mobil Keychain hizmeti üretim ad alanında değil" \
+  'keychainService = "local\.codex\.usagebar\.mobile-sync"'
+
+require_present \
+  "Mobil eşitleme tercihi üretim anahtarını kullanmıyor" \
+  'preferenceKey = "MobileSyncEnabled"'
+
+scan_forbidden \
+  "Laboratuvar tercih anahtarı üretime taşınmış" \
+  'MobileSyncEnabledLab'
+
+# The phone must agree with the Mac beside it. `usages` is the raw cache; the
+# display filter holds a rise back for a cycle, so publishing it would put a
+# number on the phone that the menu bar is not showing yet.
+require_present \
+  "Mobil anlık görüntü gösterim durumundan üretilmiyor" \
+  'let presented = displayUsages'
+
+scan_forbidden \
+  "Mobil anlık görüntüye ham önbellek veriliyor" \
+  'mobileSync\.publish\(providers: (self\.)?usages'
+
+# Loopback and nothing else. Serve's injected identity header is trustworthy
+# only while Serve is the sole path to the backend.
+require_present \
+  "Mobil dinleyici yalnızca geri döngüye bağlanmıyor" \
+  'loopbackAddress = "127\.0\.0\.1"'
+
+scan_forbidden \
+  "Mobil dinleyici dışa açık bir adrese bağlanıyor" \
+  '"0\.0\.0\.0"|INADDR_ANY'
+
+# The app may read Tailscale status. It may never reshape a tailnet. Scoped to
+# the module that actually runs the CLI: elsewhere in Sources these are ordinary
+# words that provider output parsing legitimately looks for.
+scan_forbidden_in \
+  "Uygulama Tailscale yapılandırmasını değiştiriyor" \
+  "Sources/UsageBarMobileSyncHost" \
+  '"(serve|funnel|up|down|login|logout|set|cert|advertise)"'
+
+require_present \
+  "Tailscale çağrısı sabit argüman vektörünü kullanmıyor" \
+  'arguments = \["status", "--json"\]'
+
+# Republish on transitions that change what the wire carries, and on nothing
+# else. A snapshot is a document the phone caches; re-issuing one because a
+# menu opened would make the phone's "last updated" meaningless.
+for signature in \
+  'func applicationDidFinishLaunching' \
+  'private func setCollectionEnabled' \
+  '@objc private func connectCodex' \
+  '@objc private func connectClaude' \
+  'private func disconnectProvider' \
+  '@objc private func toggleMobileSync'
+do
+  require_present_in_function \
+    "Tel üzerinde görünen durumu değiştiren geçiş mobil anlık görüntüyü yenilemiyor: $signature" \
+    "$signature" \
+    'publishMobileSnapshot\(\)'
+done
+
+# ... and presentation-only state must not.
+for signature in \
+  'private func setDetailsVisible' \
+  '@objc private func toggleMenuDisclosure' \
+  'private func setHoveredSample'
+do
+  scan_forbidden_in_function \
+    "Yalnızca görünüme ait durum mobil anlık görüntüyü yeniliyor: $signature" \
+    "$signature" \
+    'publishMobileSnapshot'
+done
+
+# Sync is subordinate: a mobile failure may never reach the refresh lifecycle.
+require_present \
+  "Mobil yayın etkin değilken sessizce çıkmıyor" \
+  'guard mobileSync\.isEnabled else \{ return \}'
 
 "$PROJECT_DIR/tests/build_regression.sh"
 git -C "$PROJECT_DIR" diff --check

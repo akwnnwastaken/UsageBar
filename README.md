@@ -42,11 +42,16 @@
 - **Local history** — Keep up to 24 hours of percentage-only history for each provider and window.
 - **Per-provider controls** — Pause collection with **Collect usage** or collapse a card with **Show details**, without disconnecting.
 - **macOS + Windows** — Use a native menu bar app on macOS or system tray app on Windows.
+- **iPhone companion** — Build [UsageBar Mobile](docs/mobile/SELF_BUILD.md) yourself and read the same numbers on your phone, in Home and Lock Screen widgets and in Control Center, served by your own Mac over your own Tailscale network. Off by default; there is no cloud backend.
 - **Local-first** — Reuse existing provider sessions and keep raw provider output out of history.
 
 ## Downloads
 
 Version **2.2.0** is current for both platforms. macOS and Windows use separate release tags.
+
+> [!NOTE]
+> The iPhone companion and Mobile Sync are on `main` and will ship in the next
+> consolidated release. **The 2.2.0 packages below do not contain them.**
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
@@ -77,6 +82,7 @@ UsageBar, seçtiğiniz sağlayıcının kalan kullanım oranını macOS menü ç
 - **Kullanımı topla:** Veri toplama her sağlayıcı için bağlantı kesilmeden duraklatılıp sürdürülebilir (macOS'ta sağlayıcının alt menüsünde, Windows'ta Ayarlar ve tepsi menüsünde). Duraklatılan sağlayıcı bağlı kalır ve **Duraklatıldı** olarak işaretlenir; son değerleri ile kayıtlı geçmişi korunur; simgedeki değer toplanmaya devam eden sağlayıcıları izler.
 - **Ayrıntıları göster:** Her sağlayıcının ayrıntı gövdesi (pencere değerleri, kalan yüzdeler, sıfırlama satırları, geçmiş özetleri ve grafikler) ayrı ayrı gizlenebilir; varsayılan olarak açıktır. Yalnızca görünümü etkiler: bağlantı, toplama ve geçmiş kaydı değişmez; başlık, geçerliyse duraklatma işareti ve etkin hata satırı yerinde kalır. Tercih sağlayıcı başına, **Kullanımı topla**'dan bağımsız saklanır.
 - **Esnek görünüm:** Renkler kapatılabilir; üç uyarı eşiği profili ve 1, 2 veya 5 dakikalık yenileme aralığı seçilebilir.
+- **iPhone eşlikçisi:** [UsageBar Mobile](docs/mobile/SELF_BUILD.md)'ı kendin derleyip aynı değerleri telefonunda, Ana Ekran ve Kilit Ekranı widget'larında ve Denetim Merkezi'nde görebilirsin; veriyi kendi Mac'in, kendi Tailscale ağın üzerinden sunar. Varsayılan olarak kapalıdır ve bulut arka ucu yoktur.
 - **Otomatik başlatma:** İsteğe bağlı olarak kullanıcı oturum açtığında başlar.
 - **İki dil, iki platform:** Türkçe ve İngilizce arayüz; macOS ve Windows desteği.
 
@@ -127,6 +133,17 @@ Bir sağlayıcı geçici olarak yanıt vermezse son başarılı değer zaman dam
 - Otomatik başlatma macOS **Giriş Öğeleri** sistemini kullanır.
 - Sağlayıcı komutlarını ayrı bir süreç grubunda çalıştırır.
 - Apple Silicon (`arm64`) için dağıtılır.
+- iPhone eşlikçisi için host olabilir — aşağıya bakın.
+
+#### iPhone
+
+- **UsageBar Mobile** `.ipa` olarak değil, **kaynak** olarak dağıtılır: Xcode'da bir kez derler ve kendi Apple hesabınla imzalarsın. Ücretsiz **Personal Team** yeterlidir; Apple'ın geliştirme sağlaması yaklaşık **7 gün** sonra dolar.
+- Telefon Codex ya da Claude ile hiç konuşmaz ve hiçbir sağlayıcı kimlik bilgisi tutmaz. Tek girdisi Mac'inden gelen arındırılmış bir anlık görüntüdür.
+- **Tailscale gereklidir**; Mac ve iPhone aynı tailnet'te olmalıdır. Erişilebilirlik kendi ağından gelir; yolda hiçbir UsageBar sunucusu yoktur ve Tailscale Funnel asla kullanılmaz.
+- Mac tarafı UsageBar'ın kendisidir. **Mobil Eşitleme sen açana kadar kapalıdır**; kapalıyken UsageBar hiçbir dinleyici açmaz, hiçbir Tailscale komutu çalıştırmaz ve hiçbir mobil kimlik bilgisi saklamaz. Kurulacak ayrı bir Mac uygulaması yoktur.
+- Eşleştirme, tek kullanımlık bir kod taşıyan QR kodunun bir kez taranmasıdır. Mac yalnızca özetleri saklar, kimlik bilgisinin kendisini değil.
+- **Windows telefonu henüz sunamaz.** Host tarafı yalnızca macOS'tur.
+- [docs/mobile/SELF_BUILD.md](docs/mobile/SELF_BUILD.md) ile başla, sonra [docs/mobile/TAILSCALE_SETUP.md](docs/mobile/TAILSCALE_SETUP.md).
 
 #### Windows
 
@@ -324,6 +341,13 @@ UsageBar/
 ├── Sources/UsageBar/                       # macOS uygulaması ve sağlayıcı okuyucuları
 ├── Sources/UsageBarCore/                   # Paylaşılan saf kurallar ve modeller
 ├── Sources/UsageBarProcessLauncher/        # Shell kullanmayan süreç grubu başlatıcısı
+├── Sources/UsageBarSync/                   # Şema-v1 mobil anlık görüntü modeli
+├── Sources/UsageBarSyncTransport/          # Yalnızca loopback HTTP dinleyicisi
+├── Sources/UsageBarPairing/                # QR eşleştirme biçimi, Mac + iPhone
+├── Sources/UsageBarMobileSyncHost/         # Mobil Eşitleme: kimlik, eşleştirme, yaşam döngüsü
+├── ios/UsageBarMobileLab/                  # iPhone uygulaması, widget'lar ve kontroller
+├── shared/sync-schema/                     # Mobil tel şeması ve parity fixture'ları
+├── docs/mobile/                            # iPhone kurulum, gizlilik ve tasarım belgeleri
 ├── Package.swift                           # Kanonik SwiftPM derleme tanımı
 ├── Info.plist                              # macOS sürüm ve uygulama metadata'sı
 ├── build.sh                                # macOS derleme, test ve yerel imzalama
@@ -417,6 +441,17 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
+- Can act as the host for the iPhone companion — see below.
+
+#### iPhone
+
+- **UsageBar Mobile** is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. A free **Personal Team** works, with Apple's roughly **7-day** development provisioning limit.
+- The phone never talks to Codex or Claude and holds no provider credentials. Its only input is a sanitized snapshot from your Mac.
+- **Tailscale is required**, with the Mac and the iPhone on the same tailnet. Reachability comes from your own network; there is no UsageBar server anywhere in the path, and Tailscale Funnel is never used.
+- The Mac side is UsageBar itself. **Mobile Sync is off until you enable it**, and while it is off UsageBar opens no listener, runs no Tailscale command and stores no mobile credential. There is no separate Mac application to install.
+- Pairing is a QR code carrying a one-time code, scanned once. The Mac stores only digests, never the credential itself.
+- **Windows cannot host the phone yet.** The host side is macOS only.
+- Start at [docs/mobile/SELF_BUILD.md](docs/mobile/SELF_BUILD.md), then [docs/mobile/TAILSCALE_SETUP.md](docs/mobile/TAILSCALE_SETUP.md).
 
 #### Windows
 
@@ -614,6 +649,13 @@ UsageBar/
 ├── Sources/UsageBar/                       # macOS app and provider readers
 ├── Sources/UsageBarCore/                   # Shared pure policies and models
 ├── Sources/UsageBarProcessLauncher/        # Shell-free process-group launcher
+├── Sources/UsageBarSync/                   # Schema-v1 mobile snapshot model
+├── Sources/UsageBarSyncTransport/          # Loopback-only HTTP listener
+├── Sources/UsageBarPairing/                # QR pairing wire format, Mac + iPhone
+├── Sources/UsageBarMobileSyncHost/         # Mobile Sync: auth, pairing, lifecycle
+├── ios/UsageBarMobileLab/                  # iPhone app, widgets and controls
+├── shared/sync-schema/                     # Mobile wire schema and parity fixtures
+├── docs/mobile/                            # iPhone setup, privacy and design docs
 ├── Package.swift                           # Canonical SwiftPM build definition
 ├── Info.plist                              # macOS app and version metadata
 ├── build.sh                                # macOS build, tests, and local signing

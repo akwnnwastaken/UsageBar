@@ -3,6 +3,8 @@ import Darwin
 import Foundation
 import ServiceManagement
 import UsageBarCore
+import UsageBarMobileSyncHost
+import UsageBarPairing
 import UsageBarProcessLauncher
 
 enum AppMetadata {
@@ -61,6 +63,40 @@ struct Localizer {
     var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
     var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
     var loginItemNeedsApproval: String { pick("onay gerekli", "approval required") }
+    // MARK: - Mobile Sync
+    //
+    // This surface exists only in the UsageBar Mobile Host bundle, never in an
+    // ordinary UsageBar build, and a person looking at the menu should never be
+    // in doubt about which of the two apps they opened.
+    var mobileSyncSection: String { pick("Mobil Eşitleme", "Mobile Sync") }
+    var mobileSyncEnable: String { pick("Mobil Eşitlemeyi Aç", "Enable Mobile Sync") }
+    var mobileSyncDisable: String { pick("Mobil Eşitlemeyi Kapat", "Disable Mobile Sync") }
+    var mobileSyncPair: String { pick("iPhone Eşleştir…", "Pair iPhone…") }
+    var mobileSyncRevoke: String { pick("Eşleşmiş iPhone'u Kaldır", "Revoke Paired iPhone") }
+    var mobileSyncStatusDisabled: String { pick("Kapalı", "Disabled") }
+    var mobileSyncStatusReady: String { pick("Hazır", "Ready") }
+    var mobileSyncStatusPairing: String { pick("Eşleştiriliyor…", "Pairing…") }
+    var mobileSyncStatusPaired: String { pick("Eşleşti", "Paired") }
+    var mobileSyncStatusListenerUnavailable: String {
+        pick("Dinleyici başlatılamadı", "Listener unavailable")
+    }
+    var mobileSyncTailscaleUnavailable: String {
+        pick("Tailscale kullanılamıyor", "Tailscale unavailable")
+    }
+    var mobileSyncPairWindowTitle: String { pick("iPhone Eşleştir", "Pair iPhone") }
+    var mobileSyncPairInstruction: String {
+        pick(
+            "iPhone'unda UsageBar Mobile uygulamasını aç ve bu kodu taratarak eşleştir.",
+            "Open UsageBar Mobile on your iPhone and scan this code."
+        )
+    }
+    var mobileSyncPairFailed: String {
+        pick("Eşleştirme başlatılamadı.", "Pairing could not be started.")
+    }
+    func mobileSyncPairExpiry(_ seconds: Int) -> String {
+        pick("Bu kod \(seconds) sn içinde geçersiz olacak.", "This code expires in \(seconds)s.")
+    }
+
     var fiveHours: String { pick("5 saat", "5 hours") }
     var weekly: String { pick("Haftalık", "Weekly") }
 
@@ -920,7 +956,7 @@ final class UsageSparklineView: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private enum PreferenceKey {
         static let codexConnected = "provider.codex.connected"
         static let claudeConnected = "provider.claude.connected"
@@ -989,6 +1025,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// change — keeps whatever the user last chose. It decides what is drawn
     /// and nothing else.
     private var menuDisclosure = MenuDisclosureState()
+
+    /// Mobile Sync: an optional, off-by-default feature of UsageBar itself.
+    ///
+    /// The coordinator gates itself on UsageBar's own bundle identifier, so a
+    /// test runner or an unbundled `swift run` build that links this module
+    /// still never opens a listener, holds a credential or offers pairing. The
+    /// preference behind it defaults to false, so a first launch after
+    /// upgrading opens nothing either.
+    ///
+    /// Everything below is additive: no existing refresh, menu or history path
+    /// depends on it, and every call into it is allowed to fail silently. A
+    /// mobile failure must never reach provider collection.
+    private let mobileSync = MobileSyncCoordinator(
+        authStore: MobileSyncKeychainAuthStore(),
+        preferences: MobileSyncUserDefaultsPreferences()
+    )
+    private let tailscaleStatus = MobileSyncTailscaleStatusReader()
+    private var pairingWindow: NSWindow?
+    private var pairingCountdownTimer: Timer?
 
     private var language: AppLanguage {
         get {
@@ -1150,8 +1205,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         guard enabled else {
             displayFilter.clearPendingRise(forProvider: providerName)
+            publishMobileSnapshot()
             return
         }
+        publishMobileSnapshot()
         if pendingRefreshAfterEnable.requestCollection(isRefreshing: isRefreshing) {
             refresh()
         }
@@ -1242,6 +1299,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
         statusItem.button?.title = "%—"
         statusItem.button?.toolTip = text.usageTooltip
+        mobileSync.startIfEnabled()
+        publishMobileSnapshot()
         rebuildMenu()
         refresh()
         configureRefreshTimer()
@@ -1330,6 +1389,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.recordUsageHistory(of: measurements, at: updateDate)
             self.advanceDisplayedRemaining(with: measurements)
             self.updateStatusTitle()
+            // After the filter advances, so the phone is served the same
+            // numbers this rebuild is about to draw. A retained stale reading
+            // republishes too: its measuredAt is unchanged, which is exactly
+            // what the phone needs in order to show its true age.
+            self.publishMobileSnapshot()
             self.rebuildMenu()
 
             if followUpRequested { self.refresh() }
@@ -1630,6 +1694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        addMobileSyncSection()
         addLanguageSelector()
         addLaunchAtLoginItem()
         menu.addItem(.separator())
@@ -2252,6 +2317,252 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return symbol
     }
 
+    // MARK: - Mobile Sync
+
+    /// The desktop state the phone is allowed to see, as the desktop is
+    /// currently presenting it.
+    ///
+    /// `displayUsages` — not `usages`. The display filter holds a rise back for
+    /// a cycle, so reading the raw cache here would put a number on the phone
+    /// that the Mac beside it is not showing yet. The phone agreeing with the
+    /// Mac matters more than the phone being a moment earlier.
+    private var mobileSyncProviderStates: [MobileSyncLiveSnapshot.ProviderState] {
+        let presented = displayUsages
+        return MobileSyncLiveSnapshot.providerOrder.map { providerName in
+            let isConnected = connected(providerName)
+            return MobileSyncLiveSnapshot.ProviderState(
+                productName: providerName,
+                connected: isConnected,
+                // Reported the same way the diagnostics summary reports it: a
+                // deliberately paused provider is connected but not collecting,
+                // and must not read as one that simply stopped producing data.
+                collecting: ProviderCollectionPolicy.isEligible(
+                    connected: isConnected,
+                    collectionEnabled: collectionEnabled(providerName)
+                ),
+                displayFilteredUsage: presented[providerName]
+            )
+        }
+    }
+
+    /// Republishes what the transport serves.
+    ///
+    /// Called at every transition that can change wire-visible state, and at
+    /// none that cannot: showing a provider's details or opening a menu section
+    /// changes what the Mac draws, not what schema v1 says.
+    ///
+    /// Deliberately silent. A snapshot that fails to build leaves the previous
+    /// one published, and the refresh cycle that called this never learns about
+    /// it — sync is subordinate to UsageBar, so it may not interrupt a refresh,
+    /// a menu rebuild or an alert.
+    private func publishMobileSnapshot() {
+        guard mobileSync.isEnabled else { return }
+        mobileSync.publish(providers: mobileSyncProviderStates)
+    }
+
+    private func addMobileSyncSection() {
+        guard mobileSync.isPermitted else { return }
+
+        let header = NSMenuItem(title: text.mobileSyncSection, action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let statusText: String
+        switch mobileSync.status {
+        case .disabled: statusText = text.mobileSyncStatusDisabled
+        case .listenerUnavailable: statusText = text.mobileSyncStatusListenerUnavailable
+        case .ready: statusText = text.mobileSyncStatusReady
+        case .pairing: statusText = text.mobileSyncStatusPairing
+        case .paired: statusText = text.mobileSyncStatusPaired
+        }
+        // Status only. No hostname, no identity, no credential — there is
+        // nothing here a screen-share or a screenshot could leak.
+        let status = NSMenuItem(title: "  \(statusText)", action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
+
+        let toggle = NSMenuItem(
+            title: mobileSync.isEnabled ? text.mobileSyncDisable : text.mobileSyncEnable,
+            action: #selector(toggleMobileSync),
+            keyEquivalent: ""
+        )
+        toggle.target = self
+        menu.addItem(toggle)
+
+        if mobileSync.isEnabled {
+            let pair = NSMenuItem(
+                title: text.mobileSyncPair,
+                action: #selector(startMobileSyncPairing),
+                keyEquivalent: ""
+            )
+            pair.target = self
+            menu.addItem(pair)
+
+            if mobileSync.isPaired {
+                let revoke = NSMenuItem(
+                    title: text.mobileSyncRevoke,
+                    action: #selector(revokeMobileSyncPairing),
+                    keyEquivalent: ""
+                )
+                revoke.target = self
+                menu.addItem(revoke)
+            }
+        }
+        menu.addItem(.separator())
+    }
+
+    @objc private func toggleMobileSync() {
+        if mobileSync.isEnabled {
+            mobileSync.disable()
+            closePairingWindow()
+        } else {
+            mobileSync.enable()
+            publishMobileSnapshot()
+        }
+        rebuildMenu()
+    }
+
+    @objc private func revokeMobileSyncPairing() {
+        mobileSync.revokePairedDevice()
+        closePairingWindow()
+        rebuildMenu()
+    }
+
+    @objc private func startMobileSyncPairing() {
+        // Everything here is deferred off the menu action, for two reasons that
+        // both showed up the first time this ran on hardware:
+        //
+        // 1. A menu action runs while the menu is still tracking events.
+        //    Presenting a window or an alert from inside that tracking loop
+        //    leaves the window undrawn and the menu wedged.
+        // 2. `tailscale status` talks to the Tailscale GUI helper and can take
+        //    a noticeable moment. On the main queue that is a visible stall of
+        //    the whole app — and the menu bar must never wait on sync.
+        //
+        // So: read off the main queue, then come back to it to present.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            // A QR naming a host the phone cannot reach pushes the failure onto
+            // the phone, away from the person standing in front of the Mac who
+            // could actually do something about it.
+            let status = self.tailscaleStatus.read()
+            DispatchQueue.main.async {
+                guard status.isRunning, let host = status.host else {
+                    self.presentPairingFailure(self.text.mobileSyncTailscaleUnavailable)
+                    return
+                }
+                guard let payload = self.mobileSync.startPairing(host: host) else {
+                    self.presentPairingFailure(self.text.mobileSyncPairFailed)
+                    return
+                }
+                self.presentPairingWindow(payload: payload)
+                self.rebuildMenu()
+            }
+        }
+    }
+
+    private func presentPairingFailure(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = text.mobileSyncPairWindowTitle
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    /// Shows the QR for as long as the session is valid.
+    ///
+    /// The payload is rendered and never written down: it is not copied to the
+    /// clipboard, not logged, and not displayed as text beside the image. The
+    /// only way to read it is to scan it, which is the point.
+    private func presentPairingWindow(payload: UsageBarPairingPayload) {
+        // Dismiss, not close: `closePairingWindow` also cancels the pairing
+        // session, and the session this is about to display was created a
+        // moment ago by the caller. Cancelling it here made the countdown
+        // timer find no session on its very first tick and tear the window
+        // straight back down — the QR never appeared at all.
+        dismissPairingWindow()
+
+        let width: CGFloat = 320
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 400))
+
+        let instruction = NSTextField(wrappingLabelWithString: text.mobileSyncPairInstruction)
+        instruction.frame = NSRect(x: 20, y: 330, width: width - 40, height: 50)
+        instruction.alignment = .center
+        content.addSubview(instruction)
+
+        let imageView = NSImageView(frame: NSRect(x: 40, y: 70, width: 240, height: 240))
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.image = MobileSyncPairingQR.image(for: payload, size: 240)
+        content.addSubview(imageView)
+
+        let countdown = NSTextField(labelWithString: "")
+        countdown.frame = NSRect(x: 20, y: 30, width: width - 40, height: 20)
+        countdown.alignment = .center
+        countdown.textColor = .secondaryLabelColor
+        content.addSubview(countdown)
+
+        let window = NSWindow(
+            contentRect: content.frame,
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        // Closing the window is a way of saying "not now", so it invalidates
+        // the session rather than leaving a live code behind for its full
+        // lifetime.
+        window.delegate = self
+        window.title = text.mobileSyncPairWindowTitle
+        window.contentView = content
+        window.isReleasedWhenClosed = false
+        window.center()
+        // The host is an accessory app with no Dock icon, so a plain
+        // `makeKeyAndOrderFront` can leave the QR behind whatever the user was
+        // looking at. Floating keeps it visible while they pick up the phone.
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        pairingWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+
+        pairingCountdownTimer?.invalidate()
+        pairingCountdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard let session = self.mobileSync.pairingSession() else {
+                // Expired, cancelled, or consumed by a successful pairing. The
+                // session is already gone, so dismiss rather than cancel.
+                self.dismissPairingWindow()
+                self.rebuildMenu()
+                return
+            }
+            countdown.stringValue = self.text.mobileSyncPairExpiry(
+                Int(session.remaining(at: Date()).rounded())
+            )
+        }
+        pairingCountdownTimer?.fire()
+    }
+
+    /// Tears down the window and its timer, leaving the session alone.
+    private func dismissPairingWindow() {
+        pairingCountdownTimer?.invalidate()
+        pairingCountdownTimer = nil
+        pairingWindow?.delegate = nil
+        pairingWindow?.orderOut(nil)
+        pairingWindow = nil
+    }
+
+    /// Tears down the window *and* invalidates the pairing session.
+    private func closePairingWindow() {
+        dismissPairingWindow()
+        mobileSync.cancelPairing()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === pairingWindow else { return }
+        closePairingWindow()
+        rebuildMenu()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -2282,6 +2593,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if wasEmpty { selectedProviderName = "Codex" }
         configureStatusPresentationTimer()
         updateStatusTitle()
+        publishMobileSnapshot()
         rebuildMenu()
         refresh()
     }
@@ -2321,6 +2633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if wasEmpty { selectedProviderName = "Claude Code" }
         configureStatusPresentationTimer()
         updateStatusTitle()
+        publishMobileSnapshot()
         rebuildMenu()
         refresh()
     }
@@ -2378,6 +2691,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         configureStatusPresentationTimer()
         updateStatusTitle()
+        // The provider's measurement is gone from the wire the moment it is
+        // gone from the Mac, rather than at the next refresh.
+        publishMobileSnapshot()
         rebuildMenu()
     }
 

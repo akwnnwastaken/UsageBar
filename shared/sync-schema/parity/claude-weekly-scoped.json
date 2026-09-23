@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-04T09:00:00Z",
+  "providers": [
+    {
+      "providerId": "claude-code",
+      "connected": true,
+      "collecting": true,
+      "measurement": {
+        "measuredAt": "2026-03-04T08:58:00Z",
+        "headlineRemainingPercent": 74,
+        "headlineWindowId": "weekly",
+        "windows": [
+          {
+            "windowId": "weekly",
+            "kind": "weekly",
+            "durationMinutes": 10080,
+            "remainingPercent": 74,
+            "resetsAt": "2026-03-09T19:00:00Z"
+          },
+          {
+            "windowId": "weekly-opus",
+            "kind": "weeklyScoped",
+            "scope": "opus",
+            "durationMinutes": 10080,
+            "remainingPercent": 91,
+            "resetsAt": "2026-03-09T19:00:00Z"
+          }
+        ]
+      }
+    }
+  ]
+}
