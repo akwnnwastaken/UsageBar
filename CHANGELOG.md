@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-23
+
 ### Added
 - **UsageBar Mobile**, an iPhone companion, now lives in this repository. It is
   distributed as source that you build and sign with your own Apple account — a
@@ -33,8 +35,14 @@ Releases before v1.5.2 are listed on the
   cloud backend of any kind.
 
 ### Notes
-- Windows cannot host the phone yet; the host side is macOS only, and Windows
-  behaviour is unchanged.
+- **Mobile Sync is off by default.** After upgrading, and until it is enabled,
+  UsageBar opens no listener, runs no Tailscale command and stores no mobile
+  credential.
+- **Windows 2.3.0 is a version-synchronization release.** It reports 2.3.0 so
+  both platforms share one number; its behaviour is unchanged from 2.2.0. The
+  phone host is macOS only, and Windows cannot host UsageBar Mobile.
+- The iPhone companion source in this repository is versioned separately and
+  stays at **0.1.0** for this release. It is wire-compatible with UsageBar 2.3.0.
 - Anyone who paired with the standalone **UsageBar Mobile Host 0.1.0** pairs once
   more. UsageBar uses its own preference and its own Keychain entry and migrates
   nothing from that separate application, deliberately. The iPhone app itself
@@ -252,7 +260,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.0.1...v2.1.0

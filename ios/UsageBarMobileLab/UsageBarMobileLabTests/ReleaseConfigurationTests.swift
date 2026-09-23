@@ -69,11 +69,11 @@ final class ReleaseConfigurationTests: XCTestCase {
     /// more: Mobile Sync is a feature of UsageBar, and UsageBar's own plist is
     /// the Mac side of this release.
     ///
-    /// The two numbers are deliberately still apart at this point — the phone
-    /// app carries 0.1.0 and UsageBar carries 2.2.0 — because integrating a
-    /// feature is not releasing one. Choosing the single consolidated version
-    /// belongs to the release checkpoint, and this test exists to make that a
-    /// decision rather than an oversight.
+    /// The two numbers are deliberately apart: the phone app carries 0.1.0 and
+    /// UsageBar carries 2.3.0. They are versioned separately on purpose — the
+    /// companion's own product version advances with its UI work, not with each
+    /// desktop release — and this test exists so that stays a decision rather
+    /// than an oversight.
     func testThereIsNoSeparateMacHostProductToVersion() throws {
         let repositoryRoot = projectRoot
             .deletingLastPathComponent()   // ios
@@ -96,7 +96,7 @@ final class ReleaseConfigurationTests: XCTestCase {
         ) as? [String: Any]
         let info = try XCTUnwrap(plist)
         XCTAssertEqual(info["CFBundleIdentifier"] as? String, "local.codex.usagebar")
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.2.0")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.3.0")
     }
 
     // MARK: - Overrideable bundle namespace

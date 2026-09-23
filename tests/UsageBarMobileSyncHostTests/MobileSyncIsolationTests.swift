@@ -153,8 +153,8 @@ final class MobileSyncIsolationTests: XCTestCase {
 
     // MARK: - Packaging
 
-    /// This integration adds a feature, not a release. The version bump belongs
-    /// to the release checkpoint.
+    /// Pinned on purpose, like the Windows product-version assertion: a version
+    /// bump has to be a deliberate edit here, never a silent drift.
     func testProductionPlistKeepsItsIdentityAndVersion() throws {
         let url = repositoryRoot.appendingPathComponent("Info.plist")
         let plist = try PropertyListSerialization.propertyList(
@@ -163,8 +163,8 @@ final class MobileSyncIsolationTests: XCTestCase {
         let info = try XCTUnwrap(plist)
         XCTAssertEqual(info["CFBundleIdentifier"] as? String, MobileSyncIdentity.productionBundleIdentifier)
         XCTAssertEqual(info["CFBundleName"] as? String, "UsageBar")
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.2.0")
-        XCTAssertEqual(info["CFBundleVersion"] as? String, "29")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.3.0")
+        XCTAssertEqual(info["CFBundleVersion"] as? String, "30")
     }
 
     /// No second Mac application. Mobile Sync is a feature of UsageBar, so the
