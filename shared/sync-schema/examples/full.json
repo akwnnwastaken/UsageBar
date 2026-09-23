@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-15T14:05:00Z",
+  "providers": [
+    {
+      "providerId": "codex",
+      "connected": true,
+      "collecting": true,
+      "measurement": {
+        "measuredAt": "2026-01-15T14:05:00Z",
+        "headlineRemainingPercent": 45,
+        "headlineWindowId": "duration-4320",
+        "windows": [
+          {
+            "windowId": "weekly",
+            "kind": "weekly",
+            "durationMinutes": 10080,
+            "remainingPercent": 87,
+            "resetsAt": "2026-01-19T00:00:00Z"
+          },
+          {
+            "windowId": "duration-4320",
+            "kind": "duration",
+            "durationMinutes": 4320,
+            "remainingPercent": 45,
+            "resetsAt": "2026-01-17T06:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "providerId": "claude-code",
+      "connected": true,
+      "collecting": true,
+      "measurement": {
+        "measuredAt": "2026-01-15T14:00:00Z",
+        "headlineRemainingPercent": 59,
+        "headlineWindowId": "five-hour",
+        "windows": [
+          {
+            "windowId": "five-hour",
+            "kind": "fiveHour",
+            "durationMinutes": 300,
+            "remainingPercent": 59,
+            "resetsAt": "2026-01-15T17:00:00+03:00"
+          },
+          {
+            "windowId": "weekly",
+            "kind": "weekly",
+            "durationMinutes": 10080,
+            "remainingPercent": 82,
+            "resetsAt": "2026-01-19T22:00:00+03:00"
+          },
+          {
+            "windowId": "weekly-opus",
+            "kind": "weeklyScoped",
+            "scope": "opus",
+            "durationMinutes": 10080,
+            "remainingPercent": 93,
+            "resetsAt": "2026-01-19T22:00:00+03:00"
+          }
+        ]
+      }
+    },
+    {
+      "providerId": "example-paused-provider",
+      "connected": true,
+      "collecting": false,
+      "measurement": {
+        "measuredAt": "2026-01-15T11:20:00Z",
+        "headlineRemainingPercent": 30,
+        "headlineWindowId": "unknown-0",
+        "windows": [
+          {
+            "windowId": "unknown-0",
+            "kind": "unknown",
+            "position": 0,
+            "remainingPercent": 30
+          }
+        ]
+      }
+    }
+  ]
+}

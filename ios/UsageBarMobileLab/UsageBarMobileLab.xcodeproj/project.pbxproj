@@ -1,0 +1,655 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B1000000000000000000A1 /* UsageBarSync in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000A0 /* UsageBarSync */; };
+		B1000000000000000000B1 /* UsageBarSync in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000B0 /* UsageBarSync */; };
+		B10000000000000001D00 /* UsageSyncHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D00 /* UsageSyncHost.swift */; };
+		B10000000000000002D00 /* UsageSyncHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D00 /* UsageSyncHost.swift */; };
+		B10000000000000001D01 /* KeychainConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D01 /* KeychainConnectionStore.swift */; };
+		B10000000000000002D01 /* KeychainConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D01 /* KeychainConnectionStore.swift */; };
+		B10000000000000001D02 /* UsageSyncAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D02 /* UsageSyncAPIClient.swift */; };
+		B10000000000000002D02 /* UsageSyncAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D02 /* UsageSyncAPIClient.swift */; };
+		B10000000000000001D03 /* SnapshotCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D03 /* SnapshotCache.swift */; };
+		B10000000000000002D03 /* SnapshotCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D03 /* SnapshotCache.swift */; };
+		B10000000000000001D04 /* ProviderPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D04 /* ProviderPresentation.swift */; };
+		B10000000000000002D04 /* ProviderPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D04 /* ProviderPresentation.swift */; };
+		B10000000000000001D05 /* UsageSurfaceReloading.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D05 /* UsageSurfaceReloading.swift */; };
+		B10000000000000002D05 /* UsageSurfaceReloading.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D05 /* UsageSurfaceReloading.swift */; };
+		B10000000000000001D06 /* WidgetFamilySupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D06 /* WidgetFamilySupport.swift */; };
+		B10000000000000002D06 /* WidgetFamilySupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D06 /* WidgetFamilySupport.swift */; };
+		B10000000000000001D07 /* WidgetSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D07 /* WidgetSnapshotProvider.swift */; };
+		B10000000000000002D07 /* WidgetSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D07 /* WidgetSnapshotProvider.swift */; };
+		B10000000000000001D08 /* OpenUsageBarIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D08 /* OpenUsageBarIntent.swift */; };
+		B10000000000000002D08 /* OpenUsageBarIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000D08 /* OpenUsageBarIntent.swift */; };
+		B100000000000000001D09 /* UsageSurfaceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D09 /* UsageSurfaceState.swift */; };
+		B100000000000000002D09 /* UsageSurfaceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D09 /* UsageSurfaceState.swift */; };
+		B100000000000000001D0A /* UsageControlProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D0A /* UsageControlProvider.swift */; };
+		B100000000000000002D0A /* UsageControlProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D0A /* UsageControlProvider.swift */; };
+		B100000000000000001D0B /* UsageSyncPairingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D0B /* UsageSyncPairingClient.swift */; };
+		B100000000000000002D0B /* UsageSyncPairingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000D0B /* UsageSyncPairingClient.swift */; };
+		B1000000000000000000A3 /* UsageBarPairing in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000A2 /* UsageBarPairing */; };
+		B1000000000000000000B3 /* UsageBarPairing in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000B2 /* UsageBarPairing */; };
+		B1000000000000000000E3 /* UsageBarPairing in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000E2 /* UsageBarPairing */; };
+		B1000000000000000000E1 /* UsageBarSync in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000E0 /* UsageBarSync */; };
+		B1000000000000000000F1 /* UsageBarWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B100000000000000000023 /* UsageBarWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B1000000000000000000C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B100000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B100000000000000000010;
+			remoteInfo = UsageBarMobileLab;
+		};
+		B1000000000000000000C3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B100000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B100000000000000000012;
+			remoteInfo = UsageBarWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B100000000000000000020 /* UsageBarMobileLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageBarMobileLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B100000000000000000021 /* UsageBarMobileLabTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UsageBarMobileLabTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B100000000000000000022 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Signing.xcconfig; path = Config/Signing.xcconfig; sourceTree = "<group>"; };
+		B10000000000000000D00 /* UsageSyncHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageSyncHost.swift; path = Shared/UsageSyncHost.swift; sourceTree = "<group>"; };
+		B10000000000000000D01 /* KeychainConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeychainConnectionStore.swift; path = Shared/KeychainConnectionStore.swift; sourceTree = "<group>"; };
+		B10000000000000000D02 /* UsageSyncAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageSyncAPIClient.swift; path = Shared/UsageSyncAPIClient.swift; sourceTree = "<group>"; };
+		B10000000000000000D03 /* SnapshotCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnapshotCache.swift; path = Shared/SnapshotCache.swift; sourceTree = "<group>"; };
+		B10000000000000000D04 /* ProviderPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProviderPresentation.swift; path = Shared/ProviderPresentation.swift; sourceTree = "<group>"; };
+		B10000000000000000D05 /* UsageSurfaceReloading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageSurfaceReloading.swift; path = Shared/UsageSurfaceReloading.swift; sourceTree = "<group>"; };
+		B10000000000000000D06 /* WidgetFamilySupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetFamilySupport.swift; path = Shared/WidgetFamilySupport.swift; sourceTree = "<group>"; };
+		B10000000000000000D07 /* WidgetSnapshotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetSnapshotProvider.swift; path = Shared/WidgetSnapshotProvider.swift; sourceTree = "<group>"; };
+		B10000000000000000D08 /* OpenUsageBarIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenUsageBarIntent.swift; path = Shared/OpenUsageBarIntent.swift; sourceTree = "<group>"; };
+		B100000000000000000D09 /* UsageSurfaceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageSurfaceState.swift; path = Shared/UsageSurfaceState.swift; sourceTree = "<group>"; };
+		B100000000000000000D0A /* UsageControlProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageControlProvider.swift; path = Shared/UsageControlProvider.swift; sourceTree = "<group>"; };
+		B100000000000000000D0B /* UsageSyncPairingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UsageSyncPairingClient.swift; path = Shared/UsageSyncPairingClient.swift; sourceTree = "<group>"; };
+		B100000000000000000023 /* UsageBarWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UsageBarWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B100000000000000000024 /* UsageBarMobileLab.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = UsageBarMobileLab.entitlements; path = Config/UsageBarMobileLab.entitlements; sourceTree = "<group>"; };
+		B100000000000000000025 /* UsageBarWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = UsageBarWidgets.entitlements; path = Config/UsageBarWidgets.entitlements; sourceTree = "<group>"; };
+		B100000000000000000027 /* UsageBarWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "UsageBarWidgets-Info.plist"; path = "Config/UsageBarWidgets-Info.plist"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B100000000000000000030 /* UsageBarMobileLab */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UsageBarMobileLab;
+			sourceTree = "<group>";
+		};
+		B100000000000000000031 /* UsageBarMobileLabTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UsageBarMobileLabTests;
+			sourceTree = "<group>";
+		};
+		B100000000000000000032 /* UsageBarWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UsageBarWidgets;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B100000000000000000073 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B1000000000000000000F1 /* UsageBarWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B100000000000000000040 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000000000000000000A1 /* UsageBarSync in Frameworks */,
+				B1000000000000000000A3 /* UsageBarPairing in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000041 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000000000000000000B1 /* UsageBarSync in Frameworks */,
+				B1000000000000000000B3 /* UsageBarPairing in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000042 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000000000000000000E1 /* UsageBarSync in Frameworks */,
+				B1000000000000000000E3 /* UsageBarPairing in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B100000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				B100000000000000000022 /* Signing.xcconfig */,
+				B100000000000000000024 /* UsageBarMobileLab.entitlements */,
+				B100000000000000000025 /* UsageBarWidgets.entitlements */,
+				B100000000000000000027 /* UsageBarWidgets-Info.plist */,
+				B100000000000000000026 /* Shared */,
+				B100000000000000000030 /* UsageBarMobileLab */,
+				B100000000000000000032 /* UsageBarWidgets */,
+				B100000000000000000031 /* UsageBarMobileLabTests */,
+				B100000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B100000000000000000026 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000D00 /* UsageSyncHost.swift */,
+				B10000000000000000D01 /* KeychainConnectionStore.swift */,
+				B10000000000000000D02 /* UsageSyncAPIClient.swift */,
+				B10000000000000000D03 /* SnapshotCache.swift */,
+				B10000000000000000D04 /* ProviderPresentation.swift */,
+				B10000000000000000D05 /* UsageSurfaceReloading.swift */,
+				B10000000000000000D06 /* WidgetFamilySupport.swift */,
+				B10000000000000000D07 /* WidgetSnapshotProvider.swift */,
+				B10000000000000000D08 /* OpenUsageBarIntent.swift */,
+				B100000000000000000D09 /* UsageSurfaceState.swift */,
+				B100000000000000000D0A /* UsageControlProvider.swift */,
+				B100000000000000000D0B /* UsageSyncPairingClient.swift */,
+			);
+			name = Shared;
+			sourceTree = "<group>";
+		};
+		B100000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B100000000000000000020 /* UsageBarMobileLab.app */,
+				B100000000000000000021 /* UsageBarMobileLabTests.xctest */,
+				B100000000000000000023 /* UsageBarWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B100000000000000000010 /* UsageBarMobileLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B100000000000000000050 /* Build configuration list for PBXNativeTarget "UsageBarMobileLab" */;
+			buildPhases = (
+				B100000000000000000060 /* Sources */,
+				B100000000000000000040 /* Frameworks */,
+				B100000000000000000070 /* Resources */,
+				B100000000000000000073 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1000000000000000000C4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B100000000000000000030 /* UsageBarMobileLab */,
+			);
+			name = UsageBarMobileLab;
+			packageProductDependencies = (
+				B1000000000000000000A0 /* UsageBarSync */,
+				B1000000000000000000A2 /* UsageBarPairing */,
+			);
+			productName = UsageBarMobileLab;
+			productReference = B100000000000000000020 /* UsageBarMobileLab.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B100000000000000000011 /* UsageBarMobileLabTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B100000000000000000051 /* Build configuration list for PBXNativeTarget "UsageBarMobileLabTests" */;
+			buildPhases = (
+				B100000000000000000061 /* Sources */,
+				B100000000000000000041 /* Frameworks */,
+				B100000000000000000071 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1000000000000000000C2 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B100000000000000000031 /* UsageBarMobileLabTests */,
+			);
+			name = UsageBarMobileLabTests;
+			packageProductDependencies = (
+				B1000000000000000000B0 /* UsageBarSync */,
+				B1000000000000000000B2 /* UsageBarPairing */,
+			);
+			productName = UsageBarMobileLabTests;
+			productReference = B100000000000000000021 /* UsageBarMobileLabTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B100000000000000000012 /* UsageBarWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B100000000000000000053 /* Build configuration list for PBXNativeTarget "UsageBarWidgets" */;
+			buildPhases = (
+				B100000000000000000062 /* Sources */,
+				B100000000000000000042 /* Frameworks */,
+				B100000000000000000072 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B100000000000000000032 /* UsageBarWidgets */,
+			);
+			name = UsageBarWidgets;
+			packageProductDependencies = (
+				B1000000000000000000E0 /* UsageBarSync */,
+				B1000000000000000000E2 /* UsageBarPairing */,
+			);
+			productName = UsageBarWidgets;
+			productReference = B100000000000000000023 /* UsageBarWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B100000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					B100000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					B100000000000000000011 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = B100000000000000000010;
+					};
+					B100000000000000000012 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = B100000000000000000052 /* Build configuration list for PBXProject "UsageBarMobileLab" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B100000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B100000000000000000090 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B100000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B100000000000000000010 /* UsageBarMobileLab */,
+				B100000000000000000012 /* UsageBarWidgets */,
+				B100000000000000000011 /* UsageBarMobileLabTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B100000000000000000070 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000071 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000072 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B100000000000000000060 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000001D00 /* UsageSyncHost.swift in Sources */,
+				B10000000000000001D01 /* KeychainConnectionStore.swift in Sources */,
+				B10000000000000001D02 /* UsageSyncAPIClient.swift in Sources */,
+				B10000000000000001D03 /* SnapshotCache.swift in Sources */,
+				B10000000000000001D04 /* ProviderPresentation.swift in Sources */,
+				B10000000000000001D05 /* UsageSurfaceReloading.swift in Sources */,
+				B10000000000000001D06 /* WidgetFamilySupport.swift in Sources */,
+				B10000000000000001D07 /* WidgetSnapshotProvider.swift in Sources */,
+				B10000000000000001D08 /* OpenUsageBarIntent.swift in Sources */,
+				B100000000000000001D09 /* UsageSurfaceState.swift in Sources */,
+				B100000000000000001D0A /* UsageControlProvider.swift in Sources */,
+				B100000000000000001D0B /* UsageSyncPairingClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000061 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B100000000000000000062 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000002D00 /* UsageSyncHost.swift in Sources */,
+				B10000000000000002D01 /* KeychainConnectionStore.swift in Sources */,
+				B10000000000000002D02 /* UsageSyncAPIClient.swift in Sources */,
+				B10000000000000002D03 /* SnapshotCache.swift in Sources */,
+				B10000000000000002D04 /* ProviderPresentation.swift in Sources */,
+				B10000000000000002D05 /* UsageSurfaceReloading.swift in Sources */,
+				B10000000000000002D06 /* WidgetFamilySupport.swift in Sources */,
+				B10000000000000002D07 /* WidgetSnapshotProvider.swift in Sources */,
+				B10000000000000002D08 /* OpenUsageBarIntent.swift in Sources */,
+				B100000000000000002D09 /* UsageSurfaceState.swift in Sources */,
+				B100000000000000002D0A /* UsageControlProvider.swift in Sources */,
+				B100000000000000002D0B /* UsageSyncPairingClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B1000000000000000000C2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B100000000000000000010 /* UsageBarMobileLab */;
+			targetProxy = B1000000000000000000C1 /* PBXContainerItemProxy */;
+		};
+		B1000000000000000000C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B100000000000000000012 /* UsageBarWidgets */;
+			targetProxy = B1000000000000000000C3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B100000000000000000080 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B100000000000000000022 /* Signing.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B100000000000000000081 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B100000000000000000022 /* Signing.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B100000000000000000082 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/UsageBarMobileLab.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UsageBar Mobile";
+				INFOPLIST_KEY_NSCameraUsageDescription = "UsageBar uses the camera only to scan the pairing code shown by UsageBar Mobile Host on your Mac. No photos are taken or saved.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_MOBILE_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B100000000000000000083 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/UsageBarMobileLab.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UsageBar Mobile";
+				INFOPLIST_KEY_NSCameraUsageDescription = "UsageBar uses the camera only to scan the pairing code shown by UsageBar Mobile Host on your Mac. No photos are taken or saved.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_MOBILE_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B100000000000000000084 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_TEST_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UsageBarMobileLab.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UsageBarMobileLab";
+			};
+			name = Debug;
+		};
+		B100000000000000000085 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_TEST_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UsageBarMobileLab.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UsageBarMobileLab";
+			};
+			name = Release;
+		};
+		B100000000000000000086 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/UsageBarWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/UsageBarWidgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "UsageBar Mobile";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_WIDGET_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B100000000000000000087 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/UsageBarWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(USAGEBAR_MOBILE_BUILD)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/UsageBarWidgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "UsageBar Mobile";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(USAGEBAR_MOBILE_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(USAGEBAR_WIDGET_BUNDLE_ID)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B100000000000000000050 /* Build configuration list for PBXNativeTarget "UsageBarMobileLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B100000000000000000082 /* Debug */,
+				B100000000000000000083 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B100000000000000000051 /* Build configuration list for PBXNativeTarget "UsageBarMobileLabTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B100000000000000000084 /* Debug */,
+				B100000000000000000085 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B100000000000000000052 /* Build configuration list for PBXProject "UsageBarMobileLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B100000000000000000080 /* Debug */,
+				B100000000000000000081 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B100000000000000000053 /* Build configuration list for PBXNativeTarget "UsageBarWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B100000000000000000086 /* Debug */,
+				B100000000000000000087 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B100000000000000000090 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1000000000000000000A0 /* UsageBarSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarSync;
+		};
+		B1000000000000000000A2 /* UsageBarPairing */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarPairing;
+		};
+		B1000000000000000000B2 /* UsageBarPairing */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarPairing;
+		};
+		B1000000000000000000E2 /* UsageBarPairing */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarPairing;
+		};
+		B1000000000000000000B0 /* UsageBarSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarSync;
+		};
+		B1000000000000000000E0 /* UsageBarSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UsageBarSync;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B100000000000000000001 /* Project object */;
+}

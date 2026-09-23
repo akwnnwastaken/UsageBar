@@ -9,6 +9,37 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Added
+- **UsageBar Mobile**, an iPhone companion, now lives in this repository. It is
+  distributed as source that you build and sign with your own Apple account — a
+  free Personal Team is enough — and there is no App Store listing and no
+  generic `.ipa`. It shows the same remaining-usage numbers the Mac is showing,
+  with Home Screen and Lock Screen widgets and Control Center controls.
+- **Mobile Sync** in macOS UsageBar. The desktop app now serves its own
+  display-filtered snapshot to a paired iPhone, so no separate Mac application
+  is needed. It appears under the lower menu controls with its own status,
+  **Enable Mobile Sync**, **Pair iPhone…** and **Revoke Paired iPhone**.
+  It is **disabled by default**: until it is enabled UsageBar opens no listener,
+  runs no Tailscale command and stores no mobile credential.
+- **QR pairing.** The code in the QR is one-time and short-lived; it carries no
+  long-lived credential, address or identity. The Mac stores only digests of the
+  bearer and of the paired Tailscale identity, and every refusal is an identical
+  generic `401`. Revoking on the Mac makes the phone forget the connection on its
+  next fetch.
+- **Private Tailscale transport.** The listener binds `127.0.0.1:18642` and
+  nothing else, reached through a `tailscale serve` mapping you configure
+  yourself. UsageBar never configures Tailscale — it may only read
+  `tailscale status --json` — and Tailscale Funnel is never used. There is no
+  cloud backend of any kind.
+
+### Notes
+- Windows cannot host the phone yet; the host side is macOS only, and Windows
+  behaviour is unchanged.
+- Anyone who paired with the standalone **UsageBar Mobile Host 0.1.0** pairs once
+  more. UsageBar uses its own preference and its own Keychain entry and migrates
+  nothing from that separate application, deliberately. The iPhone app itself
+  does not need rebuilding or reinstalling.
+
 ## [2.2.0] - 2026-09-21
 
 ### Changed
