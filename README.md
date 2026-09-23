@@ -22,10 +22,6 @@
 </p>
 
 <p align="center">
-  <a href="#turkce">Türkçe</a> · <a href="#english">English</a>
-</p>
-
-<p align="center">
   <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.0/UsageBar-2.3.0-macOS-arm64.zip"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.0/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
@@ -35,17 +31,25 @@
 
 ---
 
+UsageBar shows the selected provider's remaining usage in the macOS menu bar or Windows system tray. Its detail panel brings usage windows, reset times, and local history charts together in one place.
+
 ## Features
 
-- **Codex + Claude Code** — Track both providers from one app and switch manually or automatically.
-- **Remaining usage** — See the selected provider's percentage in the menu bar or system tray.
-- **Reset times** — Know when each available limit refreshes, as a local clock time with a countdown.
-- **Every usage window** — Inspect five-hour, weekly, and any additional windows returned for your account.
-- **Local history** — Keep up to 24 hours of percentage-only history for each provider and window.
-- **Per-provider controls** — Pause collection with **Collect usage** or collapse a card with **Show details**, without disconnecting.
-- **macOS + Windows** — Use a native menu bar app on macOS or system tray app on Windows.
-- **iPhone companion** — Build [UsageBar Mobile](docs/mobile/SELF_BUILD.md) yourself and read the same numbers on your phone, in Home and Lock Screen widgets and in Control Center, served by your own Mac over your own Tailscale network. Off by default; there is no cloud backend.
-- **Local-first** — Reuse existing provider sessions and keep raw provider output out of history.
+- **Codex + Claude Code:** Track both providers from one app.
+- **Remaining usage:** See the percentage left, not the percentage used.
+- **Multiple windows:** List five-hour, weekly, and any other duration returned by the provider.
+- **Reset times:** Show the local clock time and the countdown together for every window that reports a reset; for example `Resets: 6:45 PM · 3h 12m`.
+- **Local history:** Keep up to 24 hours of remaining-percentage history for each provider/window pair.
+- **Resilient status:** Keep the last successful value visible with its timestamp and failure reason during temporary errors.
+- **Provider selection:** Pin a provider or rotate every 30 seconds with `Auto | Codex | Claude`.
+- **Collect usage:** Pause and resume collection per provider without disconnecting it (macOS: the provider's submenu; Windows: Settings and the tray menu). A paused provider stays connected and is marked **Paused**; its last readings and recorded history are kept, and the menu bar or tray value follows the providers still being collected.
+- **Show details:** Hide or show each provider's detail body (window values, remaining percentages, reset lines, history summaries and charts) separately; on by default. It is presentation only: connection, collection and history recording are unaffected, and the heading, the paused marker where it applies, and any active issue line stay visible. The preference is stored per provider, independently of **Collect usage**.
+- **Flexible display:** Disable colors, choose from three alert-threshold profiles, and refresh every 1, 2, or 5 minutes.
+- **Launch at login:** Start automatically with the signed-in user when enabled.
+- **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
+- **macOS + Windows:** A native menu bar app on macOS, a system tray app on Windows.
+- **iPhone companion:** Build [UsageBar Mobile](docs/mobile/SELF_BUILD.md) yourself and read the same numbers on your phone, in Home and Lock Screen widgets and in Control Center — served by your own Mac over your own Tailscale network. Off by default, and there is no cloud backend.
+- **Local-first:** Reuse the provider sessions you already have, and keep raw provider output out of history.
 
 ## Downloads
 
@@ -68,337 +72,7 @@ Version **2.3.0** is current for both platforms. macOS and Windows use separate 
 
 ---
 
-<a id="turkce"></a>
-
-## Türkçe
-
-UsageBar, seçtiğiniz sağlayıcının kalan kullanım oranını macOS menü çubuğunda veya Windows sistem tepsisinde gösterir. Ayrıntı paneli kullanım pencerelerini, sıfırlanma sürelerini ve yerel geçmiş grafiklerini tek yerde toplar.
-
-### Özellikler
-
-- **Codex + Claude Code:** İki sağlayıcıyı tek uygulamada izler.
-- **Kalan kullanım:** Simgede kullanılan değil, kalan yüzdeyi gösterir.
-- **Birden çok pencere:** 5 saatlik, haftalık ve sağlayıcının döndürdüğü diğer süreli pencereleri ayrı ayrı listeler.
-- **Sıfırlama süreleri:** Sıfırlanma zamanı bildiren her pencere için yerel saati ve kalan süreyi birlikte gösterir; örneğin `Sıfırlama: 18:45 · 3sa 12dk`.
-- **Yerel geçmiş:** Her sağlayıcı/pencere çifti için 24 saate kadar kalan yüzde grafiği tutar.
-- **Güvenilir durum:** Geçici hatalarda son başarılı değeri zamanı ve hata nedeni ile eski veri olarak göstermeye devam eder.
-- **Sağlayıcı seçimi:** `Otomatik | Codex | Claude` ile sabit seçim veya 30 saniyelik otomatik geçiş sunar.
-- **Kullanımı topla:** Veri toplama her sağlayıcı için bağlantı kesilmeden duraklatılıp sürdürülebilir (macOS'ta sağlayıcının alt menüsünde, Windows'ta Ayarlar ve tepsi menüsünde). Duraklatılan sağlayıcı bağlı kalır ve **Duraklatıldı** olarak işaretlenir; son değerleri ile kayıtlı geçmişi korunur; simgedeki değer toplanmaya devam eden sağlayıcıları izler.
-- **Ayrıntıları göster:** Her sağlayıcının ayrıntı gövdesi (pencere değerleri, kalan yüzdeler, sıfırlama satırları, geçmiş özetleri ve grafikler) ayrı ayrı gizlenebilir; varsayılan olarak açıktır. Yalnızca görünümü etkiler: bağlantı, toplama ve geçmiş kaydı değişmez; başlık, geçerliyse duraklatma işareti ve etkin hata satırı yerinde kalır. Tercih sağlayıcı başına, **Kullanımı topla**'dan bağımsız saklanır.
-- **Esnek görünüm:** Renkler kapatılabilir; üç uyarı eşiği profili ve 1, 2 veya 5 dakikalık yenileme aralığı seçilebilir.
-- **iPhone eşlikçisi:** [UsageBar Mobile](docs/mobile/SELF_BUILD.md)'ı kendin derleyip aynı değerleri telefonunda, Ana Ekran ve Kilit Ekranı widget'larında ve Denetim Merkezi'nde görebilirsin; veriyi kendi Mac'in, kendi Tailscale ağın üzerinden sunar. Varsayılan olarak kapalıdır ve bulut arka ucu yoktur.
-- **Otomatik başlatma:** İsteğe bağlı olarak kullanıcı oturum açtığında başlar.
-- **İki dil, iki platform:** Türkçe ve İngilizce arayüz; macOS ve Windows desteği.
-
-### Yüzde nasıl hesaplanıyor?
-
-Simgedeki değer **kullanılan değil, kalan yüzdedir**.
-
-- **Claude Code:** 5 saatlik pencere varsa onu gösterir; bu pencere yoksa haftalık değere döner.
-- **Codex:** Hesabın sunduğu pencereler arasından en düşük kalan oranı gösterir. Hesap yalnızca haftalık pencere sunuyorsa haftalık değeri kullanır.
-
-Simgeye tıkladığınızda seçili sağlayıcının döndürdüğü tüm pencereleri ayrı ayrı görebilirsiniz. UsageBar yalnızca hesapta gerçekten bulunan pencereleri gösterir.
-
-### Veri kaynakları ve yenileme
-
-- **Codex:** Kurulu Codex aracının yerel `account/rateLimits/read` arayüzünü kullanır.
-- **Claude Code:** Claude Code'un yerel kullanım komutunun çıktısını okur. Bu komut oturum kaydı bırakmaz ve model kotası tüketmez.
-
-UsageBar sağlayıcıların web sitelerine kendi hesabıyla giriş yapmaz; bilgisayarınızdaki mevcut Codex ve Claude Code oturumlarını kullanır.
-
-Kullanım verisi 1, 2 veya 5 dakikada bir yenilenebilir; varsayılan aralık 5 dakikadır.
-
-Panel açıldığında ekrandaki veri 30 saniyeden eskiyse ayrıca yenileme başlatılır. İki sağlayıcı bağlı ve `Otomatik` seçiliyse gösterilen sağlayıcı 30 saniyede bir değişir; bu geçiş tek başına yeni bir sağlayıcı sorgusu başlatmaz.
-
-### Kullanım geçmişi ve veri kararlılığı
-
-Mini grafik açıkken UsageBar her sağlayıcı/pencere çifti için yalnızca ölçüm zamanı ile kalan yüzdeyi yerel olarak saklar.
-
-Kayıtlar açılışta ve her yeni ölçümde 24 saat, seri sayısı, örnek sayısı ve veri boyutu sınırlarına göre budanır. Sağlayıcı yanıtları, ham komut çıktıları ve kimlik bilgileri geçmişe yazılmaz.
-
-Grafik, mevcut kullanım dönemini net göstermek için son sıfırlamadan itibaren çizilir. Kalan oran yaklaşık %100'e büyük bir sıçramayla döndüğünde yeni dönem başlar. Küçük hareketleri görünür kılmak için uyarlanabilir ölçek kullanılır.
-
-Sağlayıcılar yüzdeyi tam sayıya yuvarladığından değer 41 ↔ 42 gibi oynayabilir. Yeni açılan bir okuma oturumu bazen canlı değerin gerisindeki önbellekli bir anlık değeri de döndürebilir.
-
-Gerçek bir sıfırlama eşiğinin altındaki yükselişler üç ardışık aynı okumayla doğrulanana kadar arayüzde bekletilir; büyük sıfırlamalar hemen görünür. Kaydedilen geçmiş her zaman ham ölçümü korur.
-
-Grafiğin üzerinde imleç gezdirildiğinde yatay konuma zaman olarak en yakın gerçek kayıt seçilir.
-
-Dikey kılavuz, vurgulanan nokta, yerel saat ve kalan yüzde gösterilir; ara değer üretilmez. Her grafiğin imleç durumu bağımsızdır.
-
-Bir sağlayıcı geçici olarak yanıt vermezse son başarılı değer zaman damgası ve güvenli hata nedeni ile eski veri olarak kalır. Eski değer yeni bir geçmiş örneği olarak yeniden kaydedilmez.
-
-### Platform notları
-
-#### macOS
-
-- Dock simgesi veya ana pencere açmadan yalnızca menü çubuğunda çalışır.
-- Codex için ChatGPT uygulamasını veya kurulu Codex CLI'ı; Claude için kurulu Claude Code CLI'ı okur.
-- Otomatik başlatma macOS **Giriş Öğeleri** sistemini kullanır.
-- Sağlayıcı komutlarını ayrı bir süreç grubunda çalıştırır.
-- Apple Silicon (`arm64`) için dağıtılır.
-- iPhone eşlikçisi için host olabilir — aşağıya bakın.
-
-#### iPhone
-
-- **UsageBar Mobile** `.ipa` olarak değil, **kaynak** olarak dağıtılır: Xcode'da bir kez derler ve kendi Apple hesabınla imzalarsın. Ücretsiz **Personal Team** yeterlidir; Apple'ın geliştirme sağlaması yaklaşık **7 gün** sonra dolar.
-- Telefon Codex ya da Claude ile hiç konuşmaz ve hiçbir sağlayıcı kimlik bilgisi tutmaz. Tek girdisi Mac'inden gelen arındırılmış bir anlık görüntüdür.
-- **Tailscale gereklidir**; Mac ve iPhone aynı tailnet'te olmalıdır. Erişilebilirlik kendi ağından gelir; yolda hiçbir UsageBar sunucusu yoktur ve Tailscale Funnel asla kullanılmaz.
-- Mac tarafı UsageBar'ın kendisidir. **Mobil Eşitleme sen açana kadar kapalıdır**; kapalıyken UsageBar hiçbir dinleyici açmaz, hiçbir Tailscale komutu çalıştırmaz ve hiçbir mobil kimlik bilgisi saklamaz. Kurulacak ayrı bir Mac uygulaması yoktur.
-- Eşleştirme, tek kullanımlık bir kod taşıyan QR kodunun bir kez taranmasıdır. Mac yalnızca özetleri saklar, kimlik bilgisinin kendisini değil.
-- **Windows telefonu henüz sunamaz.** Host tarafı yalnızca macOS'tur.
-- [docs/mobile/SELF_BUILD.md](docs/mobile/SELF_BUILD.md) ile başla, sonra [docs/mobile/TAILSCALE_SETUP.md](docs/mobile/TAILSCALE_SETUP.md).
-
-#### Windows
-
-- Yerel **C# / .NET 8 / WPF** sistem tepsisi uygulamasıdır; görev çubuğu düğmesi veya ana pencere açmaz.
-- Codex'in resmî Windows kurulumunu ve Claude Code'un yerel Windows kurulumunu destekler.
-- Claude Code'u **WSL** üzerinden okuyabilir; bu yol 2.3.0 sürümünde de fiziksel olarak doğrulanmamıştır.
-- Taşınabilir ZIP ve kullanıcıya özel kurulum paketi olarak dağıtılır.
-- Kurulum paketi yönetici izni istemez ve UsageBar'ı kurulum sonunda otomatik başlatmaz.
-- Sağlayıcı süreçlerini `CreateProcessW` ile, kabuk kullanmadan başlatır ve bir **Job Object** içinde sınırlandırır.
-- Servis, sürücü, zamanlanmış görev veya `PATH` değişikliği yapmaz.
-
-### Gereksinimler
-
-Yalnızca izlemek istediğiniz sağlayıcının kurulu ve oturumunun açık olması yeterlidir.
-
-| Platform | Sistem | Sağlayıcı | Kaynak koddan derleme |
-| --- | --- | --- | --- |
-| macOS | macOS 13+, Apple Silicon (`arm64`) | ChatGPT uygulaması veya giriş yapılmış Codex CLI; giriş yapılmış Claude Code CLI | Xcode Command Line Tools |
-| Windows | Windows 10 sürüm 1809+ (Windows 11 dahil), x64 | Giriş yapılmış resmî Windows Codex kurulumu; yerel Claude Code veya desteklenen WSL yolu | .NET 8 SDK |
-
-Windows son kullanıcı paketleri self-contained'dır; ayrıca .NET Runtime kurulması gerekmez.
-
-### Kurulum
-
-#### macOS
-
-1. [`v2.3.0` sürümünden](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.0) `UsageBar-2.3.0-macOS-arm64.zip` dosyasını indirin.
-2. ZIP'i açın ve `UsageBar.app` uygulamasını **Applications** klasörüne taşıyın.
-3. UsageBar'ı açın; menü çubuğundaki `%—` simgesinden sağlayıcınızı bağlayın.
-
-> [!WARNING]
-> Bu paket yalnızca Apple Silicon (`arm64`) içindir. Ad hoc imzalıdır ancak henüz Apple tarafından notarize edilmemiştir; bu nedenle ilk açılışta doğrulama uyarısı görebilirsiniz. Aşağıdaki adımları yalnızca bu deponun resmî Release dosyası için uygulayın.
-
-**İlk açılış uyarısını güvenli biçimde onaylama**
-
-1. UsageBar'ı bir kez açmayı deneyin.
-2. Doğrulama uyarısında **Çöp Sepeti'ne Taşı** yerine **Bitti** düğmesine basın.
-3. Apple menüsü → **Sistem Ayarları** → **Gizlilik ve Güvenlik** bölümünü açın.
-4. **Güvenlik** bölümünde UsageBar için **Yine de Aç** düğmesine basın.
-5. Touch ID veya Mac oturum parolanızla onaylayın, ardından **Aç** düğmesine basın.
-
-Bu onay aynı uygulama için yalnızca ilk açılışta gerekir. **Yine de Aç** görünmüyorsa UsageBar'ı tekrar açmayı deneyip aynı bölüme dönün; macOS bu seçeneği açma denemesinden sonra yaklaşık bir saat gösterir.
-
-> [!CAUTION]
-> Gatekeeper'ı tamamen kapatmayın ve internetteki rastgele `sudo`, `spctl` veya `xattr` komutlarını çalıştırmayın. macOS uygulamanın bilinen kötü amaçlı yazılım içerdiğini bildirirse devam etmeyin; dosyayı silip resmî Release'den yeniden indirin.
-
-Apple'ın resmî açıklaması: [Apple'ın kötü amaçlı yazılım denetimi yapamadığı bir uygulamayı açma](https://support.apple.com/guide/mac-help/mchleab3a043/mac)
-
-#### Windows kurulum paketi — önerilen
-
-1. [`windows-v2.3.0` sürümünü](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.0) açın.
-2. `UsageBar-Setup-x64.exe` dosyasını indirin.
-3. İsterseniz aşağıdaki doğrulama adımlarını uygulayın.
-4. Kurulum paketini çalıştırın. Yalnızca geçerli kullanıcı için kurulur ve yönetici izni istemez.
-5. Kurulum tamamlandığında Başlat menüsünde `UsageBar` arayın ve uygulamayı açın.
-6. Simge görünmüyorsa görev çubuğundaki `^` taşma alanını kontrol edin.
-
-Kurulum paketi UsageBar'ı bilerek otomatik başlatmaz. Otomatik başlatma tercihi uygulamaya aittir ve yalnızca geçerli kullanıcının ayarlarında tutulur.
-
-> [!WARNING]
-> Windows paketleri henüz imzalanmamıştır. SmartScreen ilk çalıştırmada uyarı gösterebilir. Devam etmeden önce SHA-256 değerini doğrulayın; SmartScreen'i sistem genelinde kapatmayın.
-
-#### Windows taşınabilir sürüm
-
-1. [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.0/UsageBar-Windows-x64.zip) dosyasını indirin.
-2. Kalıcı ve yazılabilir bir klasöre çıkarın.
-3. Uygulamayı doğrudan ZIP'in içinden çalıştırmayın.
-4. `UsageBar.exe` dosyasını çalıştırın.
-
-### Paket doğrulama
-
-#### macOS
-
-Release sayfasındaki `.sha256` dosyasıyla karşılaştırmak için:
-
-```sh
-shasum -a 256 ~/Downloads/UsageBar-2.3.0-macOS-arm64.zip
-```
-
-CI tarafından üretilen paketin GitHub build provenance kaydını doğrulamak için:
-
-```sh
-gh attestation verify ~/Downloads/UsageBar-2.3.0-macOS-arm64.zip \
-  --repo akwnnwastaken/UsageBar \
-  --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
-```
-
-SHA-256 dosyanın değişmediğini, attestation ise paketin bu deponun GitHub Actions akışı tarafından üretildiğini doğrular.
-
-#### Windows
-
-PowerShell'de, indirdiğiniz dosyanın bulunduğu klasörde:
-
-```powershell
-Get-FileHash .\UsageBar-Setup-x64.exe -Algorithm SHA256
-Get-FileHash .\UsageBar-Windows-x64.zip -Algorithm SHA256
-```
-
-Sonucu aynı Release sayfasındaki eşleşen `.sha256` dosyası ve Release notlarındaki değerle karşılaştırın. Üç değer aynı olmalıdır.
-
-### Kullanım ve gizlilik
-
-1. UsageBar'ı açın ve `%—` simgesine tıklayın.
-2. **Codex'e bağlan** veya **Claude Code'a bağlan** seçeneğini kullanın.
-3. İki sağlayıcı bağlıysa `Otomatik | Codex | Claude` seçicisiyle görünümü belirleyin.
-4. Görünüm, renkler, geçmiş ve yenileme aralığını ayarlardan özelleştirin.
-5. Sorun bildirirken **Tanılama özetini kopyala** seçeneğini kullanın.
-
-UsageBar ilk açılışta hiçbir sağlayıcıyı sorgulamaz; erişim ancak bağlantı düğmesine bastığınızda başlar. Bağlantı seçimi yalnızca yerel bir tercihtir. UsageBar parola, API anahtarı, erişim anahtarı veya oturum belirteci saklamaz.
-
-Sağlayıcı komutları uygulamaya özel geçici bir klasörde, sınırlı bir ortam değişkeni listesiyle çalıştırılır. Proje ayarları, eklentiler, MCP sunucuları, Chrome entegrasyonu ve kabuk başlangıç ayarları yüklenmez.
-
-Zaman aşımında çocuk süreçler kapatılır, çıktı 2 MiB ile sınırlandırılır ve çalıştırılabilir dosyalar kullanılmadan önce doğrulanır.
-
-**macOS izinleri**
-
-UsageBar Tam Disk Erişimi, Belgeler/Masaüstü erişimi, ağ diski erişimi, Ekran Kaydı, Erişilebilirlik veya Otomasyon izni istemez.
-
-Claude Code bağlanırken macOS mevcut `Claude Code-credentials` Anahtar Zinciri kaydı için izin isteyebilir; tekrar sorulmaması için bir kez **Her Zaman İzin Ver** seçilebilir.
-
-**Windows davranışı**
-
-Kurulum paketi yönetici izni istemez; servis, sürücü veya zamanlanmış görev kurmaz ve `PATH` değerini değiştirmez. Telemetri veya çökme raporlama bağımlılığı yoktur.
-
-Otomatik başlatma yalnızca UsageBar'ın geçerli kullanıcıya ait `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` girdisini yönetir.
-
-Tanılama özeti sürüm, işletim sistemi sürümü, bağlantı durumu, pencere türleri ve sabit güvenli hata kodlarıyla sınırlıdır. Ham CLI çıktısı, dosya yolu, kullanıcı adı veya kimlik bilgisi eklemez.
-
-### Sorun giderme
-
-- **Windows simgesi görünmüyor:** Görev çubuğundaki `^` taşma alanını kontrol edin.
-- **macOS uygulamayı engelliyor:** Yalnızca yukarıdaki **Gizlilik ve Güvenlik → Yine de Aç** akışını kullanın; Gatekeeper'ı kapatmayın.
-- **SmartScreen uyarıyor:** İndirmeyi SHA-256 ile doğrulayın. SmartScreen'i sistem genelinde kapatmayın.
-- **Sağlayıcı bağlanmıyor:** İlgili Codex veya Claude Code kurulumunda oturumun açık olduğunu doğrulayın, ardından UsageBar'da yeniden deneyin.
-- **Eski veri gösteriliyor:** Paneldeki zaman ve güvenli hata nedeni son başarılı ölçümün neden korunmuş olduğunu açıklar. Sağlayıcı kurulumunu kontrol edip elle yenileyin.
-- **Taşınabilir Windows sürümünü taşıdınız:** Otomatik başlatma eski konumu gösteriyorsa tercihi kapatıp yeni konumdan yeniden açın.
-- **Yardım isterken:** **Tanılama özetini kopyala** çıktısını paylaşın; token, kimlik bilgisi, ham sağlayıcı çıktısı veya özel dosya yolu göndermeyin.
-
-Windows keşif ve fiziksel doğrulama ayrıntıları için [Windows port notlarına](docs/windows-port.md) bakın. Hassas bir güvenlik açığını herkese açık Issue yerine [güvenlik politikasındaki](SECURITY.md) özel bildirim adımlarıyla paylaşın.
-
-### Kaynak koddan derleme
-
-#### macOS
-
-```sh
-git clone https://github.com/akwnnwastaken/UsageBar.git
-cd UsageBar
-chmod +x build.sh
-./build.sh
-open build/UsageBar.app
-```
-
-`build.sh` kanonik SwiftPM grafiğiyle XCTest testlerini ve paket içi öz testleri çalıştırır, ardından temiz paketi yerel kullanım için ad hoc imzalar.
-
-Ek doğrulamalar:
-
-```sh
-./tests/build_regression.sh
-./tests/security_acceptance.sh
-```
-
-#### Windows
-
-Komutları `windows/` klasöründen çalıştırın; `windows/global.json` SDK'yı .NET 8'e sabitler.
-
-```powershell
-git clone https://github.com/akwnnwastaken/UsageBar.git
-cd UsageBar/windows
-dotnet restore UsageBar.Windows.sln
-dotnet build UsageBar.Windows.sln --configuration Release --no-restore
-dotnet test UsageBar.Windows.sln --configuration Release
-```
-
-Uygulamayı çalıştırmak için:
-
-```powershell
-dotnet run --project src/UsageBar.Windows.App/UsageBar.Windows.App.csproj -c Release
-```
-
-Paketlemek ve doğrulamak için:
-
-```powershell
-./scripts/package.ps1
-./scripts/package-installer.ps1
-./scripts/verify-package.ps1
-./scripts/verify-installer.ps1
-```
-
-`package.ps1` self-contained taşınabilir ZIP'i; `package-installer.ps1` ise Inno Setup kurulum paketini üretir. `Core` ve `Core.Tests` projeleri `net8.0` hedefler; Windows'a özel testler diğer platformlarda atlanır.
-
-### Proje yapısı
-
-```text
-UsageBar/
-├── Sources/UsageBar/                       # macOS uygulaması ve sağlayıcı okuyucuları
-├── Sources/UsageBarCore/                   # Paylaşılan saf kurallar ve modeller
-├── Sources/UsageBarProcessLauncher/        # Shell kullanmayan süreç grubu başlatıcısı
-├── Sources/UsageBarSync/                   # Şema-v1 mobil anlık görüntü modeli
-├── Sources/UsageBarSyncTransport/          # Yalnızca loopback HTTP dinleyicisi
-├── Sources/UsageBarPairing/                # QR eşleştirme biçimi, Mac + iPhone
-├── Sources/UsageBarMobileSyncHost/         # Mobil Eşitleme: kimlik, eşleştirme, yaşam döngüsü
-├── ios/UsageBarMobileLab/                  # iPhone uygulaması, widget'lar ve kontroller
-├── shared/sync-schema/                     # Mobil tel şeması ve parity fixture'ları
-├── docs/mobile/                            # iPhone kurulum, gizlilik ve tasarım belgeleri
-├── Package.swift                           # Kanonik SwiftPM derleme tanımı
-├── Info.plist                              # macOS sürüm ve uygulama metadata'sı
-├── build.sh                                # macOS derleme, test ve yerel imzalama
-├── tests/                                  # XCTest ve macOS kabul betikleri
-├── windows/
-│   ├── UsageBar.Windows.sln                # Windows çözümü
-│   ├── src/                                # Core, Infrastructure ve WPF tepsi uygulaması
-│   ├── tests/                              # xUnit testleri
-│   ├── scripts/                            # Paketleme ve doğrulama betikleri
-│   └── installer/                          # Inno Setup tanımı ve Windows simgesi
-├── shared/fixtures/                        # İki platformun paylaştığı sağlayıcı örnekleri
-├── docs/windows-port.md                    # Windows tasarım ve doğrulama notları
-├── .github/workflows/                      # macOS, Windows ve release iş akışları
-├── SECURITY.md                             # İki dilli güvenlik politikası
-└── LICENSE                                 # MIT Lisansı
-```
-
-### Geliştirme ve lisans
-
-Değişiklikler ayrı commitler ve pull requestler üzerinden ilerletilir. UsageBar [MIT Lisansı](LICENSE) ile sunulur.
-
-<p align="right"><a href="#top">Başa dön ↑</a></p>
-
----
-
-<a id="english"></a>
-
-## English
-
-UsageBar shows the selected provider's remaining usage in the macOS menu bar or Windows system tray. Its detail panel brings usage windows, reset times, and local history charts together in one place.
-
-### Features
-
-- **Codex + Claude Code:** Track both providers from one app.
-- **Remaining usage:** See the percentage left, not the percentage used.
-- **Multiple windows:** List five-hour, weekly, and any other duration returned by the provider.
-- **Reset times:** Show the local clock time and the countdown together for every window that reports a reset; for example `Resets: 6:45 PM · 3h 12m`.
-- **Local history:** Keep up to 24 hours of remaining-percentage history for each provider/window pair.
-- **Resilient status:** Keep the last successful value visible with its timestamp and failure reason during temporary errors.
-- **Provider selection:** Pin a provider or rotate every 30 seconds with `Auto | Codex | Claude`.
-- **Collect usage:** Pause and resume collection per provider without disconnecting it (macOS: the provider's submenu; Windows: Settings and the tray menu). A paused provider stays connected and is marked **Paused**; its last readings and recorded history are kept, and the menu bar or tray value follows the providers still being collected.
-- **Show details:** Hide or show each provider's detail body (window values, remaining percentages, reset lines, history summaries and charts) separately; on by default. It is presentation only: connection, collection and history recording are unaffected, and the heading, the paused marker where it applies, and any active issue line stay visible. The preference is stored per provider, independently of **Collect usage**.
-- **Flexible display:** Disable colors, choose from three alert-threshold profiles, and refresh every 1, 2, or 5 minutes.
-- **Launch at login:** Start automatically with the signed-in user when enabled.
-- **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
-
-### How is the percentage calculated?
+## How is the percentage calculated?
 
 The displayed value is the **remaining percentage, not the used percentage**.
 
@@ -407,7 +81,7 @@ The displayed value is the **remaining percentage, not the used percentage**.
 
 Click the icon to inspect every window returned for the selected provider. UsageBar only shows windows actually available on the account.
 
-### Data sources and refresh behavior
+## Data sources and refresh behavior
 
 - **Codex:** Uses the installed Codex tool's local `account/rateLimits/read` interface.
 - **Claude Code:** Reads the output of Claude Code's local usage command. The command leaves no session record and consumes no model quota.
@@ -418,7 +92,7 @@ Usage can refresh every 1, 2, or 5 minutes; the default is 5 minutes.
 
 Opening the panel also starts a refresh when the displayed data is more than 30 seconds old. When both providers are connected and `Auto` is selected, the displayed provider changes every 30 seconds; rotation itself does not run a new provider query.
 
-### Usage history and data stability
+## Usage history and data stability
 
 When mini charts are enabled, UsageBar stores only the measurement time and remaining percentage for each provider/window pair, locally.
 
@@ -436,7 +110,7 @@ UsageBar shows a vertical guide, highlighted point, local time, and remaining pe
 
 If a provider temporarily fails, the last successful value remains visible with its timestamp and safe failure reason. A stale value is never recorded again as a new history sample.
 
-### Platform notes
+## Platform notes
 
 #### macOS
 
@@ -454,6 +128,8 @@ If a provider temporarily fails, the last successful value remains visible with 
 - **Tailscale is required**, with the Mac and the iPhone on the same tailnet. Reachability comes from your own network; there is no UsageBar server anywhere in the path, and Tailscale Funnel is never used.
 - The Mac side is UsageBar itself. **Mobile Sync is off until you enable it**, and while it is off UsageBar opens no listener, runs no Tailscale command and stores no mobile credential. There is no separate Mac application to install.
 - Pairing is a QR code carrying a one-time code, scanned once. The Mac stores only digests, never the credential itself.
+- UsageBar's listener binds `127.0.0.1` and nothing else. **You configure the `tailscale serve` route yourself** — UsageBar never creates, changes or removes Tailscale configuration; it only reads `tailscale status`.
+- Home Screen widgets, Lock Screen widgets and Control Center controls are part of the same build.
 - **Windows cannot host the phone yet.** The host side is macOS only.
 - Start at [docs/mobile/SELF_BUILD.md](docs/mobile/SELF_BUILD.md), then [docs/mobile/TAILSCALE_SETUP.md](docs/mobile/TAILSCALE_SETUP.md).
 
@@ -467,7 +143,7 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Provider processes start through `CreateProcessW` without a shell and are contained in a **Job Object**.
 - No service, driver, scheduled task, or `PATH` modification is used.
 
-### Requirements
+## Requirements
 
 Only the provider you want to track needs to be installed and signed in.
 
@@ -478,7 +154,7 @@ Only the provider you want to track needs to be installed and signed in.
 
 Windows end-user packages are self-contained; no separate .NET Runtime installation is required.
 
-### Installation
+## Installation
 
 #### macOS
 
@@ -525,7 +201,7 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 3. Do not run the app directly from inside the ZIP.
 4. Run `UsageBar.exe`.
 
-### Package verification
+## Package verification
 
 #### macOS
 
@@ -556,7 +232,7 @@ Get-FileHash .\UsageBar-Windows-x64.zip -Algorithm SHA256
 
 Compare each result with the matching `.sha256` file on the same Release page and the value in the release notes. All three values should match.
 
-### Usage and privacy
+## Usage and privacy
 
 1. Open UsageBar and click the `%—` icon.
 2. Choose **Connect Codex** or **Connect Claude Code**.
@@ -584,7 +260,7 @@ Autostart only manages UsageBar's current-user `HKCU\Software\Microsoft\Windows\
 
 The diagnostic summary is limited to version, operating-system version, connection state, window kinds, and fixed safe error codes. It excludes raw CLI output, file paths, user names, and credentials.
 
-### Troubleshooting
+## Troubleshooting
 
 - **Windows icon is missing:** Check the `^` overflow area on the taskbar.
 - **macOS blocks the app:** Use only the **Privacy & Security → Open Anyway** flow above; do not disable Gatekeeper.
@@ -596,7 +272,7 @@ The diagnostic summary is limited to version, operating-system version, connecti
 
 See the [Windows port notes](docs/windows-port.md) for discovery and physical-validation detail. Report sensitive vulnerabilities through the private process in the [security policy](SECURITY.md), not a public Issue.
 
-### Build from source
+## Build from source
 
 #### macOS
 
@@ -646,7 +322,7 @@ Package and verify:
 
 `package.ps1` creates the self-contained portable ZIP; `package-installer.ps1` creates the Inno Setup installer. `Core` and `Core.Tests` target `net8.0`; Windows-specific tests are skipped on other platforms.
 
-### Repository map
+## Repository map
 
 ```text
 UsageBar/
@@ -677,7 +353,7 @@ UsageBar/
 └── LICENSE                                 # MIT License
 ```
 
-### Development and license
+## Development and license
 
 Changes are developed through separate commits and pull requests. UsageBar is available under the [MIT License](LICENSE).
 
