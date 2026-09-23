@@ -33,10 +33,10 @@ no UsageBar server anywhere in the path.
 **Mac**
 
 - macOS 13 or later.
-- **Apple Silicon.** The Mac host is built and released for `arm64` only.
+- **Apple Silicon.** UsageBar for macOS is built and released for `arm64` only.
 - **Xcode 16 or later**, from the Mac App Store or developer.apple.com. Xcode is
   a large download; start it early.
-- Git, if you want to clone rather than unzip a source archive.
+- Git, if you want to clone rather than download a source archive.
 - [Tailscale](https://tailscale.com/download) for macOS.
 - Codex CLI and/or Claude Code, if you want that provider's usage on your phone.
   UsageBar reads the sessions those tools already have; it never asks you for a
@@ -55,7 +55,7 @@ no UsageBar server anywhere in the path.
 
 - An Apple ID signed into Xcode: Xcode ▸ Settings ▸ Accounts ▸ **+**.
 - A **free Personal Team is enough.** A paid Apple Developer Program membership
-  is *not* required for this source-build path. Everything in v0.1.0 — the app,
+  is *not* required for this source-build path. The whole iPhone companion — the app,
   the widget extension and the Control Center controls — was developed and
   physically tested on a free Personal Team.
 - A free Personal Team cannot create App Groups. It does not need to: see
@@ -66,14 +66,20 @@ no UsageBar server anywhere in the path.
 
 ### 1. Get the source
 
-Either unzip `UsageBar-Mobile-0.1.0-Source.zip`, or clone the repository. Verify
-the archive first:
+The iPhone companion lives in the main UsageBar repository. Take it from the
+**`v2.3.0`** tag rather than `main`, so you build the same source the release
+was cut from:
 
 ```sh
-shasum -a 256 UsageBar-Mobile-0.1.0-Source.zip
+git clone --branch v2.3.0 https://github.com/akwnnwastaken/UsageBar.git
+cd UsageBar
 ```
 
-and compare it with the `.sha256` file published beside it.
+Or download the **Source code (zip)** attached to the
+[`v2.3.0` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.0)
+and unzip it.
+
+The Xcode project is at `ios/UsageBarMobileLab/`.
 
 ### 2. Configure signing
 
@@ -198,7 +204,7 @@ Two things worth being clear about:
 - **This is an Apple limitation on free accounts, not a timer in UsageBar.**
   Nothing in this project expires anything.
 - **A paid Apple Developer Program membership lifts it** to a one-year profile.
-  It is not required, and nothing else in v0.1.0 depends on it.
+  It is not required, and nothing else depends on it.
 
 Your pairing survives a reinstall as long as the bundle identifier does not
 change, so you normally do not re-pair. If the app comes back to the setup
@@ -232,8 +238,8 @@ these still work; only installing on a physical device needs a team.
 
 ### What is not in this release
 
-- **No Windows host.** The Windows build of desktop UsageBar cannot serve a
-  phone in v0.1.0. The Mac host is the only host.
+- **No Windows host.** The Windows build of UsageBar cannot serve a phone in
+  2.3.0. macOS is the only host.
 - **No iPad or Apple Watch app.**
 - **No App Store build and no `.ipa` download**, by design.
 - **No automatic Tailscale Serve configuration.** You run one command yourself.
@@ -283,7 +289,7 @@ hiçbir yerinde bir UsageBar sunucusu yoktur.
 
 - Xcode'da oturum açmış bir Apple Kimliği: Xcode ▸ Settings ▸ Accounts ▸ **+**.
 - **Ücretsiz Personal Team yeterlidir.** Bu kaynaktan-derleme yolu için ücretli
-  Apple Developer Program üyeliği **gerekmez**. v0.1.0'daki her şey —
+  Apple Developer Program üyeliği **gerekmez**. iPhone eşlikçisinin tamamı —
   uygulama, widget uzantısı ve Denetim Merkezi kontrolleri — ücretsiz bir
   Personal Team üzerinde geliştirildi ve fiziksel cihazda test edildi.
 - Ücretsiz Personal Team App Group oluşturamaz. Zaten gerekmiyor:
@@ -294,14 +300,18 @@ hiçbir yerinde bir UsageBar sunucusu yoktur.
 
 ### 1. Kaynağı al
 
-`UsageBar-Mobile-0.1.0-Source.zip` dosyasını aç ya da depoyu klonla. Önce
-arşivi doğrula:
+iPhone eşlikçisi ana UsageBar deposunun içindedir. `main` yerine **`v2.3.0`**
+etiketinden al; böylece sürümün kesildiği kaynağı derlemiş olursun:
 
 ```sh
-shasum -a 256 UsageBar-Mobile-0.1.0-Source.zip
+git clone --branch v2.3.0 https://github.com/akwnnwastaken/UsageBar.git
+cd UsageBar
 ```
 
-ve yanında yayınlanan `.sha256` dosyasıyla karşılaştır.
+Ya da [`v2.3.0` sürümüne](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.0)
+eklenen **Source code (zip)** dosyasını indirip aç.
+
+Xcode projesi `ios/UsageBarMobileLab/` altındadır.
 
 ### 2. İmzalamayı yapılandır
 
@@ -425,7 +435,7 @@ Net olmakta fayda var:
 - **Bu, ücretsiz hesaplardaki bir Apple sınırlamasıdır, UsageBar'daki bir
   zamanlayıcı değil.** Bu projede hiçbir şeyin süresi dolmaz.
 - **Ücretli Apple Developer Program üyeliği bu sınırı kaldırır** ve profili bir
-  yıla çıkarır. Gerekli değildir; v0.1.0'da başka hiçbir şey buna bağlı değildir.
+  yıla çıkarır. Gerekli değildir; başka hiçbir şey buna bağlı değildir.
 
 Bundle tanımlayıcısı değişmediği sürece eşleştirmen yeniden kurulumdan sağ
 çıkar, yani normalde yeniden eşleştirmen gerekmez. Uygulama kurulum ekranına
@@ -459,8 +469,8 @@ ikisi de yine çalışır; yalnızca fiziksel cihaza kurulum bir takım gerektir
 
 ### Bu sürümde olmayanlar
 
-- **Windows host yok.** Masaüstü UsageBar'ın Windows sürümü v0.1.0'da bir
-  telefona hizmet veremez. Tek host Mac'tir.
+- **Windows host yok.** UsageBar'ın Windows sürümü 2.3.0'da bir telefona
+  hizmet veremez. Tek host macOS'tur.
 - **iPad veya Apple Watch uygulaması yok.**
 - **App Store derlemesi ve `.ipa` indirmesi yok**; bu bilinçli bir tercih.
 - **Otomatik Tailscale Serve yapılandırması yok.** Tek komutu sen çalıştırırsın.
