@@ -169,6 +169,30 @@ final class WeeklyWidgetDetailTests: XCTestCase {
         XCTAssertFalse(source.contains("windows.prefix("), "no array-order window selection")
     }
 
+    /// The small provider widget names each block in full — "5 Hour",
+    /// "Weekly" — and draws every text in `.primary` or `.secondary`: nothing
+    /// in it is faded to `.tertiary`.
+    func testSmallProviderWidgetUsesFullNamesAndReadableContrast() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Shared/ProviderPresentation.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "public struct WidgetWindowDetailRow"))
+        let end = try XCTUnwrap(source.range(of: "public struct WidgetProviderColumn"))
+        let widget = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(
+            widget.contains("titleLine(WindowPresentation.label(for: window))"),
+            "each block leads with the window's full name"
+        )
+        XCTAssertFalse(widget.contains(".tertiary"), "no faint tertiary text in the small provider widget")
+        XCTAssertEqual(WindowPresentation.label(for: fiveHour), "5 Hour")
+        XCTAssertEqual(WindowPresentation.label(for: weekly), "Weekly")
+    }
+
     // MARK: - It fits
 
     /// Content sizes of the small Home Screen widget, after the system's
@@ -189,9 +213,10 @@ final class WeeklyWidgetDetailTests: XCTestCase {
         )
     }
 
-    /// With both windows, the roomy form fits a typical small widget and the
-    /// compact form fits the smallest one — so the weekly is never clipped
-    /// away, on any iPhone this app supports.
+    /// With both windows, the readable form fits a 158pt small widget — so it,
+    /// not the compact fallback, is what every larger (Pro, Pro Max) widget
+    /// shows — and the compact form fits the smallest, 148pt one. The weekly
+    /// is never clipped away on any iPhone this app supports.
     @MainActor
     func testBothWindowsFitTheSmallWidget() {
         let content = ProviderWidgetSmallContent(

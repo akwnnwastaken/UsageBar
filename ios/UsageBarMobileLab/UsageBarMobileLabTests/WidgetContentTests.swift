@@ -83,8 +83,10 @@ final class WidgetContentTests: XCTestCase {
         )
     }
 
-    /// The widget rows compose from the micro label, and no widget surface
-    /// reaches for the full prose label at all.
+    /// The medium overview's rows compose from the micro label, and the
+    /// extension never formats window prose itself. (The small single-provider
+    /// widget names its blocks in full, from shared code — see
+    /// `WeeklyWidgetDetailTests`.)
     func testWidgetRowsUseTheMicroLabelAndNeverTheProseLabel() throws {
         func source(_ path: String) throws -> String {
             try String(
