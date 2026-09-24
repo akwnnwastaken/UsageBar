@@ -24,15 +24,6 @@ struct NotConfiguredView: View {
     }
 }
 
-/// A small dot beside data that came from cache after a failed fetch.
-struct StaleIndicator: View {
-    var body: some View {
-        Image(systemName: "wifi.slash")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-    }
-}
-
 // MARK: - Overview
 
 struct OverviewWidgetView: View {
@@ -217,42 +208,15 @@ struct ProviderWidgetView: View {
                 }
             }
         default:
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 4) {
-                    ProviderTag(providerId: providerId, size: 11)
-                    Spacer(minLength: 0)
-                    if entry.isStale { StaleIndicator() }
-                }
-                WidgetHeadlineValue(percent: percent, size: 40)
-                // One bar for the headline only. A small widget that listed
-                // every window would be a compressed dashboard rather than a
-                // glanceable one.
-                UsageRemainingBar(remainingPercent: percent ?? 0, height: 4)
-                    .opacity(percent == nil ? 0.35 : 1)
-                if let measurement = value?.measurement,
-                   let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: entry.date) {
-                    // The label beside the headline names the window the
-                    // desktop actually chose. It used to read
-                    // `measurement.windows.first`, which is a different window
-                    // whenever Codex's most constrained limit is a multi-day
-                    // one listed after the weekly — a confidently wrong label
-                    // and, now, a countdown to the wrong reset.
-                    Text(line)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text(FreshnessPresentation.age(of: measurement, now: entry.date))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .privacySensitive()
-                } else {
-                    Text(value.map(ProviderPresentation.statusLabel) ?? "No data")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
+            // The headline, then the five-hour and weekly windows each with its
+            // own bar and countdown — whichever of the two the snapshot really
+            // has. Every countdown renders against `entry.date`.
+            ProviderWidgetSmallContent(
+                providerId: providerId,
+                provider: value,
+                now: entry.date,
+                isStale: entry.isStale
+            )
         }
     }
 }

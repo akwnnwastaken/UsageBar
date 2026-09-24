@@ -288,6 +288,235 @@ public struct WidgetWindowRow: View {
     }
 }
 
+/// One window in the single-provider Home Screen widget, as a block: its name
+/// and percentage, how long it has left, and a bar.
+///
+///     5 Hour                  93%
+///     3h 10m left
+///     [==========        ]
+///
+/// Unlike `WidgetWindowRow` in the medium overview, each block carries its
+/// *own* countdown and its full name. This widget lists the five-hour and the
+/// weekly side by side, and "3h 10m" against "6d 22h" is what tells a person
+/// which of the two limits will stop them first.
+///
+/// Text styles rather than point literals, so the block follows Dynamic Type;
+/// `ProviderWidgetSmallContent` falls back to the compact form when a larger
+/// text size no longer fits. Contrast comes from the system's hierarchical
+/// styles only — `.primary` for the name and the number, `.secondary` for the
+/// countdown — so Light, Dark and tinted rendering all stay legible.
+public struct WidgetWindowDetailRow: View {
+    public let window: UsageSyncWindow
+    public let now: Date
+    public var compact: Bool
+
+    public init(window: UsageSyncWindow, now: Date, compact: Bool = false) {
+        self.window = window
+        self.now = now
+        self.compact = compact
+    }
+
+    private var remaining: String? {
+        SurfaceLinePresentation.windowCountdown(for: window, now: now)
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            // The full name — "5 Hour", "Weekly" — which always fits; only a
+            // long scoped name ("Weekly · Opus") on a narrow widget falls back
+            // to its short form rather than being cut mid-word. The whole line
+            // is what gets measured, so the percentage is never the part lost.
+            ViewThatFits(in: .horizontal) {
+                titleLine(WindowPresentation.label(for: window))
+                titleLine(WindowPresentation.microLabel(for: window))
+            }
+            if let remaining {
+                Text(remaining)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .privacySensitive()
+            }
+            UsageRemainingBar(remainingPercent: window.remainingPercent, height: compact ? 4 : 5)
+                .padding(.top, compact ? 1 : 2)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func titleLine(_ name: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(name)
+                .font((compact ? Font.caption : .footnote).weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text("\(window.remainingPercent)%")
+                .font((compact ? Font.footnote : .subheadline).weight(.semibold))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .privacySensitive()
+        }
+    }
+
+    private var accessibilityLabel: String {
+        var text = "\(WindowPresentation.label(for: window)), \(window.remainingPercent) percent remaining"
+        if let resetsAt = window.resetsAt,
+           let spoken = FreshnessPresentation.spokenTimeRemaining(until: resetsAt, from: now) {
+            text += ", \(spoken) left"
+        }
+        return text
+    }
+}
+
+/// The offline marker a widget shows when the last fetch failed and it is
+/// rendering a cached snapshot.
+public struct StaleIndicator: View {
+    public init() {}
+
+    public var body: some View {
+        Image(systemName: "wifi.slash")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// The single-provider Home Screen widget.
+///
+///     93%            </> Codex
+///                       2m ago
+///     5 Hour               93%
+///     3h 10m left
+///     [==========        ]
+///     Weekly               99%
+///     6d 22h 10m left
+///     [================= ]
+///
+/// The headline percentage leads, dominant, with the provider's identity and
+/// the reading's age stacked beside it; then the five-hour and weekly blocks
+/// take the rest of the height. Identity and age share the headline's line
+/// because two legible window blocks, a large headline and a separate footer
+/// line measure ~160pt against the ~126pt a small widget has — something had
+/// to move, and it is not the numbers.
+///
+/// Lives here rather than in the extension so its composition, and whether it
+/// fits a small widget, can be tested.
+public struct ProviderWidgetSmallContent: View {
+    public let providerId: String
+    public let provider: UsageSyncProvider?
+    public let now: Date
+    public var isStale: Bool
+
+    public init(providerId: String, provider: UsageSyncProvider?, now: Date, isStale: Bool = false) {
+        self.providerId = providerId
+        self.provider = provider
+        self.now = now
+        self.isStale = isStale
+    }
+
+    private var measurement: UsageSyncMeasurement? { provider?.measurement }
+
+    public var body: some View {
+        // The readable form whenever it fits — every current iPhone at the
+        // default text size — and the compact one only where it genuinely
+        // does not: the smallest iPhones, or a larger Dynamic Type size.
+        ViewThatFits(in: .vertical) {
+            layout(compact: false)
+            layout(compact: true)
+        }
+    }
+
+    /// Internal rather than private so a test can measure each form against
+    /// real widget sizes.
+    func layout(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header(compact: compact)
+
+            if let measurement {
+                let windows = WindowPresentation.widgetDetailWindows(in: measurement)
+                if windows.isEmpty {
+                    // No window to itemise, so the headline keeps a bar of its
+                    // own rather than the widget losing its progress entirely.
+                    UsageRemainingBar(remainingPercent: measurement.headlineRemainingPercent, height: 5)
+                        .padding(.top, 8)
+                    Spacer(minLength: 0)
+                } else if windows.count == 1 {
+                    WidgetWindowDetailRow(window: windows[0], now: now, compact: compact)
+                        .padding(.top, compact ? 4 : 8)
+                    Spacer(minLength: 0)
+                } else {
+                    // Two blocks share whatever height is left, so a taller
+                    // widget breathes instead of leaving a blank band.
+                    Spacer(minLength: compact ? 3 : 4)
+                    WidgetWindowDetailRow(window: windows[0], now: now, compact: compact)
+                    Spacer(minLength: compact ? 4 : 6)
+                    WidgetWindowDetailRow(window: windows[1], now: now, compact: compact)
+                }
+            } else {
+                UsageRemainingBar(remainingPercent: 0, height: 5)
+                    .opacity(0.35)
+                    .padding(.top, 8)
+                Text(provider.map(ProviderPresentation.statusLabel) ?? "No data")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .padding(.top, 4)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The headline percentage on the left; identity and freshness stacked on
+    /// the right.
+    private func header(compact: Bool) -> some View {
+        HStack(alignment: .top, spacing: 4) {
+            // The headline gives way first (it scales down) so the provider's
+            // name and the reading's age are never truncated beside it.
+            headline(compact: compact)
+            Spacer(minLength: 2)
+            VStack(alignment: .trailing, spacing: 1) {
+                ProviderTag(providerId: providerId, size: 11)
+                if let measurement {
+                    // Freshness stays its own fact, never replaced by a
+                    // countdown; the stale marker belongs beside it.
+                    HStack(spacing: 3) {
+                        if isStale { StaleIndicator() }
+                        Text(FreshnessPresentation.shortAge(of: measurement, now: now))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .privacySensitive()
+                    }
+                } else if isStale {
+                    StaleIndicator()
+                }
+            }
+            .fixedSize()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The big number. When its window — the desktop's chosen headline,
+    /// resolved through `headlineWindowId` — is not one of the blocks below,
+    /// its short name sits beside it, so the number is never unattributed.
+    private func headline(compact: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            WidgetHeadlineValue(percent: measurement?.headlineRemainingPercent, size: compact ? 24 : 28)
+            if let measurement,
+               let window = HeadlinePresentation.window(in: measurement),
+               !WindowPresentation.widgetDetailWindows(in: measurement)
+                .contains(where: { $0.windowId == window.windowId }) {
+                Text(WindowPresentation.microLabel(for: window))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
 /// One provider's column in the medium overview widget.
 ///
 /// A compact extension of the dashboard card rather than a reproduction of it:
@@ -332,7 +561,9 @@ public struct WidgetProviderColumn: View {
 
             if let measurement {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(measurement.windows.prefix(2), id: \.windowId) { window in
+                    // By kind, not by array position — the same two windows the
+                    // single-provider widget lists.
+                    ForEach(WindowPresentation.widgetDetailWindows(in: measurement), id: \.windowId) { window in
                         WidgetWindowRow(window: window)
                     }
                 }
@@ -506,6 +737,38 @@ public enum WindowPresentation {
         }
     }
 
+    /// The windows a compact widget lists beneath its headline, at most
+    /// `limit` of them.
+    ///
+    /// Chosen by *kind*, never by array position: the five-hour window first,
+    /// then the plain weekly, because those are the two limits a person
+    /// actually paces against. The snapshot does not promise that
+    /// `windows[0]` is the five-hour one — Codex lists a multi-day limit after
+    /// the weekly, and some accounts have no five-hour window at all.
+    ///
+    /// Only windows that are in the snapshot are returned. A missing weekly is
+    /// not replaced by an empty row, and nothing is invented to fill the space.
+    /// The one addition is the headline window itself, when it is neither of
+    /// the two and there is still room, so the big number above the rows is
+    /// never the only place its window appears.
+    public static func widgetDetailWindows(
+        in measurement: UsageSyncMeasurement,
+        limit: Int = 2
+    ) -> [UsageSyncWindow] {
+        var chosen: [UsageSyncWindow] = []
+        for kind in [UsageSyncWindowKind.fiveHour, .weekly] {
+            if let window = measurement.windows.first(where: { $0.kind == kind }) {
+                chosen.append(window)
+            }
+        }
+        if chosen.count < limit,
+           let headline = HeadlinePresentation.window(in: measurement),
+           !chosen.contains(where: { $0.windowId == headline.windowId }) {
+            chosen.append(headline)
+        }
+        return Array(chosen.prefix(limit))
+    }
+
     /// The largest unit that stays exact, so a three-day limit reads "3D".
     static func compactDurationLabel(minutes: Int) -> String {
         if minutes % (60 * 24) == 0 { return "\(minutes / (60 * 24))D" }
@@ -667,6 +930,17 @@ public enum SurfaceLinePresentation {
             return "\(name) \(percent)%"
         }
         return "\(name) \(percent)% · \(remaining)"
+    }
+
+    /// Any one window's own countdown — "4h 52m left", "6d 13h 12m left" — for
+    /// the provider widget's per-window rows.
+    ///
+    /// The same precise, floored decomposition every other surface uses, from
+    /// that window's own `resetsAt`, not the headline's. Nil when the window
+    /// has no reset or it has passed, and then no countdown is drawn at all.
+    public static func windowCountdown(for window: UsageSyncWindow, now: Date = Date()) -> String? {
+        guard let resetsAt = window.resetsAt else { return nil }
+        return FreshnessPresentation.compactTimeRemaining(until: resetsAt, from: now)
     }
 
     /// The already-separated countdown an overview row appends after a
