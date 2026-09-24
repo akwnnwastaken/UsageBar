@@ -117,7 +117,7 @@ final class HeadlinePresentationTests: XCTestCase {
 
     // MARK: - Countdown
 
-    func testCountdownUsesTheLargestWholeUnitAndFloors() {
+    func testCountdownKeepsEverySignificantComponent() {
         let reset = Date(timeIntervalSince1970: 1_772_000_000)
         func remaining(_ seconds: TimeInterval) -> String? {
             FreshnessPresentation.compactTimeRemaining(
@@ -125,9 +125,9 @@ final class HeadlinePresentationTests: XCTestCase {
             )
         }
         XCTAssertEqual(remaining(59 * 60), "59m left")
-        XCTAssertEqual(remaining(119 * 60), "1h left")
-        XCTAssertEqual(remaining((2 * 60 + 59) * 60), "2h left")
-        XCTAssertEqual(remaining(47 * 3600), "1d left")
+        XCTAssertEqual(remaining(119 * 60), "1h 59m left")
+        XCTAssertEqual(remaining((2 * 60 + 59) * 60), "2h 59m left")
+        XCTAssertEqual(remaining(47 * 3600), "1d 23h left")
         XCTAssertEqual(remaining(72 * 3600), "3d left")
         XCTAssertEqual(remaining(30), "1m left", "a live window never reads as zero")
     }
@@ -223,7 +223,7 @@ final class HeadlinePresentationTests: XCTestCase {
         let now = measuredAt.addingTimeInterval(3 * 60)
         XCTAssertEqual(
             FreshnessPresentation.headlineMetadata(of: value, now: now),
-            "Updated 3 min ago · 2h left"
+            "Updated 3 min ago · 2h 57m left"
         )
     }
 
@@ -262,7 +262,7 @@ final class HeadlinePresentationTests: XCTestCase {
         let now = measuredAt.addingTimeInterval(60)
         XCTAssertEqual(
             FreshnessPresentation.headlineMetadata(of: value, now: now),
-            "Updated 1 min ago · 1d left",
+            "Updated 1 min ago · 1d 23h 59m left",
             "the sooner five-hour reset must not be what the headline counts down"
         )
     }

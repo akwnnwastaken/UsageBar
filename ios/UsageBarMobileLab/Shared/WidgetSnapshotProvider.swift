@@ -21,6 +21,25 @@ struct UsageTimelineProvider: TimelineProvider {
     /// system coalesces and defers refreshes anyway.
     static let refreshInterval: TimeInterval = 15 * 60
 
+    /// How finely, and how far ahead, the one fetched reading is re-rendered.
+    ///
+    /// A widget's view is rendered when its timeline is *built*, not when it is
+    /// looked at, so a timeline of one entry freezes its countdown at build
+    /// time: forty minutes later the Lock Screen still claims the reading's
+    /// window has as long left as it had then. The cure is more entries, not
+    /// more fetches. Every entry below re-renders the *same* already-resolved
+    /// state at a later instant, so the countdown falls and the age grows while
+    /// the network, the keychain and the cache are never touched again.
+    ///
+    /// The horizon deliberately outruns `refreshInterval`: the system defers
+    /// refreshes whenever it likes, and a timeline that ran out of entries
+    /// would go back to displaying a frozen clock precisely when it had been
+    /// deferred longest. Timing stays best-effort — this asks the system for
+    /// nothing extra, it just gives the system more than one already-rendered
+    /// answer to choose from.
+    static let countdownStep: TimeInterval = 5 * 60
+    static let countdownHorizon: TimeInterval = 60 * 60
+
     private let resolver: UsageSurfaceResolver
 
     init(
@@ -48,9 +67,29 @@ struct UsageTimelineProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UsageEntry>) -> Void) {
         Task {
-            let entry = await currentEntry()
-            let next = Date().addingTimeInterval(Self.refreshInterval)
-            completion(Timeline(entries: [entry], policy: .after(next)))
+            let now = Date()
+            // Exactly one resolve — therefore at most one fetch — per timeline.
+            let state = await resolver.resolve()
+            completion(Timeline(
+                entries: Self.countdownEntries(for: state, startingAt: now),
+                policy: .after(now.addingTimeInterval(Self.refreshInterval))
+            ))
+        }
+    }
+
+    /// One resolved state, rendered at a ladder of future instants.
+    ///
+    /// Every entry carries the *same* state — the same snapshot, the same
+    /// `measuredAt`, the same percentages — and differs only in its `date`,
+    /// which is the `now` the views format against. Nothing here can make a
+    /// reading look newer than it is: a later entry renders a longer age, never
+    /// a shorter one.
+    static func countdownEntries(
+        for state: UsageSurfaceState,
+        startingAt start: Date
+    ) -> [UsageEntry] {
+        stride(from: 0, through: countdownHorizon, by: countdownStep).map { offset in
+            UsageEntry(date: start.addingTimeInterval(offset), state: state)
         }
     }
 

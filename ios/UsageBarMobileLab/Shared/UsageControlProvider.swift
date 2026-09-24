@@ -187,8 +187,13 @@ enum ControlPresentation {
             if let window = headline.windowLabel { parts.append(window) }
             parts.append("\(percent)%")
             var title = parts.joined(separator: " ")
+            // Tight, and without a "left" suffix: Control Center truncates from
+            // the right and every character spent on whitespace or on the word
+            // is a character the minutes might have needed. The old policy
+            // bought that room by dropping the minutes entirely — "4h left" for
+            // four hours fifty-nine — which is the inaccuracy this replaces.
             if let resetsAt = headline.resetsAt,
-               let remaining = FreshnessPresentation.compactTimeRemaining(until: resetsAt, from: now) {
+               let remaining = FreshnessPresentation.tightTimeRemaining(until: resetsAt, from: now) {
                 title += " · " + remaining
             }
             return title

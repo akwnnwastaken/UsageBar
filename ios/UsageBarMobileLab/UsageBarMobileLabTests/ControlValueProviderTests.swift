@@ -114,11 +114,11 @@ final class ControlValueProviderTests: XCTestCase {
         let now = codexResetsAt.addingTimeInterval(-90 * 60)
         XCTAssertEqual(
             ControlPresentation.providerTitle(for: value, providerId: UsageProviderID.codex, now: now),
-            "Codex 5H 64% · 1h left"
+            "Codex 5H 64% · 1h30m"
         )
         XCTAssertEqual(
             ControlPresentation.providerTitle(for: value, providerId: UsageProviderID.claude, now: now),
-            "Claude 5H 52% · 1h left",
+            "Claude 5H 52% · 1h",
             "each provider counts down its own headline window"
         )
         XCTAssertEqual(ControlPresentation.overviewTitle(for: value), "Codex 64% · Claude 52%")
@@ -471,21 +471,28 @@ final class ControlValueProviderTests: XCTestCase {
                 providerId: UsageProviderID.codex,
                 now: resetsAt.addingTimeInterval(-3 * 3600)
             ),
-            "Codex 5H 64% · 3h left"
+            "Codex 5H 64% · 3h"
         )
     }
 
-    func testCountdownUsesTheLargestWholeUnitAndFloors() {
+    func testCountdownKeepsItsMinutesInEverySpelling() {
         let reset = Date(timeIntervalSince1970: 1_772_000_000)
         func remaining(_ interval: TimeInterval) -> String? {
             FreshnessPresentation.compactTimeRemaining(until: reset, from: reset.addingTimeInterval(-interval))
         }
+        func tight(_ interval: TimeInterval) -> String? {
+            FreshnessPresentation.tightTimeRemaining(until: reset, from: reset.addingTimeInterval(-interval))
+        }
         XCTAssertEqual(remaining(14 * 60), "14m left")
         XCTAssertEqual(remaining(60 * 60), "1h left")
-        // Floors: overstating the time left is the harmful direction.
-        XCTAssertEqual(remaining(179 * 60), "2h left")
+        // Seconds are still floored away; minutes no longer are.
+        XCTAssertEqual(remaining(179 * 60), "2h 59m left")
         XCTAssertEqual(remaining(3 * 24 * 3600), "3d left")
         XCTAssertEqual(remaining(30), "1m left", "a live window never reads as zero")
+
+        // Control Center spends the spaces, never the components.
+        XCTAssertEqual(tight(179 * 60), "2h59m")
+        XCTAssertEqual(tight((25 * 60 + 14) * 60), "1d1h14m")
     }
 
     /// A reset that has already passed is not a countdown, and the reading it
