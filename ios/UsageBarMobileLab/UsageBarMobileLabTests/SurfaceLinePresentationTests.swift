@@ -58,7 +58,7 @@ final class SurfaceLinePresentationTests: XCTestCase {
     func testProviderSmallShowsHeadlineWindowLabelAndCountdown() {
         XCTAssertEqual(
             SurfaceLinePresentation.headlineWindowLine(in: fiveHourHeadline, now: measuredAt),
-            "5 Hour · 1h left"
+            "5 Hour · 1h 30m left"
         )
     }
 
@@ -105,7 +105,7 @@ final class SurfaceLinePresentationTests: XCTestCase {
             SurfaceLinePresentation.accessoryFooter(
                 of: fiveHourHeadline, now: measuredAt.addingTimeInterval(3 * 60)
             ),
-            "1h left · 3m ago"
+            "1h27m left · 3m ago"
         )
     }
 
@@ -141,9 +141,9 @@ final class SurfaceLinePresentationTests: XCTestCase {
         let text = SurfaceLinePresentation.inline(
             name: "Codex", percent: 64, measurement: fiveHourHeadline, now: measuredAt
         )
-        XCTAssertEqual(text, "Codex 64% · 1h left")
+        XCTAssertEqual(text, "Codex 64% · 1h30m")
         let percentIndex = try? XCTUnwrap(text.range(of: "64%")).lowerBound
-        let countdownIndex = try? XCTUnwrap(text.range(of: "1h left")).lowerBound
+        let countdownIndex = try? XCTUnwrap(text.range(of: "1h30m")).lowerBound
         XCTAssertNotNil(percentIndex)
         XCTAssertNotNil(countdownIndex)
         XCTAssertLessThan(percentIndex!, countdownIndex!)
@@ -170,11 +170,11 @@ final class SurfaceLinePresentationTests: XCTestCase {
     func testOverviewCountdownSuffixIsSeparatedAndPerProvider() throws {
         XCTAssertEqual(
             SurfaceLinePresentation.countdownSuffix(in: fiveHourHeadline, now: measuredAt),
-            "· 1h left"
+            "· 1h30m"
         )
         XCTAssertEqual(
             SurfaceLinePresentation.countdownSuffix(in: durationHeadline, now: measuredAt),
-            "· 2h left"
+            "· 2h"
         )
     }
 
@@ -198,10 +198,10 @@ final class SurfaceLinePresentationTests: XCTestCase {
 
         let now = codexReset.addingTimeInterval(-2 * 3600)
         XCTAssertEqual(
-            SurfaceLinePresentation.countdownSuffix(in: codex.measurement, now: now), "· 2h left"
+            SurfaceLinePresentation.countdownSuffix(in: codex.measurement, now: now), "· 2h"
         )
         XCTAssertEqual(
-            SurfaceLinePresentation.countdownSuffix(in: claude.measurement, now: now), "· 1h left"
+            SurfaceLinePresentation.countdownSuffix(in: claude.measurement, now: now), "· 1h30m"
         )
     }
 
@@ -326,27 +326,53 @@ final class HeadlineContractTests: XCTestCase {
         XCTAssertEqual(resolvers, ["ProviderPresentation.swift"])
     }
 
-    /// The app's detail rows keep the precise instant. The headline answers
-    /// "should I slow down?", these answer "when exactly?", and the card does
-    /// not print the same fact twice in two formats.
-    func testDetailedWindowRowsKeepTheAbsoluteResetTime() throws {
-        let card = try source("UsageBarMobileLab/Views/ProviderCardView.swift")
-        XCTAssertTrue(card.contains("FreshnessPresentation.resetLabel(for: window, now: now)"))
-        XCTAssertFalse(
-            Self.strippingComments(from: card).contains("compactTimeRemaining"),
-            "detail rows must not be converted to countdowns"
+    /// The app's detail rows carry **both** reset facts.
+    ///
+    /// They keep the precise absolute instant they always had — the headline
+    /// answers "should I slow down?", these answer "when exactly?" — and they
+    /// now state the remaining interval beside it at full precision. The two
+    /// are not the same fact in two formats: one is a duration a person budgets
+    /// against, the other an instant they plan an afternoon around.
+    func testDetailedWindowRowsKeepTheAbsoluteResetTimeAndGainAPreciseCountdown() throws {
+        let card = Self.strippingComments(
+            from: try source("UsageBarMobileLab/Views/ProviderCardView.swift")
+        )
+        XCTAssertTrue(
+            card.contains("FreshnessPresentation.resetSummary(for: window, now: now)"),
+            "detail rows must render the one shared reset summary"
         )
 
+        let now = Date(timeIntervalSince1970: 1_772_000_000)
         let window = UsageSyncWindow(
             windowId: "five-hour", kind: .fiveHour, scope: nil, durationMinutes: 300,
             remainingPercent: 64,
-            resetsAt: Date(timeIntervalSince1970: 1_772_000_000).addingTimeInterval(3600)
+            resetsAt: now.addingTimeInterval((4 * 60 + 59) * 60)
         )
-        let label = try XCTUnwrap(
-            FreshnessPresentation.resetLabel(for: window, now: Date(timeIntervalSince1970: 1_772_000_000))
+
+        let summary = try XCTUnwrap(FreshnessPresentation.resetSummary(for: window, now: now))
+        XCTAssertTrue(summary.hasPrefix("Resets in 4h 59m · "), summary)
+        XCTAssertFalse(summary.hasPrefix("Resets in 4h · "), "a row must not drop its minutes")
+
+        // The absolute instant survives, still locale-formatted by the one
+        // formatter both spellings share.
+        let clock = try XCTUnwrap(FreshnessPresentation.resetLabel(for: window, now: now))
+            .replacingOccurrences(of: "Resets ", with: "")
+        XCTAssertTrue(summary.hasSuffix(clock), summary)
+
+        // Once the reset has passed there is no interval left to state, so the
+        // row falls back to the instant alone rather than printing a zero or a
+        // negative countdown.
+        let elapsed = try XCTUnwrap(
+            FreshnessPresentation.resetSummary(for: window, now: now.addingTimeInterval(6 * 3600))
         )
-        XCTAssertTrue(label.hasPrefix("Resets "))
-        XCTAssertFalse(label.contains("left"))
+        XCTAssertFalse(elapsed.contains("Resets in"), elapsed)
+
+        // A window with no reset instant renders nothing at all.
+        let openEnded = UsageSyncWindow(
+            windowId: "weekly", kind: .weekly, scope: nil, durationMinutes: 10_080,
+            remainingPercent: 81, resetsAt: nil
+        )
+        XCTAssertNil(FreshnessPresentation.resetSummary(for: openEnded, now: now))
     }
 
     /// The dashboard's local tick is presentation only.
@@ -381,7 +407,7 @@ final class HeadlineContractTests: XCTestCase {
                 for: value, providerId: UsageProviderID.codex,
                 now: reset.addingTimeInterval(-2 * 3600)
             ),
-            "Codex 3D 45% · 2h left"
+            "Codex 3D 45% · 2h"
         )
     }
 

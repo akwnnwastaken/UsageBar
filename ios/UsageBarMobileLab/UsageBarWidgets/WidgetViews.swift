@@ -129,7 +129,9 @@ struct OverviewWidgetView: View {
     /// Nil whenever the headline window has no future reset, so nothing here
     /// ever renders an expired or empty countdown.
     private func countdown(_ providerId: String) -> String? {
-        SurfaceLinePresentation.countdownSuffix(in: provider(providerId, in: entry)?.measurement)
+        SurfaceLinePresentation.countdownSuffix(
+            in: provider(providerId, in: entry)?.measurement, now: entry.date
+        )
     }
 
     private func accessoryRow(_ providerId: String) -> some View {
@@ -183,7 +185,7 @@ struct OverviewWidgetView: View {
                 // detail rows below keep their own percentages and are
                 // deliberately left uncluttered — the requirement is that the
                 // *headline's* reset is visible, not every window's.
-                if let line = SurfaceLinePresentation.headlineWindowLine(in: measurement) {
+                if let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: entry.date) {
                     Text(line)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -199,7 +201,7 @@ struct OverviewWidgetView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 }
-                Text(FreshnessPresentation.age(of: measurement))
+                Text(FreshnessPresentation.age(of: measurement, now: entry.date))
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .privacySensitive()
@@ -252,7 +254,7 @@ struct ProviderWidgetView: View {
             // what is lost.
             if let percent {
                 Text(SurfaceLinePresentation.inline(
-                    name: name, percent: percent, measurement: value?.measurement
+                    name: name, percent: percent, measurement: value?.measurement, now: entry.date
                 )).privacySensitive()
             } else {
                 Text("\(name) --")
@@ -275,7 +277,7 @@ struct ProviderWidgetView: View {
                     // rather than one being dropped: "2h left · 3m ago". The
                     // age still comes from `measuredAt` and still has no stale
                     // threshold — it is just spelled in fewer characters.
-                    Text(SurfaceLinePresentation.accessoryFooter(of: measurement))
+                    Text(SurfaceLinePresentation.accessoryFooter(of: measurement, now: entry.date))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -292,7 +294,7 @@ struct ProviderWidgetView: View {
                 }
                 HeadlineValue(percent: percent, size: 44)
                 if let measurement = value?.measurement,
-                   let line = SurfaceLinePresentation.headlineWindowLine(in: measurement) {
+                   let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: entry.date) {
                     // The label beside the headline names the window the
                     // desktop actually chose. It used to read
                     // `measurement.windows.first`, which is a different window
@@ -304,7 +306,7 @@ struct ProviderWidgetView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Text(FreshnessPresentation.age(of: measurement))
+                    Text(FreshnessPresentation.age(of: measurement, now: entry.date))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .privacySensitive()
