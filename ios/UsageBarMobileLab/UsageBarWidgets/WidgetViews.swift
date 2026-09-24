@@ -60,30 +60,19 @@ struct OverviewWidgetView: View {
                 accessoryRow(UsageProviderID.claude)
             }
         case .systemMedium:
-            VStack(alignment: .leading, spacing: 8) {
-                header
-                HStack(alignment: .top, spacing: 16) {
-                    providerColumn(UsageProviderID.codex)
-                    Divider()
-                    providerColumn(UsageProviderID.claude)
-                }
-            }
+            // Each column is the single-provider widget itself, so a provider
+            // reads the same here as on its own widget.
+            OverviewMediumContent(providers: slots, now: entry.date, isStale: entry.isStale)
         default:
-            VStack(alignment: .leading, spacing: 10) {
-                header
-                providerRow(UsageProviderID.codex)
-                providerRow(UsageProviderID.claude)
-            }
+            // Two compact provider summaries; each names its own provider, so
+            // no global title spends the height the numbers need.
+            OverviewSmallContent(providers: slots, now: entry.date, isStale: entry.isStale)
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 4) {
-            Text("UsageBar")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            if entry.isStale { StaleIndicator() }
-            Spacer(minLength: 0)
+    private var slots: [WidgetProviderSlot] {
+        [UsageProviderID.codex, UsageProviderID.claude].map {
+            WidgetProviderSlot(id: $0, provider: provider($0, in: entry))
         }
     }
 
@@ -115,22 +104,6 @@ struct OverviewWidgetView: View {
             }
             Spacer(minLength: 0)
         }
-    }
-
-    private func providerRow(_ providerId: String) -> some View {
-        WidgetProviderRow(
-            providerId: providerId,
-            provider: provider(providerId, in: entry),
-            now: entry.date
-        )
-    }
-
-    private func providerColumn(_ providerId: String) -> some View {
-        WidgetProviderColumn(
-            providerId: providerId,
-            provider: provider(providerId, in: entry),
-            now: entry.date
-        )
     }
 }
 

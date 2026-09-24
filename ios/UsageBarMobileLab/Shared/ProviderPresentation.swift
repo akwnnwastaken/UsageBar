@@ -255,50 +255,16 @@ public struct ProviderTag: View {
     }
 }
 
-/// One window inside a widget column: a short label, its percentage, and a
-/// hairline bar.
-///
-/// The label is the micro form because the column above has already named the
-/// headline window in full; repeating "5 Hour" here would spend a scarce line
-/// restating it. The bar's *length* carries the same fact as the printed
-/// number, so the row still reads under tinted rendering or without colour
-/// vision.
-public struct WidgetWindowRow: View {
-    public let window: UsageSyncWindow
-
-    public init(window: UsageSyncWindow) {
-        self.window = window
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Text(WindowPresentation.microLabel(for: window))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 2)
-                Text("\(window.remainingPercent)%")
-                    .font(.system(size: 9, weight: .semibold))
-                    .monospacedDigit()
-                    .privacySensitive()
-            }
-            UsageRemainingBar(remainingPercent: window.remainingPercent, height: 3)
-        }
-    }
-}
-
-/// One window in the single-provider Home Screen widget, as a block: its name
-/// and percentage, how long it has left, and a bar.
+/// One window in a detailed provider widget, as a block: its name and
+/// percentage, how long it has left, and a bar.
 ///
 ///     5 Hour                  93%
 ///     3h 10m left
 ///     [==========        ]
 ///
-/// Unlike `WidgetWindowRow` in the medium overview, each block carries its
-/// *own* countdown and its full name. This widget lists the five-hour and the
-/// weekly side by side, and "3h 10m" against "6d 22h" is what tells a person
-/// which of the two limits will stop them first.
+/// Each block carries its *own* countdown and its full name. The widget lists
+/// the five-hour and the weekly side by side, and "3h 10m" against "6d 22h" is
+/// what tells a person which of the two limits will stop them first.
 ///
 /// Text styles rather than point literals, so the block follows Dynamic Type;
 /// `ProviderWidgetSmallContent` falls back to the compact form when a larger
@@ -382,6 +348,96 @@ public struct StaleIndicator: View {
     }
 }
 
+/// The top line every Home Screen widget draws for one provider: the headline
+/// percentage, dominant, on the left; the provider's identity and the
+/// reading's short age stacked on the right.
+///
+///     93%            </> Codex
+///                       2m ago
+///
+/// One implementation, shared by the single-provider widget and both overview
+/// widgets, so the family cannot drift into three ideas of what a provider's
+/// header looks like.
+public struct WidgetProviderHeader: View {
+    public let providerId: String
+    public let provider: UsageSyncProvider?
+    public let now: Date
+    public var isStale: Bool
+    public var headlineSize: CGFloat
+    /// A short window name to set beside the number, when the caller does not
+    /// name the headline window anywhere else.
+    public var headlineWindowTag: String?
+    /// False only where a caller has run out of height and freshness is the
+    /// least important fact left on the line.
+    public var showsAge: Bool
+    /// False where the number may scale down a little rather than decide how
+    /// wide the header wants to be.
+    public var headlineSetsWidth: Bool
+
+    public init(
+        providerId: String,
+        provider: UsageSyncProvider?,
+        now: Date,
+        isStale: Bool = false,
+        headlineSize: CGFloat,
+        headlineWindowTag: String? = nil,
+        showsAge: Bool = true,
+        headlineSetsWidth: Bool = true
+    ) {
+        self.providerId = providerId
+        self.provider = provider
+        self.now = now
+        self.isStale = isStale
+        self.headlineSize = headlineSize
+        self.headlineWindowTag = headlineWindowTag
+        self.showsAge = showsAge
+        self.headlineSetsWidth = headlineSetsWidth
+    }
+
+    private var measurement: UsageSyncMeasurement? { provider?.measurement }
+
+    public var body: some View {
+        HStack(alignment: .top, spacing: 4) {
+            // The headline gives way first (it scales down) so the provider's
+            // name and the reading's age are never truncated beside it.
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                WidgetHeadlineValue(percent: measurement?.headlineRemainingPercent, size: headlineSize)
+                if let headlineWindowTag {
+                    Text(headlineWindowTag)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(
+                minWidth: headlineSetsWidth ? nil : 0,
+                idealWidth: headlineSetsWidth ? nil : 0,
+                alignment: .leading
+            )
+            Spacer(minLength: 2)
+            VStack(alignment: .trailing, spacing: 1) {
+                ProviderTag(providerId: providerId, size: 11)
+                if showsAge, let measurement {
+                    // Freshness stays its own fact, never replaced by a
+                    // countdown; the stale marker belongs beside it.
+                    HStack(spacing: 3) {
+                        if isStale { StaleIndicator() }
+                        Text(FreshnessPresentation.shortAge(of: measurement, now: now))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .privacySensitive()
+                    }
+                } else if isStale {
+                    StaleIndicator()
+                }
+            }
+            .fixedSize()
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// The single-provider Home Screen widget.
 ///
 ///     93%            </> Codex
@@ -399,6 +455,9 @@ public struct StaleIndicator: View {
 /// because two legible window blocks, a large headline and a separate footer
 /// line measure ~160pt against the ~126pt a small widget has — something had
 /// to move, and it is not the numbers.
+///
+/// The medium overview draws two of these side by side, so a provider reads
+/// the same on either widget.
 ///
 /// Lives here rather than in the extension so its composition, and whether it
 /// fits a small widget, can be tested.
@@ -431,7 +490,14 @@ public struct ProviderWidgetSmallContent: View {
     /// real widget sizes.
     func layout(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            header(compact: compact)
+            WidgetProviderHeader(
+                providerId: providerId,
+                provider: provider,
+                now: now,
+                isStale: isStale,
+                headlineSize: compact ? 24 : 28,
+                headlineWindowTag: headlineWindowTag
+            )
 
             if let measurement {
                 let windows = WindowPresentation.widgetDetailWindows(in: measurement)
@@ -468,160 +534,252 @@ public struct ProviderWidgetSmallContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// The headline percentage on the left; identity and freshness stacked on
-    /// the right.
-    private func header(compact: Bool) -> some View {
-        HStack(alignment: .top, spacing: 4) {
-            // The headline gives way first (it scales down) so the provider's
-            // name and the reading's age are never truncated beside it.
-            headline(compact: compact)
-            Spacer(minLength: 2)
-            VStack(alignment: .trailing, spacing: 1) {
-                ProviderTag(providerId: providerId, size: 11)
-                if let measurement {
-                    // Freshness stays its own fact, never replaced by a
-                    // countdown; the stale marker belongs beside it.
-                    HStack(spacing: 3) {
-                        if isStale { StaleIndicator() }
-                        Text(FreshnessPresentation.shortAge(of: measurement, now: now))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .privacySensitive()
-                    }
-                } else if isStale {
-                    StaleIndicator()
-                }
-            }
-            .fixedSize()
+    /// When the headline window — the desktop's chosen one, resolved through
+    /// `headlineWindowId` — is not one of the blocks below, its short name sits
+    /// beside the number, so the number is never unattributed.
+    private var headlineWindowTag: String? {
+        guard let measurement,
+              let window = HeadlinePresentation.window(in: measurement),
+              !WindowPresentation.widgetDetailWindows(in: measurement)
+                .contains(where: { $0.windowId == window.windowId }) else {
+            return nil
         }
-        .accessibilityElement(children: .combine)
-    }
-
-    /// The big number. When its window — the desktop's chosen headline,
-    /// resolved through `headlineWindowId` — is not one of the blocks below,
-    /// its short name sits beside it, so the number is never unattributed.
-    private func headline(compact: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-            WidgetHeadlineValue(percent: measurement?.headlineRemainingPercent, size: compact ? 24 : 28)
-            if let measurement,
-               let window = HeadlinePresentation.window(in: measurement),
-               !WindowPresentation.widgetDetailWindows(in: measurement)
-                .contains(where: { $0.windowId == window.windowId }) {
-                Text(WindowPresentation.microLabel(for: window))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
+        return WindowPresentation.microLabel(for: window)
     }
 }
 
-/// One provider's column in the medium overview widget.
+/// One provider in the small overview widget, where two providers share a
+/// square and neither can afford a detail list.
 ///
-/// A compact extension of the dashboard card rather than a reproduction of it:
-/// identity, the headline percentage, the headline window named once in full
-/// with its precise countdown, then at most two windows as short labelled bars,
-/// then the reading's age.
-public struct WidgetProviderColumn: View {
+///     93%            </> Codex
+///                       1m ago
+///     5 Hour · 1h 31m left
+///     [==========        ]
+///
+/// The same header as the single-provider widget, then the headline window —
+/// the desktop's chosen one, which is not always the five-hour — with its own
+/// precise countdown, then its bar. There is deliberately no second window
+/// here: two providers' worth of weekly rows would not fit without undoing the
+/// readability of the rest.
+///
+/// How much of the window line is drawn is the caller's `tier`, so the
+/// overview can give both providers the same one.
+public struct OverviewProviderSummary: View {
     public let providerId: String
     public let provider: UsageSyncProvider?
     public let now: Date
+    public var isStale: Bool
+    public var compact: Bool
+    public var tier: SurfaceLinePresentation.LineTier
+    public var showsAge: Bool
 
-    public init(providerId: String, provider: UsageSyncProvider?, now: Date) {
+    public init(
+        providerId: String,
+        provider: UsageSyncProvider?,
+        now: Date,
+        isStale: Bool = false,
+        compact: Bool = false,
+        tier: SurfaceLinePresentation.LineTier = .full,
+        showsAge: Bool = true
+    ) {
         self.providerId = providerId
         self.provider = provider
         self.now = now
+        self.isStale = isStale
+        self.compact = compact
+        self.tier = tier
+        self.showsAge = showsAge
     }
 
     private var measurement: UsageSyncMeasurement? { provider?.measurement }
 
+    private var lineFont: Font { compact ? .caption2 : .caption }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ProviderTag(providerId: providerId, size: 11)
-
-            WidgetHeadlineValue(percent: measurement?.headlineRemainingPercent, size: 28)
-
-            // Named in full exactly once, which is what lets the rows below use
-            // "5H" and "W" without losing their meaning.
-            if let measurement,
-               let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: now) {
-                Text(line)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            } else {
-                Text(provider.map(ProviderPresentation.statusLabel) ?? "No data")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            WidgetProviderHeader(
+                providerId: providerId,
+                provider: provider,
+                now: now,
+                isStale: isStale,
+                headlineSize: compact ? 20 : 24,
+                showsAge: showsAge,
+                // The readable size is chosen only where its number fits
+                // unscaled; the compact size may scale a little instead.
+                headlineSetsWidth: !compact
+            )
 
             if let measurement {
-                VStack(alignment: .leading, spacing: 4) {
-                    // By kind, not by array position — the same two windows the
-                    // single-provider widget lists.
-                    ForEach(WindowPresentation.widgetDetailWindows(in: measurement), id: \.windowId) { window in
-                        WidgetWindowRow(window: window)
-                    }
+                if let parts = SurfaceLinePresentation.headlineWindowParts(in: measurement, now: now, tier: tier) {
+                    windowLine(parts)
+                        .accessibilityLabel(
+                            SurfaceLinePresentation.spokenHeadlineWindowLine(in: measurement, now: now) ?? ""
+                        )
                 }
-                .padding(.top, 1)
-
-                // Freshness stays its own fact, never replaced by the countdown.
-                Text(FreshnessPresentation.age(of: measurement, now: now))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+                // The bar tracks the headline percentage printed above it, so
+                // the colour and the number always describe the same window.
+                UsageRemainingBar(remainingPercent: measurement.headlineRemainingPercent, height: compact ? 4 : 5)
+                    .padding(.top, 1)
+            } else {
+                Text(provider.map(ProviderPresentation.statusLabel) ?? "No data")
+                    .font(lineFont)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .privacySensitive()
+                    // A status sentence has no countdown to protect; it scales
+                    // a little rather than deciding the whole overview's tier.
+                    .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
+                UsageRemainingBar(remainingPercent: 0, height: compact ? 4 : 5)
+                    .opacity(0.35)
+                    .padding(.top, 1)
             }
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "5 Hour · 1h 31m left": the window's name in `.primary`, its own
+    /// countdown — the shared precise spelling — in `.secondary`. Its ideal
+    /// width is real, so the overview only picks a tier whose line fits whole.
+    private func windowLine(_ parts: SurfaceLinePresentation.WindowLineParts) -> some View {
+        var line = Text("")
+        if let name = parts.name {
+            line = Text(name).fontWeight(.semibold).foregroundStyle(.primary)
+        }
+        if let remaining = parts.countdown {
+            let separator = parts.name == nil ? "" : " · "
+            line = line + Text(separator + remaining).foregroundStyle(.secondary)
+        }
+        return line
+            .font(lineFont)
+            .lineLimit(1)
+            .privacySensitive()
     }
 }
 
-/// One provider's row in the small overview widget, where two providers share a
-/// square and neither can afford a detail list.
-public struct WidgetProviderRow: View {
-    public let providerId: String
+/// One provider's place in an overview widget: which provider, and its entry
+/// in the snapshot — nil when the snapshot does not carry it.
+public struct WidgetProviderSlot: Identifiable {
+    public let id: String
     public let provider: UsageSyncProvider?
-    public let now: Date
 
-    public init(providerId: String, provider: UsageSyncProvider?, now: Date) {
-        self.providerId = providerId
+    public init(id: String, provider: UsageSyncProvider?) {
+        self.id = id
         self.provider = provider
+    }
+}
+
+/// The small overview widget: two provider summaries stacked, with no global
+/// title — each block already names its provider, and the height a "UsageBar"
+/// heading would cost is better spent on the numbers.
+public struct OverviewSmallContent: View {
+    public let providers: [WidgetProviderSlot]
+    public let now: Date
+    public var isStale: Bool
+
+    public init(providers: [WidgetProviderSlot], now: Date, isStale: Bool = false) {
+        self.providers = providers
         self.now = now
+        self.isStale = isStale
     }
 
-    private var percent: Int? { provider?.measurement?.headlineRemainingPercent }
+    /// One presentation for the whole overview: a type size, a line tier, and
+    /// whether the reading's age still has room.
+    public struct Form: Hashable {
+        public let compact: Bool
+        public let tier: SurfaceLinePresentation.LineTier
+        public let showsAge: Bool
+
+        public init(compact: Bool, tier: SurfaceLinePresentation.LineTier, showsAge: Bool = true) {
+            self.compact = compact
+            self.tier = tier
+            self.showsAge = showsAge
+        }
+    }
+
+    /// Tried in order; the first that fits in both directions wins. Every
+    /// block is drawn in the same form, and because a stack is as wide as its
+    /// widest block, one provider's long line steps *both* down together.
+    ///
+    /// What gives way, in order: the readable type size, then spacing, then —
+    /// only when height runs out — the reading's age, then the window name a
+    /// piece at a time. The countdown's components never do. The last form,
+    /// the countdown alone ("6d23h59m") without the age, is what keeps the
+    /// smallest widget at the largest measured text size from ever ending a
+    /// countdown in an ellipsis.
+    public static let forms: [Form] = {
+        var forms = [
+            Form(compact: false, tier: .full),
+            Form(compact: false, tier: .short)
+        ]
+        for tier in SurfaceLinePresentation.LineTier.allCases {
+            forms.append(Form(compact: true, tier: tier))
+            forms.append(Form(compact: true, tier: tier, showsAge: false))
+        }
+        return forms
+    }()
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                ProviderTag(providerId: providerId, size: 10)
-                Spacer(minLength: 2)
-                WidgetHeadlineValue(percent: percent, size: 17)
-                    .layoutPriority(1)
+        ViewThatFits(in: [.horizontal, .vertical]) {
+            ForEach(Self.forms, id: \.self) { form in
+                layout(form)
             }
-            // The bar tracks the headline percentage printed beside it, so the
-            // colour and the number always describe the same window.
-            UsageRemainingBar(remainingPercent: percent ?? 0, height: 3)
-                .opacity(percent == nil ? 0.35 : 1)
-            // Its own line, so the countdown is spelled in full rather than as
-            // the "· 4h6m" suffix meant for appending after a percentage — a
-            // leading separator with nothing before it reads as a stray bullet.
-            if let measurement = provider?.measurement,
-               let remaining = HeadlinePresentation.tightReset(in: measurement, now: now) {
-                Text("\(remaining) left")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .privacySensitive()
+        }
+    }
+
+    /// Internal rather than private so a test can measure each form against
+    /// real widget sizes.
+    func layout(_ form: Form) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(providers.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Spacer(minLength: form.compact ? (form.showsAge ? 6 : 4) : 8)
+                }
+                OverviewProviderSummary(
+                    providerId: item.id,
+                    provider: item.provider,
+                    now: now,
+                    isStale: isStale,
+                    compact: form.compact,
+                    tier: form.tier,
+                    showsAge: form.showsAge
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// The medium overview widget: the single-provider widget, twice, divided.
+///
+/// A medium widget is a small one's height and about twice its width, so each
+/// column has at least the room the single-provider widget was measured and
+/// approved in. Reusing that view whole — rather than a medium-only
+/// variant — is what keeps a provider reading identically on both.
+public struct OverviewMediumContent: View {
+    public let providers: [WidgetProviderSlot]
+    public let now: Date
+    public var isStale: Bool
+
+    public init(providers: [WidgetProviderSlot], now: Date, isStale: Bool = false) {
+        self.providers = providers
+        self.now = now
+        self.isStale = isStale
+    }
+
+    /// The gap either side of the central divider.
+    static let columnSpacing: CGFloat = 12
+
+    public var body: some View {
+        HStack(alignment: .top, spacing: Self.columnSpacing) {
+            ForEach(Array(providers.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Divider()
+                }
+                ProviderWidgetSmallContent(
+                    providerId: item.id,
+                    provider: item.provider,
+                    now: now,
+                    isStale: isStale
+                )
             }
         }
     }
@@ -735,6 +893,14 @@ public enum WindowPresentation {
         case .unknown:
             return "L"
         }
+    }
+
+    /// The shortest honest name for a window: its kind alone. A scoped weekly
+    /// becomes the plain weekly marker "W" — its scope is dropped, never
+    /// replaced — so a line with no room left can still say which kind of
+    /// limit a countdown belongs to.
+    public static func markerLabel(for window: UsageSyncWindow) -> String {
+        window.kind == .weeklyScoped ? "W" : microLabel(for: window)
     }
 
     /// The windows a compact widget lists beneath its headline, at most
@@ -889,11 +1055,89 @@ public enum SurfaceLinePresentation {
         in measurement: UsageSyncMeasurement,
         now: Date = Date()
     ) -> String? {
-        guard let label = HeadlinePresentation.label(in: measurement) else { return nil }
-        guard let remaining = HeadlinePresentation.compactReset(in: measurement, now: now) else {
-            return label
-        }
+        guard let window = HeadlinePresentation.window(in: measurement) else { return nil }
+        let label = WindowPresentation.label(for: window)
+        guard let remaining = windowCountdown(for: window, now: now) else { return label }
         return "\(label) · \(remaining)"
+    }
+
+    /// The two halves of a headline window line, for a surface that styles
+    /// them differently: the window's name, and that window's own countdown.
+    /// `name` is nil only in the last-resort tier, where the countdown stands
+    /// alone.
+    public struct WindowLineParts: Equatable {
+        public let name: String?
+        public let countdown: String?
+    }
+
+    /// How much of a headline window line survives, from everything down to
+    /// the countdown alone.
+    ///
+    /// The order is the order information is given up in: first the full
+    /// window name, then the spaces in the countdown, then the name entirely.
+    /// The countdown's *components* are never given up — every tier keeps
+    /// every significant day, hour and minute — so a narrow line can lose
+    /// words but never become an inexact time.
+    public enum LineTier: CaseIterable, Sendable {
+        /// "Weekly · Opus · 6d 23h 59m left"
+        case full
+        /// "Opus · 6d 23h 59m left"
+        case short
+        /// "Opus · 6d23h59m" — the Lock Screen's spelling
+        case shortTight
+        /// "W · 6d23h59m" — the scope dropped, the kind kept
+        case markerTight
+        /// "6d23h59m"
+        case countdownOnly
+    }
+
+    /// The headline window — resolved through `headlineWindowId`, never by
+    /// position — as a name and its countdown, spelled for `tier`. Nil when
+    /// the snapshot does not carry the headline window: nothing is invented.
+    ///
+    /// The window names are only ever that window's own: its full label, its
+    /// micro label, or — for a scoped weekly — the plain weekly marker. None
+    /// of them can turn a weekly or a three-day limit into a "5 Hour".
+    public static func headlineWindowParts(
+        in measurement: UsageSyncMeasurement,
+        now: Date = Date(),
+        tier: LineTier = .full
+    ) -> WindowLineParts? {
+        guard let window = HeadlinePresentation.window(in: measurement) else { return nil }
+        let spaced = windowCountdown(for: window, now: now)
+        let tight = window.resetsAt.flatMap { FreshnessPresentation.tightTimeRemaining(until: $0, from: now) }
+        switch tier {
+        case .full:
+            return WindowLineParts(name: WindowPresentation.label(for: window), countdown: spaced)
+        case .short:
+            return WindowLineParts(name: WindowPresentation.microLabel(for: window), countdown: spaced)
+        case .shortTight:
+            return WindowLineParts(name: WindowPresentation.microLabel(for: window), countdown: tight)
+        case .markerTight:
+            return WindowLineParts(name: WindowPresentation.markerLabel(for: window), countdown: tight)
+        case .countdownOnly:
+            // With no countdown to keep, the name is all there is to say.
+            guard let tight else {
+                return WindowLineParts(name: WindowPresentation.markerLabel(for: window), countdown: nil)
+            }
+            return WindowLineParts(name: nil, countdown: tight)
+        }
+    }
+
+    /// What VoiceOver says for a headline window line, whatever tier is drawn:
+    /// the full window name and the full countdown, in words — "Weekly · Opus,
+    /// 6 days 23 hours 59 minutes left".
+    public static func spokenHeadlineWindowLine(
+        in measurement: UsageSyncMeasurement,
+        now: Date = Date()
+    ) -> String? {
+        guard let window = HeadlinePresentation.window(in: measurement) else { return nil }
+        let name = WindowPresentation.label(for: window)
+        guard let resetsAt = window.resetsAt,
+              let spoken = FreshnessPresentation.spokenTimeRemaining(until: resetsAt, from: now) else {
+            return name
+        }
+        return "\(name), \(spoken) left"
     }
 
     /// The Lock Screen rectangular footer, where one cramped line has to carry
