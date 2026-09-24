@@ -7,34 +7,6 @@ func provider(_ providerId: String, in entry: UsageEntry) -> UsageSyncProvider? 
     entry.snapshot?.providers.first { $0.providerId == providerId }
 }
 
-/// A headline percentage.
-///
-/// Marked `privacySensitive` because quota levels are personal account
-/// information and a Lock Screen widget is visible without unlocking. iOS
-/// redacts it according to the user's own setting; that decision is theirs,
-/// not this app's.
-struct HeadlineValue: View {
-    let percent: Int?
-    var size: CGFloat = 34
-
-    var body: some View {
-        Group {
-            if let percent {
-                Text("\(percent)%")
-                    .privacySensitive()
-            } else {
-                // Neutral, not an error: a provider with no measurement yet is
-                // a normal state.
-                Text("--")
-            }
-        }
-        .font(.system(size: size, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .minimumScaleFactor(0.5)
-        .lineLimit(1)
-    }
-}
-
 /// Shown whenever credentials are absent — including right after Forget
 /// Connection, even if this extension still holds a cached snapshot.
 struct NotConfiguredView: View {
@@ -100,9 +72,9 @@ struct OverviewWidgetView: View {
             VStack(alignment: .leading, spacing: 8) {
                 header
                 HStack(alignment: .top, spacing: 16) {
-                    providerColumn(UsageProviderID.codex, detailed: true)
+                    providerColumn(UsageProviderID.codex)
                     Divider()
-                    providerColumn(UsageProviderID.claude, detailed: true)
+                    providerColumn(UsageProviderID.claude)
                 }
             }
         default:
@@ -139,7 +111,7 @@ struct OverviewWidgetView: View {
         return HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(ProviderPresentation.displayName(for: providerId))
                 .font(.caption2)
-            HeadlineValue(percent: value?.measurement?.headlineRemainingPercent, size: 14)
+            WidgetHeadlineValue(percent: value?.measurement?.headlineRemainingPercent, size: 14)
                 // The percentage outranks the countdown: if the line has to
                 // give something up, it gives up the countdown.
                 .layoutPriority(1)
@@ -155,60 +127,19 @@ struct OverviewWidgetView: View {
     }
 
     private func providerRow(_ providerId: String) -> some View {
-        let value = provider(providerId, in: entry)
-        return HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(ProviderPresentation.displayName(for: providerId))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 2)
-            HeadlineValue(percent: value?.measurement?.headlineRemainingPercent, size: 24)
-                .layoutPriority(1)
-            if let remaining = countdown(providerId) {
-                Text(remaining)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .privacySensitive()
-            }
-        }
+        WidgetProviderRow(
+            providerId: providerId,
+            provider: provider(providerId, in: entry),
+            now: entry.date
+        )
     }
 
-    private func providerColumn(_ providerId: String, detailed: Bool) -> some View {
-        let value = provider(providerId, in: entry)
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(ProviderPresentation.displayName(for: providerId))
-                .font(.caption.weight(.medium))
-            HeadlineValue(percent: value?.measurement?.headlineRemainingPercent, size: 30)
-            if detailed, let measurement = value?.measurement {
-                // The headline's own window and how long it has left. The
-                // detail rows below keep their own percentages and are
-                // deliberately left uncluttered — the requirement is that the
-                // *headline's* reset is visible, not every window's.
-                if let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: entry.date) {
-                    Text(line)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                ForEach(measurement.windows.prefix(2), id: \.windowId) { window in
-                    HStack(spacing: 4) {
-                        Text(WindowPresentation.label(for: window))
-                        Spacer(minLength: 2)
-                        Text("\(window.remainingPercent)%").privacySensitive()
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-                Text(FreshnessPresentation.age(of: measurement, now: entry.date))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .privacySensitive()
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private func providerColumn(_ providerId: String) -> some View {
+        WidgetProviderColumn(
+            providerId: providerId,
+            provider: provider(providerId, in: entry),
+            now: entry.date
+        )
     }
 }
 
@@ -263,7 +194,7 @@ struct ProviderWidgetView: View {
             VStack(spacing: -2) {
                 Text(String(name.prefix(1)))
                     .font(.caption2.weight(.bold))
-                HeadlineValue(percent: percent, size: 15)
+                WidgetHeadlineValue(percent: percent, size: 15)
             }
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 0) {
@@ -271,7 +202,7 @@ struct ProviderWidgetView: View {
                     Text(name).font(.caption.weight(.semibold))
                     if entry.isStale { StaleIndicator() }
                 }
-                HeadlineValue(percent: percent, size: 20)
+                WidgetHeadlineValue(percent: percent, size: 20)
                 if let measurement = value?.measurement {
                     // One cramped line for two facts, so both are shortened
                     // rather than one being dropped: "2h left · 3m ago". The
@@ -286,13 +217,18 @@ struct ProviderWidgetView: View {
                 }
             }
         default:
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 4) {
-                    Text(name).font(.caption.weight(.semibold))
-                    if entry.isStale { StaleIndicator() }
+                    ProviderTag(providerId: providerId, size: 11)
                     Spacer(minLength: 0)
+                    if entry.isStale { StaleIndicator() }
                 }
-                HeadlineValue(percent: percent, size: 44)
+                WidgetHeadlineValue(percent: percent, size: 40)
+                // One bar for the headline only. A small widget that listed
+                // every window would be a compressed dashboard rather than a
+                // glanceable one.
+                UsageRemainingBar(remainingPercent: percent ?? 0, height: 4)
+                    .opacity(percent == nil ? 0.35 : 1)
                 if let measurement = value?.measurement,
                    let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: entry.date) {
                     // The label beside the headline names the window the

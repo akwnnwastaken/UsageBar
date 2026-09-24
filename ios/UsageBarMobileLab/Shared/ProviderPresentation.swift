@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import UIKit
+import WidgetKit
 import UsageBarSync
 
 /// The provider slugs this app knows by name.
@@ -115,6 +117,318 @@ public enum ProviderVisual {
     }
 }
 
+/// How much is left, as a colour.
+///
+/// Provider identity and usage level are two different things, and they are
+/// deliberately carried by two different channels. The icon, the chip and the
+/// status pill say *who* this is; a progress bar says *how much is left*. When
+/// the bar carried provider identity instead — a cyan Codex bar, an orange
+/// Claude bar — a nearly-empty weekly limit and a full one looked exactly
+/// alike, which is the one thing a bar exists to distinguish.
+///
+/// This is presentation only. Nothing here classifies a reading as critical,
+/// warning or healthy: no such threshold exists anywhere else in this product,
+/// the desktop never stated one, and a colour that implied a policy the Mac
+/// does not share would be the mobile surface inventing its own opinion. The
+/// printed percentage stays authoritative, and colour is never the only way to
+/// read the value — the number is always beside the bar, and the bar's own
+/// length carries the same fact for anyone who cannot separate red from green.
+public enum UsageLevelPresentation {
+    /// A presentation-side clamp. The validated schema value is never
+    /// modified; this only keeps a malformed percentage from producing a
+    /// nonsense colour or a bar that draws outside its track.
+    public static func displayPercent(_ percent: Int) -> Int {
+        min(max(percent, 0), 100)
+    }
+
+    /// 0.0 when empty, 1.0 when full — the single scalar the colour derives
+    /// from, exposed so the mapping can be tested as arithmetic rather than
+    /// through rendered pixels.
+    public static func level(for percent: Int) -> Double {
+        Double(displayPercent(percent)) / 100
+    }
+
+    /// The hue the filled portion uses, in SwiftUI's 0...1 space.
+    ///
+    /// A straight ramp from red (0.0) to green (0.34) passes through orange
+    /// and yellow on the way, which is exactly the progression asked for, and
+    /// it stops at green rather than continuing into cyan and blue — so it
+    /// never reads as a rainbow. The whole scale is monotonic: more remaining
+    /// is always further along it, with no band where two different readings
+    /// share a colour.
+    public static func hue(for percent: Int) -> Double {
+        level(for: percent) * 0.34
+    }
+
+    /// The colour for a filled bar at this remaining percentage.
+    ///
+    /// Resolved per trait collection rather than as a fixed value, because the
+    /// midpoint of this scale is yellow: saturated yellow disappears against a
+    /// white background and glares against a black one. Saturation is pulled
+    /// back from full so the result reads as a product colour rather than as
+    /// neon, and brightness moves in opposite directions for the two
+    /// appearances so the same reading stays legible in both.
+    public static func remainingColor(for percent: Int) -> Color {
+        let hue = hue(for: percent)
+        return Color(UIColor { traits in
+            let isDark = traits.userInterfaceStyle == .dark
+            return UIColor(
+                hue: CGFloat(hue),
+                saturation: isDark ? 0.70 : 0.90,
+                brightness: isDark ? 0.95 : 0.80,
+                alpha: 1
+            )
+        })
+    }
+}
+
+/// The one remaining-percentage bar, shared by the dashboard and the widgets.
+///
+/// A second implementation in the widget extension is exactly how the two
+/// surfaces would drift into disagreeing about what a colour or a length
+/// means, so only the height differs between them — the dashboard can afford a
+/// 6pt bar, a widget row cannot.
+public struct UsageRemainingBar: View {
+    public let remainingPercent: Int
+    public var height: CGFloat
+
+    public init(remainingPercent: Int, height: CGFloat = 6) {
+        self.remainingPercent = remainingPercent
+        self.height = height
+    }
+
+    private var fraction: Double {
+        UsageLevelPresentation.level(for: remainingPercent)
+    }
+
+    public var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule()
+                    .fill(UsageLevelPresentation.remainingColor(for: remainingPercent))
+                    .frame(width: geometry.size.width * fraction)
+            }
+        }
+        .frame(height: height)
+        // The row that owns this bar speaks for it, so VoiceOver announces
+        // "12 percent remaining" once rather than also describing a bare bar.
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Shared widget composition
+//
+// These views live here rather than inside the widget extension for the same
+// reason the composed strings do: an app extension cannot be
+// `@testable`-imported, so a layout written inline in `WidgetViews.swift` could
+// never be asserted or rendered in a test. Keeping the composition here means
+// the widgets' structure is under test, not just their wording — and the app
+// and the extension share one visual vocabulary instead of two that drift.
+
+/// A provider's identity in a widget: a generic glyph plus its name.
+///
+/// This is where provider identity lives, exactly as the chip and pill carry it
+/// on the dashboard — never in a progress bar, whose colour has to mean "how
+/// much is left". Marked accentable so that under the system's tinted rendering
+/// mode the identity is what survives as the accented element.
+public struct ProviderTag: View {
+    public let providerId: String
+    public var size: CGFloat
+
+    public init(providerId: String, size: CGFloat = 10) {
+        self.providerId = providerId
+        self.size = size
+    }
+
+    public var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: ProviderVisual.symbolName(for: providerId))
+                .font(.system(size: size - 1, weight: .bold))
+                .foregroundStyle(ProviderVisual.accent(for: providerId))
+                .widgetAccentable()
+            Text(ProviderPresentation.displayName(for: providerId))
+                .font(.system(size: size, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+}
+
+/// One window inside a widget column: a short label, its percentage, and a
+/// hairline bar.
+///
+/// The label is the micro form because the column above has already named the
+/// headline window in full; repeating "5 Hour" here would spend a scarce line
+/// restating it. The bar's *length* carries the same fact as the printed
+/// number, so the row still reads under tinted rendering or without colour
+/// vision.
+public struct WidgetWindowRow: View {
+    public let window: UsageSyncWindow
+
+    public init(window: UsageSyncWindow) {
+        self.window = window
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text(WindowPresentation.microLabel(for: window))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                Text("\(window.remainingPercent)%")
+                    .font(.system(size: 9, weight: .semibold))
+                    .monospacedDigit()
+                    .privacySensitive()
+            }
+            UsageRemainingBar(remainingPercent: window.remainingPercent, height: 3)
+        }
+    }
+}
+
+/// One provider's column in the medium overview widget.
+///
+/// A compact extension of the dashboard card rather than a reproduction of it:
+/// identity, the headline percentage, the headline window named once in full
+/// with its precise countdown, then at most two windows as short labelled bars,
+/// then the reading's age.
+public struct WidgetProviderColumn: View {
+    public let providerId: String
+    public let provider: UsageSyncProvider?
+    public let now: Date
+
+    public init(providerId: String, provider: UsageSyncProvider?, now: Date) {
+        self.providerId = providerId
+        self.provider = provider
+        self.now = now
+    }
+
+    private var measurement: UsageSyncMeasurement? { provider?.measurement }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ProviderTag(providerId: providerId, size: 11)
+
+            WidgetHeadlineValue(percent: measurement?.headlineRemainingPercent, size: 28)
+
+            // Named in full exactly once, which is what lets the rows below use
+            // "5H" and "W" without losing their meaning.
+            if let measurement,
+               let line = SurfaceLinePresentation.headlineWindowLine(in: measurement, now: now) {
+                Text(line)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            } else {
+                Text(provider.map(ProviderPresentation.statusLabel) ?? "No data")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            if let measurement {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(measurement.windows.prefix(2), id: \.windowId) { window in
+                        WidgetWindowRow(window: window)
+                    }
+                }
+                .padding(.top, 1)
+
+                // Freshness stays its own fact, never replaced by the countdown.
+                Text(FreshnessPresentation.age(of: measurement, now: now))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .privacySensitive()
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One provider's row in the small overview widget, where two providers share a
+/// square and neither can afford a detail list.
+public struct WidgetProviderRow: View {
+    public let providerId: String
+    public let provider: UsageSyncProvider?
+    public let now: Date
+
+    public init(providerId: String, provider: UsageSyncProvider?, now: Date) {
+        self.providerId = providerId
+        self.provider = provider
+        self.now = now
+    }
+
+    private var percent: Int? { provider?.measurement?.headlineRemainingPercent }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                ProviderTag(providerId: providerId, size: 10)
+                Spacer(minLength: 2)
+                WidgetHeadlineValue(percent: percent, size: 17)
+                    .layoutPriority(1)
+            }
+            // The bar tracks the headline percentage printed beside it, so the
+            // colour and the number always describe the same window.
+            UsageRemainingBar(remainingPercent: percent ?? 0, height: 3)
+                .opacity(percent == nil ? 0.35 : 1)
+            // Its own line, so the countdown is spelled in full rather than as
+            // the "· 4h6m" suffix meant for appending after a percentage — a
+            // leading separator with nothing before it reads as a stray bullet.
+            if let measurement = provider?.measurement,
+               let remaining = HeadlinePresentation.tightReset(in: measurement, now: now) {
+                Text("\(remaining) left")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .privacySensitive()
+            }
+        }
+    }
+}
+
+/// A headline percentage.
+///
+/// Marked `privacySensitive` because quota levels are personal account
+/// information and a Lock Screen widget is visible without unlocking. iOS
+/// redacts it according to the user's own setting; that decision is theirs,
+/// not this app's.
+public struct WidgetHeadlineValue: View {
+    public let percent: Int?
+    public var size: CGFloat
+
+    public init(percent: Int?, size: CGFloat = 34) {
+        self.percent = percent
+        self.size = size
+    }
+
+    public var body: some View {
+        Group {
+            if let percent {
+                Text("\(percent)%")
+                    .privacySensitive()
+            } else {
+                // Neutral, not an error: a provider with no measurement yet is
+                // a normal state.
+                Text("--")
+            }
+        }
+        .font(.system(size: size, weight: .semibold, design: .rounded))
+        .monospacedDigit()
+        .minimumScaleFactor(0.5)
+        .lineLimit(1)
+    }
+}
+
 /// Window labels, built from `kind` plus its qualifier.
 public enum WindowPresentation {
     public static func label(for window: UsageSyncWindow) -> String {
@@ -161,6 +475,34 @@ public enum WindowPresentation {
             return compactDurationLabel(minutes: minutes)
         case .unknown:
             return "Limit"
+        }
+    }
+
+    /// The shortest label that still identifies a window, for a widget's
+    /// detail rows.
+    ///
+    /// A medium widget column already names the headline window in full — "5
+    /// Hour · 4h 6m left" — so repeating "5 Hour" in the rows beneath it spends
+    /// a scarce line saying something the column has already said. "5H" and "W"
+    /// are enough to tell two rows apart once the context is established above.
+    ///
+    /// A scoped weekly keeps its scope rather than collapsing to "W", because
+    /// Claude can show a plain weekly and a scoped weekly together, and two
+    /// rows both labelled "W" would be worse than no label at all.
+    public static func microLabel(for window: UsageSyncWindow) -> String {
+        switch window.kind {
+        case .fiveHour:
+            return "5H"
+        case .weekly:
+            return "W"
+        case .weeklyScoped:
+            guard let scope = window.scope, !scope.isEmpty else { return "W" }
+            return prettyScope(scope)
+        case .duration:
+            guard let minutes = window.durationMinutes else { return "L" }
+            return compactDurationLabel(minutes: minutes)
+        case .unknown:
+            return "L"
         }
     }
 

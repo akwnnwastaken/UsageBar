@@ -42,7 +42,7 @@ struct ProviderCardView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(measurement.windows, id: \.windowId) { window in
-                        WindowRow(window: window, tint: accent, now: now)
+                        WindowRow(window: window, now: now)
                     }
                 }
             } else {
@@ -204,41 +204,6 @@ private struct StatusPill: View {
     }
 }
 
-// MARK: - Remaining bar
-
-/// A thin bar showing **remaining** percentage, matching the number beside it
-/// and the menu bar on the Mac: full is untouched quota, empty is spent.
-///
-/// It classifies nothing. There is no "warning" or "critical" band here,
-/// because no such threshold exists anywhere else in this product and a bar
-/// that invented one would be asserting a policy the desktop never stated.
-private struct RemainingBar: View {
-    let remainingPercent: Int
-    let tint: Color
-
-    /// A display-side clamp only: the validated schema value is never
-    /// modified, and the number printed beside the bar still says exactly what
-    /// the snapshot said. This keeps a malformed percentage from drawing
-    /// outside its own track.
-    private var fraction: Double {
-        Double(min(max(remainingPercent, 0), 100)) / 100
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule()
-                    .fill(tint.gradient)
-                    .frame(width: geometry.size.width * fraction)
-            }
-        }
-        .frame(height: 6)
-        // The row speaks for it, so VoiceOver does not announce a bare bar.
-        .accessibilityHidden(true)
-    }
-}
-
 // MARK: - Window row
 
 /// A detailed window row: the limit, what is left of it, and when it turns over.
@@ -246,9 +211,11 @@ private struct RemainingBar: View {
 /// It keeps the **absolute** reset time alongside the countdown. The two answer
 /// different questions — "how much longer may I keep going?" and "when
 /// exactly?" — and the second is what someone plans an afternoon around.
+///
+/// The bar's colour comes from the window's own remaining percentage, so a
+/// nearly-spent weekly limit reads differently from a full one at a glance.
 private struct WindowRow: View {
     let window: UsageSyncWindow
-    let tint: Color
     let now: Date
 
     var body: some View {
@@ -262,7 +229,9 @@ private struct WindowRow: View {
                     .monospacedDigit()
             }
 
-            RemainingBar(remainingPercent: window.remainingPercent, tint: tint)
+            // Colour here means "how much is left", never which provider this
+            // is — provider identity stays in the chip and the pill above.
+            UsageRemainingBar(remainingPercent: window.remainingPercent)
 
             // Nothing is rendered when the window carries no reset time, and no
             // countdown is rendered once that time has passed.
