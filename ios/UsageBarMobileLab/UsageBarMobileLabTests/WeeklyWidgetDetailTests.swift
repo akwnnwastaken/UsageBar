@@ -181,7 +181,7 @@ final class WeeklyWidgetDetailTests: XCTestCase {
             encoding: .utf8
         )
         let start = try XCTUnwrap(source.range(of: "public struct WidgetWindowDetailRow"))
-        let end = try XCTUnwrap(source.range(of: "public struct WidgetProviderColumn"))
+        let end = try XCTUnwrap(source.range(of: "public struct WidgetHeadlineValue"))
         let widget = String(source[start.lowerBound..<end.lowerBound])
 
         XCTAssertTrue(

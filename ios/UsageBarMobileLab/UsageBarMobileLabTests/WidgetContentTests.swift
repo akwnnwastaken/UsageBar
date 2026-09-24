@@ -83,11 +83,10 @@ final class WidgetContentTests: XCTestCase {
         )
     }
 
-    /// The medium overview's rows compose from the micro label, and the
-    /// extension never formats window prose itself. (The small single-provider
-    /// widget names its blocks in full, from shared code — see
-    /// `WeeklyWidgetDetailTests`.)
-    func testWidgetRowsUseTheMicroLabelAndNeverTheProseLabel() throws {
+    /// Window names are composed in shared code — the full name first, the
+    /// micro label only as a fallback when a line genuinely cannot fit — and
+    /// the extension never formats window prose itself.
+    func testWindowNamesComposeInSharedCodeWithAMicroLabelFallback() throws {
         func source(_ path: String) throws -> String {
             try String(
                 contentsOf: URL(fileURLWithPath: #filePath)
@@ -99,8 +98,12 @@ final class WidgetContentTests: XCTestCase {
         }
         let shared = try source("Shared/ProviderPresentation.swift")
         XCTAssertTrue(
-            shared.contains("WindowPresentation.microLabel(for: window)"),
-            "the shared widget row must use the micro label"
+            shared.contains("titleLine(WindowPresentation.label(for: window))"),
+            "a detail block leads with the full window name"
+        )
+        XCTAssertTrue(
+            shared.contains("titleLine(WindowPresentation.microLabel(for: window))"),
+            "the micro label survives only as the fallback"
         )
         XCTAssertFalse(
             try source("UsageBarWidgets/WidgetViews.swift").contains("WindowPresentation.label(for:"),
