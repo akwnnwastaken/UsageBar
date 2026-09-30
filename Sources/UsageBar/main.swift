@@ -183,8 +183,8 @@ struct Localizer {
     var codexNotFoundTitle: String { pick("Codex bulunamadı", "Codex not found") }
     var codexNotFoundMessage: String {
         pick(
-            "Önce ChatGPT veya Codex komut satırı uygulamasını kurup hesabınıza giriş yapın.",
-            "Install ChatGPT or the Codex CLI and sign in first."
+            "Önce Codex uygulamasını, ChatGPT'yi veya Codex komut satırı uygulamasını kurup hesabınıza giriş yapın.",
+            "Install the Codex app, ChatGPT or the Codex CLI and sign in first."
         )
     }
     var codexUntrustedTitle: String { pick("Codex güvenli değil", "Codex is not trusted") }
@@ -346,6 +346,14 @@ enum ExecutableLocator {
 
     static func codex() -> ExecutableLookup {
         firstTrusted([
+            // The standalone Codex desktop app bundles the same CLI. Without
+            // this candidate a Mac that only has Codex.app — or whose ChatGPT
+            // update stopped bundling it — reports Codex as not installed
+            // while the app is open and working.
+            Candidate(
+                path: "/Applications/Codex.app/Contents/Resources/codex",
+                allowedRoot: "/Applications/Codex.app"
+            ),
             Candidate(
                 path: "/Applications/ChatGPT.app/Contents/Resources/codex",
                 allowedRoot: "/Applications/ChatGPT.app"

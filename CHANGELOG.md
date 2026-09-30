@@ -9,6 +9,13 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Fixed
+- macOS: Codex is now found when it is installed as the standalone Codex app
+  (`/Applications/Codex.app`). Previously only the copy bundled in ChatGPT, a
+  Homebrew install, `/usr/local/bin` and `~/.local/bin` were searched, so
+  connecting or resuming Codex reported "Codex not found" while the Codex app
+  was open and working.
+
 ## [2.3.0] - 2026-09-23
 
 ### Added
