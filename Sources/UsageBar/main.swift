@@ -196,7 +196,10 @@ struct Localizer {
     }
     var claudeNotFoundTitle: String { pick("Claude Code bulunamadı", "Claude Code not found") }
     var claudeNotFoundMessage: String {
-        pick("Önce Claude Code'u kurup hesabınıza giriş yapın.", "Install Claude Code and sign in first.")
+        pick(
+            "Önce Claude masaüstü uygulamasını veya Claude Code'u kurup hesabınıza giriş yapın.",
+            "Install the Claude desktop app or Claude Code and sign in first."
+        )
     }
     var claudeUntrustedTitle: String { pick("Claude Code güvenli değil", "Claude Code is not trusted") }
     var claudeUntrustedMessage: String {
@@ -383,7 +386,34 @@ enum ExecutableLocator {
                 path: NSString(string: "~/.local/bin/claude").expandingTildeInPath,
                 allowedRoot: NSString(string: "~/.local").expandingTildeInPath
             )
-        ])
+        ] + claudeDesktopCandidates())
+    }
+
+    /// The copies of Claude Code the Claude desktop app downloads for itself,
+    /// one version-named folder each. A Mac with only the desktop app has no
+    /// `claude` on any CLI path, so without these it reports Claude Code as
+    /// not installed. They come after the CLI locations, which the user
+    /// installed on purpose, and newest version first. `claude-code-vm` is
+    /// deliberately not searched: it holds the Linux build the app runs in
+    /// its virtual machine, which cannot run on the Mac itself.
+    private static func claudeDesktopCandidates() -> [Candidate] {
+        let appSupport = NSString(
+            string: "~/Library/Application Support/Claude"
+        ).expandingTildeInPath
+        let versionsRoot = (appSupport as NSString).appendingPathComponent("claude-code")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: versionsRoot)) ?? []
+        return VersionedInstallOrdering.newestFirst(names).flatMap { version -> [Candidate] in
+            let directory = (versionsRoot as NSString).appendingPathComponent(version)
+            return [
+                "claude.app/Contents/MacOS/claude",
+                "claude"
+            ].map {
+                Candidate(
+                    path: (directory as NSString).appendingPathComponent($0),
+                    allowedRoot: appSupport
+                )
+            }
+        }
     }
 
     private static func firstTrusted(_ candidates: [Candidate]) -> ExecutableLookup {

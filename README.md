@@ -115,7 +115,7 @@ If a provider temporarily fails, the last successful value remains visible with 
 #### macOS
 
 - Runs only in the menu bar, without a Dock icon or main window.
-- Reads the Codex app, the ChatGPT app or an installed Codex CLI for Codex, and an installed Claude Code CLI for Claude.
+- Reads the Codex app, the ChatGPT app or an installed Codex CLI for Codex, and the Claude desktop app's Claude Code or an installed Claude Code CLI for Claude.
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
@@ -149,7 +149,7 @@ Only the provider you want to track needs to be installed and signed in.
 
 | Platform | System | Provider | Build from source |
 | --- | --- | --- | --- |
-| macOS | macOS 13+, Apple Silicon (`arm64`) | Codex app, ChatGPT app or signed-in Codex CLI; signed-in Claude Code CLI | Xcode Command Line Tools |
+| macOS | macOS 13+, Apple Silicon (`arm64`) | Codex app, ChatGPT app or signed-in Codex CLI; Claude desktop app or signed-in Claude Code CLI | Xcode Command Line Tools |
 | Windows | Windows 10 version 1809+ (including Windows 11), x64 | Signed-in official Windows Codex installation; native Claude Code or supported WSL path | .NET 8 SDK |
 
 Windows end-user packages are self-contained; no separate .NET Runtime installation is required.

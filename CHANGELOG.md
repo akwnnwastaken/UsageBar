@@ -15,6 +15,12 @@ Releases before v1.5.2 are listed on the
   Homebrew install, `/usr/local/bin` and `~/.local/bin` were searched, so
   connecting or resuming Codex reported "Codex not found" while the Codex app
   was open and working.
+- macOS: Claude Code is now found on a Mac that only has the Claude desktop
+  app. The copies the app downloads to
+  `~/Library/Application Support/Claude/claude-code/<version>/` are searched,
+  newest version first, after the usual Claude Code CLI locations. Previously
+  such a Mac reported "Claude Code not found" and never reached the
+  connection prompt.
 
 ## [2.3.0] - 2026-09-23
 
