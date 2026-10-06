@@ -9,6 +9,19 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-06
+
+### Fixed
+- macOS UsageBar now finds the Codex CLI that newer ChatGPT app builds bundle
+  at `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
+  This location is checked first; the earlier ChatGPT app location and the
+  standalone Codex CLI locations are still checked afterwards, as before. The
+  new location goes through the same executable trust checks as the others.
+
+### Notes
+- **Windows 2.3.1 is a version-synchronization release.** It reports 2.3.1 so
+  both platforms share one number; its behaviour is unchanged from 2.3.0.
+
 ## [2.3.0] - 2026-09-23
 
 ### Added
@@ -260,7 +273,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.0...v2.1.1
