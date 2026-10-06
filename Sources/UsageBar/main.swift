@@ -347,6 +347,10 @@ enum ExecutableLocator {
     static func codex() -> ExecutableLookup {
         firstTrusted([
             Candidate(
+                path: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                allowedRoot: "/Applications/ChatGPT.app"
+            ),
+            Candidate(
                 path: "/Applications/ChatGPT.app/Contents/Resources/codex",
                 allowedRoot: "/Applications/ChatGPT.app"
             ),
