@@ -9,6 +9,14 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Fixed
+- macOS UsageBar now says when Claude Code is signed out instead of showing
+  "Could not read Claude usage". A signed-out Claude Code answers `/usage` with
+  only a cost summary, so when no usage can be read UsageBar checks
+  `claude auth status --json` (reading only its `loggedIn` flag) and shows
+  "Claude Code is not signed in — Run in Terminal: claude auth login" (Turkish
+  and English).
+
 ## [2.3.1] - 2026-10-06
 
 ### Fixed
