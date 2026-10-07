@@ -323,8 +323,8 @@ struct Localizer {
             return claudeUntrustedTitle
         case .claudeNotLoggedIn:
             return pick(
-                "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login",
-                "Claude Code is not signed in\nRun in Terminal: claude auth login"
+                "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login\nya da aşağıdan Claude'a giriş yapın",
+                "Claude Code is not signed in\nRun in Terminal: claude auth login\nor use the Sign in to Claude button"
             )
         case .claudeUsageUnreadable:
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
@@ -1185,6 +1185,15 @@ final class UsageSparklineView: NSView {
     }
 }
 
+/// Whether this release offers Mobile Sync at all. While it is `false` the
+/// feature's code still ships and is tested, but the coordinator is never
+/// permitted: no menu section, no listener, no published snapshot, no Tailscale
+/// command. A pairing already stored in the Keychain is left untouched, so
+/// turning this back on resumes where the owner left off.
+enum MobileSyncRelease {
+    static let isOffered = false
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private enum PreferenceKey {
         static let codexConnected = "provider.codex.connected"
@@ -1269,7 +1278,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// mobile failure must never reach provider collection.
     private let mobileSync = MobileSyncCoordinator(
         authStore: MobileSyncKeychainAuthStore(),
-        preferences: MobileSyncUserDefaultsPreferences()
+        preferences: MobileSyncUserDefaultsPreferences(),
+        isPermittedInThisProcess: MobileSyncRelease.isOffered
+            && MobileSyncIdentity.isEnabledForCurrentProcess
     )
     private let tailscaleStatus = MobileSyncTailscaleStatusReader()
     private var pairingWindow: NSWindow?
@@ -3161,9 +3172,17 @@ private func runSelfTest() -> Int32 {
         AppLanguage.preferred(from: ["en-US", "tr-TR"]) == .english,
         AppLanguage.preferred(from: []) == .english,
         turkish.issue(.claudeNotLoggedIn)
-            == "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login",
+            == "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login\nya da aşağıdan Claude'a giriş yapın",
         english.issue(.claudeNotLoggedIn)
-            == "Claude Code is not signed in\nRun in Terminal: claude auth login",
+            == "Claude Code is not signed in\nRun in Terminal: claude auth login\nor use the Sign in to Claude button",
+        !MobileSyncRelease.isOffered,
+        // Each line of the sign-in message must fit the card's text width on
+        // its own; the row is sized by line count, so a wrapped line would clip.
+        [turkish, english].allSatisfy { localizer in
+            localizer.issue(.claudeNotLoggedIn).split(separator: "\n").allSatisfy { line in
+                (String(line) as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width < 240
+            }
+        },
         turkish.claudeSignIn == "Claude'a giriş yap…",
         english.claudeSignIn == "Sign in to Claude…",
         turkish.claudeSignInWaiting == "Tarayıcıda giriş bekleniyor…",

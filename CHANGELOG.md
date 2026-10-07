@@ -11,6 +11,14 @@ Releases before v1.5.2 are listed on the
 
 ## [2.3.2] - 2026-10-07
 
+### Changed
+- macOS: **Mobile Sync is hidden in this release.** UsageBar shows no Mobile
+  Sync menu, opens no listener, publishes no snapshot and runs no Tailscale
+  command. The code and its tests remain, and an existing pairing stays in the
+  Keychain, so it can return in a later release without pairing again.
+- macOS: the signed-out Claude message now also points to the **Sign in to
+  Claude…** button below it.
+
 ### Added
 - macOS UsageBar works with only the Claude app installed. When no Claude Code
   CLI is found, it uses the Claude Code that the Claude app downloads for itself

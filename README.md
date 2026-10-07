@@ -25,8 +25,6 @@
   <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.2/UsageBar-2.3.2-macOS-arm64.zip"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.2/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
-  &nbsp;·&nbsp;
-  <a href="docs/mobile/SELF_BUILD.md"><strong>Build for iPhone</strong></a>
 </p>
 
 ---
@@ -48,21 +46,21 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
 - **macOS + Windows:** A native menu bar app on macOS, a system tray app on Windows.
-- **iPhone companion:** Build [UsageBar Mobile](docs/mobile/SELF_BUILD.md) yourself and read the same numbers on your phone, in Home and Lock Screen widgets and in Control Center — served by your own Mac over your own Tailscale network. Off by default, and there is no cloud backend.
+- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.3.2**, so a current Mac build cannot serve the phone; the source stays in this repository.
 - **Local-first:** Reuse the provider sessions you already have, and keep raw provider output out of history.
 
 ## Downloads
 
 Version **2.3.2** is current for both platforms. macOS and Windows use separate release tags.
 
-**macOS 2.3.2** works with only the Claude app installed — it uses the Claude Code that the Claude app downloads when no Claude Code CLI is present — and offers **Sign in to Claude…** when Claude Code is signed out, so Terminal is no longer needed. It keeps the ChatGPT-bundled Codex CLI support from 2.3.1 and the Mobile Sync introduced in 2.3.0. **Windows 2.3.2** now reports a signed-out Claude Code as such instead of "Could not read Claude usage"; it still cannot host the phone.
+**macOS 2.3.2** works with only the Claude app installed — it uses the Claude Code that the Claude app downloads when no Claude Code CLI is present — and offers **Sign in to Claude…** when Claude Code is signed out, so Terminal is no longer needed. It keeps the ChatGPT-bundled Codex CLI support from 2.3.1. **Mobile Sync is hidden in 2.3.2:** UsageBar shows no Mobile Sync menu and opens no listener, while the code stays in the repository for a later release. **Windows 2.3.2** now reports a signed-out Claude Code as such instead of "Could not read Claude usage"; it still cannot host the phone.
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
 | macOS 13+ · Apple Silicon | `UsageBar-2.3.2-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.2/UsageBar-2.3.2-macOS-arm64.zip) | [`v2.3.2`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.2) |
 | Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.2/UsageBar-Setup-x64.exe) | [`windows-v2.3.2`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.2) |
 | Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.2/UsageBar-Windows-x64.zip) | [`windows-v2.3.2`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.2) |
-| iPhone · iOS 18+ | **UsageBar Mobile** — source | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
+| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.3.2) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
 
 > [!NOTE]
 > The iPhone companion is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. There is no App Store listing and no TestFlight build.
@@ -121,9 +119,12 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
-- Can act as the host for the iPhone companion — see below.
+- Mobile Sync, the host side of the iPhone companion, is hidden in 2.3.2 — see below.
 
 #### iPhone
+
+> [!IMPORTANT]
+> **Mobile Sync is hidden in UsageBar 2.3.2.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.3.2. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
 
 - **UsageBar Mobile** is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. A free **Personal Team** works, with Apple's roughly **7-day** development provisioning limit.
 - The phone never talks to Codex or Claude and holds no provider credentials. Its only input is a sanitized snapshot from your Mac.
