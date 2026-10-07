@@ -9,6 +9,20 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-10-07
+
+### Changed
+- macOS releases are now built on GitHub's `macos-26` runner with Xcode 26.6
+  (macOS 26.5 SDK, Swift 6.3) instead of `macos-15` / Xcode 16.4 (macOS 15.5
+  SDK). UsageBar no longer runs in older-SDK compatibility mode on macOS 26 and
+  later; it still supports macOS 13 and later. Features are unchanged from
+  2.3.2, and Mobile Sync stays hidden.
+
+### Notes
+- **Windows 2.3.3 is a version-synchronization release.** It reports 2.3.3 so
+  both platforms share one number; its behaviour is unchanged from 2.3.2.
+- Test-only: the Tailscale runner lifetime tests no longer race shell start-up.
+
 ## [2.3.2] - 2026-10-07
 
 ### Changed
@@ -308,7 +322,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...v2.3.0
