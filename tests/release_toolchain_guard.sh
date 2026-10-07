@@ -18,13 +18,13 @@
 # would only produce noise.
 set -euo pipefail
 
-readonly EXPECTED_DEVELOPER_DIR="/Applications/Xcode_16.4.app/Contents/Developer"
+readonly EXPECTED_DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
 readonly EXPECTED_ARCH="arm64"
-readonly EXPECTED_MACOS_MAJOR="15"
-readonly EXPECTED_XCODE_VERSION="16.4"
-readonly EXPECTED_XCODE_BUILD="16F6"
-readonly EXPECTED_SDK_VERSION="15.5"
-readonly EXPECTED_SWIFT_FAMILY="6.1"
+readonly EXPECTED_MACOS_MAJOR="26"
+readonly EXPECTED_XCODE_VERSION="26.6"
+readonly EXPECTED_XCODE_BUILD="17F113"
+readonly EXPECTED_SDK_VERSION="26.5"
+readonly EXPECTED_SWIFT_FAMILY="6.3"
 
 fail() {
     printf 'release toolchain guard: %s\n' "$1" >&2
@@ -66,7 +66,7 @@ macos_major="${macos_version%%.*}"
 if [[ "$macos_major" != "$EXPECTED_MACOS_MAJOR" ]]; then
     fail "The macOS generation is not $EXPECTED_MACOS_MAJOR." \
         "actual: $macos_version" \
-        "Pin the runner label (macos-15), not macos-latest."
+        "Pin the runner label (macos-26), not macos-latest."
 fi
 
 # --- 5. Xcode version and build --------------------------------------------

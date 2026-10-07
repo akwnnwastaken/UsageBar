@@ -16,10 +16,10 @@ jobs:
     # without a repository change. `ci.yml` runs the same environment and the
     # same guard on every push, so a toolchain problem surfaces long before a
     # tag is pushed.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     permissions:
       contents: read
       id-token: write
