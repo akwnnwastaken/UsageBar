@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import Security
 import ServiceManagement
 import UsageBarCore
 import UsageBarMobileSyncHost
@@ -196,7 +197,14 @@ struct Localizer {
     }
     var claudeNotFoundTitle: String { pick("Claude Code bulunamadı", "Claude Code not found") }
     var claudeNotFoundMessage: String {
-        pick("Önce Claude Code'u kurup hesabınıza giriş yapın.", "Install Claude Code and sign in first.")
+        pick(
+            "Claude uygulamasını ya da Claude Code'u kurup hesabınıza giriş yapın.",
+            "Install the Claude app or Claude Code and sign in first."
+        )
+    }
+    var claudeSignIn: String { pick("Claude'a giriş yap…", "Sign in to Claude…") }
+    var claudeSignInWaiting: String {
+        pick("Tarayıcıda giriş bekleniyor…", "Waiting for sign-in in your browser…")
     }
     var claudeUntrustedTitle: String { pick("Claude Code güvenli değil", "Claude Code is not trusted") }
     var claudeUntrustedMessage: String {
@@ -345,6 +353,9 @@ enum ExecutableLocator {
     private struct Candidate {
         let path: String
         let allowedRoot: String
+        /// When set, the executable's enclosing app bundle must also carry a
+        /// valid Developer ID signature from this team.
+        var requiredTeam: String? = nil
     }
 
     static func codex() -> ExecutableLookup {
@@ -382,7 +393,32 @@ enum ExecutableLocator {
                 path: NSString(string: "~/.local/bin/claude").expandingTildeInPath,
                 allowedRoot: NSString(string: "~/.local").expandingTildeInPath
             )
-        ])
+        ] + claudeDesktopCandidates())
+    }
+
+    /// The Claude Code that Claude.app downloads for itself, so UsageBar works
+    /// with only the Claude app installed. It comes after every standalone CLI,
+    /// so an existing terminal setup keeps being used exactly as before.
+    private static func claudeDesktopCandidates() -> [Candidate] {
+        let fileManager = FileManager.default
+        let root = NSString(
+            string: "~/Library/Application Support/Claude/claude-code"
+        ).expandingTildeInPath
+        guard
+            let versions = try? fileManager.contentsOfDirectory(atPath: root),
+            let newest = ClaudeDesktopBundle.newestVersion(in: versions),
+            let builds = try? fileManager.contentsOfDirectory(atPath: root + "/" + newest)
+        else { return [] }
+        return builds
+            .filter { !$0.hasPrefix(".") }
+            .sorted()
+            .map { build in
+                Candidate(
+                    path: "\(root)/\(newest)/\(build)/claude.app/Contents/MacOS/claude",
+                    allowedRoot: root,
+                    requiredTeam: ClaudeDesktopBundle.teamIdentifier
+                )
+            }
     }
 
     private static func firstTrusted(_ candidates: [Candidate]) -> ExecutableLookup {
@@ -391,13 +427,67 @@ enum ExecutableLocator {
             if let trustedPath = trustedExecutable(
                 at: candidate.path,
                 allowedRoot: candidate.allowedRoot
-            ) {
+            ), candidate.requiredTeam.map({ isSigned(appContaining: trustedPath, byTeam: $0) }) ?? true {
                 return .found(trustedPath)
             }
             rejectedCandidate = true
         }
         return rejectedCandidate ? .untrusted : .missing
     }
+
+    /// Validates the app bundle that contains `executablePath`
+    /// (`…/name.app/Contents/MacOS/name`) against a Developer ID requirement for
+    /// `team`. The location is user-writable, so ownership checks alone are not
+    /// enough to trust it.
+    private static func isSigned(appContaining executablePath: String, byTeam team: String) -> Bool {
+        let bundle = URL(fileURLWithPath: executablePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        guard bundle.pathExtension == "app" else { return false }
+
+        // A full check reads the whole bundle (~0.5 s), so a verified
+        // executable is remembered until it is replaced or modified.
+        let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
+        let identity = SignatureCacheKey(
+            path: executablePath,
+            team: team,
+            modified: attributes?[.modificationDate] as? Date,
+            size: (attributes?[.size] as? NSNumber)?.int64Value,
+            inode: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
+        signatureCacheLock.lock()
+        let cached = verifiedSignature == identity
+        signatureCacheLock.unlock()
+        if cached { return true }
+
+        var code: SecStaticCode?
+        var requirement: SecRequirement?
+        let text = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+        guard
+            SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess,
+            let code,
+            SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess,
+            let requirement
+        else { return false }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate)
+        guard SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess else { return false }
+        signatureCacheLock.lock()
+        verifiedSignature = identity
+        signatureCacheLock.unlock()
+        return true
+    }
+
+    private struct SignatureCacheKey: Equatable {
+        let path: String
+        let team: String
+        let modified: Date?
+        let size: Int64?
+        let inode: UInt64?
+    }
+
+    private static let signatureCacheLock = NSLock()
+    private static var verifiedSignature: SignatureCacheKey?
 
     static func trustedExecutable(at path: String, allowedRoot: String) -> String? {
         let fileManager = FileManager.default
@@ -869,6 +959,91 @@ final class ClaudeUsageFetcher {
 
 }
 
+/// Runs `claude auth login` so Claude Code can be signed in without Terminal.
+/// Claude Code opens the Anthropic sign-in page in the default browser and
+/// finishes on its own once the browser hands the result back; UsageBar never
+/// sees a credential. The output is drained and discarded.
+final class ClaudeSignIn {
+    /// Long enough to sign in by hand in the browser, but finite.
+    private static let timeout: TimeInterval = 300
+
+    private let lock = NSLock()
+    private var running = false
+    private var processIdentifier: pid_t = 0
+
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return running
+    }
+
+    /// Starts one sign-in; `completion` runs on the main queue when it ends,
+    /// however it ends. A second call while one is pending does nothing.
+    func start(completion: @escaping () -> Void) {
+        lock.lock()
+        guard !running else {
+            lock.unlock()
+            return
+        }
+        running = true
+        lock.unlock()
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer {
+                self.lock.lock()
+                self.running = false
+                self.processIdentifier = 0
+                self.lock.unlock()
+                DispatchQueue.main.async(execute: completion)
+            }
+            guard case .found(let executable) = ExecutableLocator.claude() else { return }
+
+            let process = Process()
+            let output = Pipe()
+            let errors = Pipe()
+            ProviderProcessLauncher.configure(process, executable: executable, arguments: [
+                "auth", "login", "--claudeai"
+            ])
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = output
+            process.standardError = errors
+            ProviderProcessContext.apply(to: process)
+
+            do {
+                try process.run()
+            } catch {
+                ProviderProcessLimits.stop(process)
+                return
+            }
+            self.lock.lock()
+            self.processIdentifier = process.processIdentifier
+            self.lock.unlock()
+
+            let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+            let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
+            let outputDrainer = PipeDrainer.start(output, capture: captured)
+            let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
+
+            let deadline = Date().addingTimeInterval(Self.timeout)
+            while process.isRunning && Date() < deadline {
+                if captured.snapshot().exceeded { break }
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            ProviderProcessLimits.stop(process)
+            _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+            _ = errorDrainer.wait(timeout: .now() + .seconds(1))
+        }
+    }
+
+    /// Stops a pending sign-in, e.g. when UsageBar quits.
+    func cancel() {
+        lock.lock()
+        let identifier = processIdentifier
+        lock.unlock()
+        ProviderProcessLimits.stop(processIdentifier: identifier)
+    }
+}
+
 final class UsageSparklineView: NSView {
     private let model: UsageHistoryChartModel
     /// The one place chart coordinates are computed. Keeping it in UsageBarCore
@@ -1046,6 +1221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }()
     private let codexFetcher = CodexUsageFetcher()
     private let claudeFetcher = ClaudeUsageFetcher()
+    private let claudeSignIn = ClaudeSignIn()
     private var usages: [String: ProviderUsage] = [:]
     private var lastUpdated: Date?
     private var isRefreshing = false
@@ -1708,12 +1884,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         for (index, providerName) in connectedNames.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             let fallback: ProviderIssue = isRefreshing ? .refreshing : .noData
+            let usage = displayUsages[providerName] ?? .unavailable(providerName, fallback)
             addProvider(
-                displayUsages[providerName] ?? .unavailable(providerName, fallback),
+                usage,
                 collectionEnabled: collectionEnabled(providerName),
                 detailsVisible: detailsVisible(providerName),
                 hostsQuickControls: index == 0
             )
+            if providerName == "Claude Code", collectionEnabled(providerName),
+               case .claudeNotLoggedIn? = usage.error {
+                addClaudeSignInItem()
+            }
         }
 
         if !codexConnected || !claudeConnected {
@@ -2059,6 +2240,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(item)
     }
 
+    /// Lets a user who never opens Terminal sign Claude Code back in. While the
+    /// browser sign-in is pending the row stays, disabled, so it cannot be
+    /// started twice.
+    private func addClaudeSignInItem() {
+        let waiting = claudeSignIn.isRunning
+        let item = NSMenuItem(
+            title: waiting ? text.claudeSignInWaiting : text.claudeSignIn,
+            action: waiting ? nil : #selector(signInToClaude),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.isEnabled = !waiting
+        item.image = providerIcon(for: "Claude Code", size: 16)
+        menu.addItem(item)
+    }
+
     private func addConnectionItem(title: String, providerName: String, action: Selector) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
@@ -2169,8 +2366,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         let width: CGFloat = 276
-        let rowHeights = rows.map { row in
-            row.title.string.contains("\n") ? CGFloat(40) : CGFloat(25)
+        let rowLineCounts = rows.map { row in
+            row.title.string.split(separator: "\n", omittingEmptySubsequences: false).count
+        }
+        let rowHeights = rowLineCounts.map { lines in
+            lines > 1 ? CGFloat(20 * lines) : CGFloat(25)
         }
         let historyHeights = rows.map { $0.history.isEmpty ? CGFloat(0) : CGFloat(58) }
         let height = 46 + rowHeights.reduce(0, +) + historyHeights.reduce(0, +)
@@ -2204,7 +2404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let rowHeight = rowHeights[index]
             rowTop -= rowHeight
             let row = NSTextField(labelWithAttributedString: rowData.title)
-            row.maximumNumberOfLines = 2
+            row.maximumNumberOfLines = max(2, rowLineCounts[index])
             row.lineBreakMode = .byWordWrapping
             row.frame = NSRect(
                 x: 14,
@@ -2618,7 +2818,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func quit() {
+        claudeSignIn.cancel()
         NSApp.terminate(nil)
+    }
+
+    @objc private func signInToClaude() {
+        guard !claudeSignIn.isRunning else { return }
+        claudeSignIn.start { [weak self] in
+            guard let self else { return }
+            self.rebuildMenu()
+            self.refresh()
+        }
+        rebuildMenu()
     }
 
     @objc private func connectCodex() {
@@ -2953,6 +3164,10 @@ private func runSelfTest() -> Int32 {
             == "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login",
         english.issue(.claudeNotLoggedIn)
             == "Claude Code is not signed in\nRun in Terminal: claude auth login",
+        turkish.claudeSignIn == "Claude'a giriş yap…",
+        english.claudeSignIn == "Sign in to Claude…",
+        turkish.claudeSignInWaiting == "Tarayıcıda giriş bekleniyor…",
+        english.claudeSignInWaiting == "Waiting for sign-in in your browser…",
         english.relativeReset(
             durationOrigin.addingTimeInterval(3_600 + 15 * 60),
             now: durationOrigin
@@ -3740,6 +3955,17 @@ private func claudeDiagnosticWindowSummary(_ windows: [UsageWindow]) -> String {
 }
 
 private func runClaudeLiveDiagnostics() -> Int32 {
+    // Which installation answered, never its path.
+    let source: String
+    switch ExecutableLocator.claude() {
+    case .found(let path):
+        source = path.contains("/Library/Application Support/Claude/") ? "claude_app" : "standalone"
+    case .untrusted:
+        source = "untrusted"
+    case .missing:
+        source = "missing"
+    }
+    print("claude_executable=\(source)")
     let completed = DispatchSemaphore(value: 0)
     let lock = NSLock()
     var result: ProviderUsage?

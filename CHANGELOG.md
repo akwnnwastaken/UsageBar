@@ -9,7 +9,21 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Added
+- macOS UsageBar works with only the Claude app installed. When no Claude Code
+  CLI is found, it uses the Claude Code that the Claude app downloads for itself
+  (newest version under `~/Library/Application Support/Claude/claude-code`),
+  only if its app bundle has a valid Developer ID signature from Anthropic. An
+  installed CLI is still preferred, so existing setups are unchanged.
+- macOS: when Claude Code is signed out, a **Sign in to Claude…** item under
+  the Claude card runs `claude auth login`, which opens the Anthropic sign-in
+  page in the browser (no Terminal needed). UsageBar never handles the
+  credentials; the run is bounded to five minutes and Claude refreshes when it
+  ends. Turkish and English.
+
 ### Fixed
+- macOS: multi-line status rows (for example the stale "last good data" line
+  above a two-line sign-in message) are no longer clipped after two lines.
 - macOS UsageBar now says when Claude Code is signed out instead of showing
   "Could not read Claude usage". A signed-out Claude Code answers `/usage` with
   only a cost summary, so when no usage can be read UsageBar checks

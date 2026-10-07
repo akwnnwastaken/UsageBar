@@ -369,6 +369,19 @@ final class CorePolicyTests: XCTestCase {
         }
     }
 
+    /// Claude.app keeps every Claude Code it downloaded under a version folder;
+    /// the newest one is compared numerically, not as text.
+    func testClaudeDesktopBundlePicksTheNewestNumericVersion() {
+        XCTAssertEqual(
+            ClaudeDesktopBundle.newestVersion(in: ["2.1.30", "2.1.289", "2.1.288", ".DS_Store"]),
+            "2.1.289"
+        )
+        XCTAssertEqual(ClaudeDesktopBundle.newestVersion(in: ["2.2.0", "2.10.0", "10.0.0"]), "10.0.0")
+        XCTAssertEqual(ClaudeDesktopBundle.newestVersion(in: ["1.0", "1.0.1"]), "1.0.1")
+        XCTAssertNil(ClaudeDesktopBundle.newestVersion(in: ["latest", "2.1.x", "../2.1.0", "-1.0.0", ""]))
+        XCTAssertNil(ClaudeDesktopBundle.newestVersion(in: []))
+    }
+
     /// A signed-out Claude Code prints only a cost summary for `/usage`, with no
     /// login wording, so the sign-in state comes from `claude auth status`.
     func testClaudeAuthSignedInReadsOnlyTheLoggedInFlag() {
