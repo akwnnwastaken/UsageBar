@@ -211,11 +211,22 @@ final class TailscaleProcessRunnerTests: XCTestCase {
 
     // MARK: - Lifetimes
 
+    /// The lifetime tests stop a child that must first have started: `/bin/sh`
+    /// has to record its pid (and, below, install its trap) before the
+    /// deadline. A sub-second deadline raced shell start-up on a busy machine
+    /// (1 run in 20 locally): the child was stopped before it wrote anything,
+    /// so the escalation under test never ran. This leaves start-up ample room.
+    private let lifetimeTimeout: TimeInterval = 2
+
     func testTimeoutEndsTheReadAndTheChildIsReaped() throws {
         let child = try makeChild(#"echo $$ > "\#(path("pid"))"; exec sleep 30"#)
-        let outcome = run(child, timeout: 0.5)
+        let outcome = run(child, timeout: lifetimeTimeout)
         XCTAssertNil(outcome.data)
-        XCTAssertLessThan(outcome.elapsed, 4, "bounded by the read's own deadline, not by the child")
+        XCTAssertLessThan(
+            outcome.elapsed,
+            lifetimeTimeout + 3.5,
+            "bounded by the read's own deadline, not by the child"
+        )
         XCTAssertFalse(isPresent(try recordedIdentifier("pid")))
     }
 
@@ -227,11 +238,11 @@ final class TailscaleProcessRunnerTests: XCTestCase {
         echo $$ > "\#(path("pid"))"
         while :; do sleep 0.2; done
         """#)
-        let outcome = run(child, timeout: 0.5)
+        let outcome = run(child, timeout: lifetimeTimeout)
         XCTAssertNil(outcome.data)
         XCTAssertLessThan(
             outcome.elapsed,
-            0.5 + MobileSyncProcessStopper.terminationGrace + 3,
+            lifetimeTimeout + MobileSyncProcessStopper.terminationGrace + 3,
             "the escalation to SIGKILL is on a finite grace"
         )
         XCTAssertFalse(isPresent(try recordedIdentifier("pid")))
