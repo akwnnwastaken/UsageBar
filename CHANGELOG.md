@@ -9,6 +9,16 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-10-07
+
+### Changed
+- macOS: **Mobile Sync is hidden in this release.** UsageBar shows no Mobile
+  Sync menu, opens no listener, publishes no snapshot and runs no Tailscale
+  command. The code and its tests remain, and an existing pairing stays in the
+  Keychain, so it can return in a later release without pairing again.
+- macOS: the signed-out Claude message now also points to the **Sign in to
+  Claude…** button below it.
+
 ### Added
 - macOS UsageBar works with only the Claude app installed. When no Claude Code
   CLI is found, it uses the Claude Code that the Claude app downloads for itself
@@ -298,7 +308,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.1.1...v2.2.0
