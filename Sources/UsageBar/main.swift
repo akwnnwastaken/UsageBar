@@ -3178,11 +3178,11 @@ private func runSelfTest() -> Int32 {
         !MobileSyncRelease.isOffered,
         // Each line of the sign-in message must fit the card's text width on
         // its own; the row is sized by line count, so a wrapped line would clip.
-        [turkish, english].allSatisfy { localizer in
-            localizer.issue(.claudeNotLoggedIn).split(separator: "\n").allSatisfy { line in
+        [turkish, english].allSatisfy({ localizer in
+            localizer.issue(.claudeNotLoggedIn).split(separator: "\n").allSatisfy({ line in
                 (String(line) as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width < 240
-            }
-        },
+            })
+        }),
         turkish.claudeSignIn == "Claude'a giriş yap…",
         english.claudeSignIn == "Sign in to Claude…",
         turkish.claudeSignInWaiting == "Tarayıcıda giriş bekleniyor…",
