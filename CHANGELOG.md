@@ -16,6 +16,9 @@ Releases before v1.5.2 are listed on the
   `claude auth status --json` (reading only its `loggedIn` flag) and shows
   "Claude Code is not signed in — Run in Terminal: claude auth login" (Turkish
   and English).
+- Windows UsageBar applies the same check through both the native and the WSL
+  Claude Code adapters, so a signed-out Claude Code shows its existing sign-in
+  guidance instead of "Could not read Claude usage".
 
 ## [2.3.1] - 2026-10-06
 

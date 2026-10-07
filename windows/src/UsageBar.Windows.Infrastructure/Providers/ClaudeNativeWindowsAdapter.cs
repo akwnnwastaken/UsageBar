@@ -74,7 +74,16 @@ public sealed class ClaudeNativeWindowsAdapter : IClaudeAdapter
         }
     }
 
-    public async Task<ClaudeAdapterResult> RunUsageQueryAsync(CancellationToken cancellationToken)
+    public Task<ClaudeAdapterResult> RunUsageQueryAsync(CancellationToken cancellationToken) =>
+        RunAsync(ClaudeQuery.Arguments, ClaudeQuery.DefaultTimeout, cancellationToken);
+
+    public Task<ClaudeAdapterResult> RunAuthStatusAsync(CancellationToken cancellationToken) =>
+        RunAsync(ClaudeQuery.AuthStatusArguments, ClaudeQuery.AuthStatusTimeout, cancellationToken);
+
+    private async Task<ClaudeAdapterResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         var lookup = Lookup();
         if (lookup is not { Status: ExecutableLookupStatus.Found, Executable: not null })
@@ -98,12 +107,12 @@ public sealed class ClaudeNativeWindowsAdapter : IClaudeAdapter
         var request = new ProviderProcessRequest
         {
             ExecutablePath = executable.Path,
-            Arguments = executable.BuildArguments(ClaudeQuery.Arguments),
+            Arguments = executable.BuildArguments(arguments),
             // Print mode emits its whole answer and exits; stdin is closed so a
             // signed-out run can never sit waiting for input.
             StandardInput = null,
             CloseStandardInputAfterWrite = true,
-            Timeout = ClaudeQuery.DefaultTimeout,
+            Timeout = timeout,
             AdditionalEnvironment = environment.Count > 0 ? environment : null
         };
 

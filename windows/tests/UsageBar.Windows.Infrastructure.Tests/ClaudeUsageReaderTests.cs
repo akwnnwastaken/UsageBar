@@ -104,6 +104,58 @@ public sealed class ClaudeUsageReaderTests
     }
 
     /// <summary>
+    /// A signed-out Claude Code answers <c>/usage</c> with only a cost summary, so
+    /// the read alone is "unreadable"; <c>claude auth status</c> settles it.
+    /// </summary>
+    [Fact]
+    public void SignedOutCostSummaryIsReportedAsSignedOutAfterTheAuthCheck()
+    {
+        var usage = Interpret("print-usage-signed-out-cost-summary.txt");
+        Assert.Equal("claude_usage_unreadable", usage.Error?.DiagnosticCode);
+
+        var checkedUsage = ClaudeUsageReader.WithSignInCheck(
+            usage,
+            Result(Fixtures.ReadText("claude/auth-status-signed-out.json")));
+
+        Assert.Equal("claude_not_logged_in", checkedUsage.Error?.DiagnosticCode);
+    }
+
+    [Theory]
+    [InlineData("{\"loggedIn\": true}", false, false, null)]
+    [InlineData("not json", false, false, null)]
+    [InlineData("{\"loggedIn\": false}", true, false, null)]
+    [InlineData("{\"loggedIn\": false}", false, true, null)]
+    [InlineData("", false, false, "launch failed")]
+    public void AnUnknownSignInStateKeepsTheUnreadableVerdict(
+        string authOutput,
+        bool timedOut,
+        bool outputExceeded,
+        string? launchFailure)
+    {
+        var usage = Interpret("print-usage-signed-out-cost-summary.txt");
+
+        var checkedUsage = ClaudeUsageReader.WithSignInCheck(
+            usage,
+            Result(authOutput, timedOut: timedOut, outputExceeded: outputExceeded, launchFailure: launchFailure));
+
+        Assert.Equal("claude_usage_unreadable", checkedUsage.Error?.DiagnosticCode);
+    }
+
+    [Fact]
+    public void TheSignInCheckNeverOverridesAnotherVerdict()
+    {
+        var usage = Interpret("print-usage-both-windows.txt");
+        var signedOut = Result(Fixtures.ReadText("claude/auth-status-signed-out.json"));
+
+        Assert.Same(usage, ClaudeUsageReader.WithSignInCheck(usage, signedOut));
+
+        var timedOut = ClaudeUsageReader.Interpret(Result(timedOut: true, exitCode: -1), Now);
+        Assert.Equal(
+            "claude_usage_timed_out",
+            ClaudeUsageReader.WithSignInCheck(timedOut, signedOut).Error?.DiagnosticCode);
+    }
+
+    /// <summary>
     /// A partially written final line must not be turned into a wrong number:
     /// the complete window still reads, the incomplete one is simply absent.
     /// </summary>

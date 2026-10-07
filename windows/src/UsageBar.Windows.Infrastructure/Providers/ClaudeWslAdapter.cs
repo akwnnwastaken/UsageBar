@@ -75,7 +75,21 @@ public sealed class ClaudeWslAdapter : IClaudeAdapter
     public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken) =>
         await ResolveAsync(cancellationToken).ConfigureAwait(false) is not null;
 
-    public async Task<ClaudeAdapterResult> RunUsageQueryAsync(CancellationToken cancellationToken)
+    public Task<ClaudeAdapterResult> RunUsageQueryAsync(CancellationToken cancellationToken) =>
+        RunAsync(ClaudeQuery.Arguments, ClaudeQuery.DefaultTimeout, invalidateOnFailure: true, cancellationToken);
+
+    /// <summary>
+    /// Leaves the cached resolution alone: the usage query that ran just before
+    /// already decided whether the installation is still there.
+    /// </summary>
+    public Task<ClaudeAdapterResult> RunAuthStatusAsync(CancellationToken cancellationToken) =>
+        RunAsync(ClaudeQuery.AuthStatusArguments, ClaudeQuery.AuthStatusTimeout, invalidateOnFailure: false, cancellationToken);
+
+    private async Task<ClaudeAdapterResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        bool invalidateOnFailure,
+        CancellationToken cancellationToken)
     {
         var resolution = await ResolveAsync(cancellationToken).ConfigureAwait(false);
         if (resolution is null)
@@ -90,18 +104,19 @@ public sealed class ClaudeWslAdapter : IClaudeAdapter
         }
 
         var command = new List<string> { resolution.Invocation.Command };
-        command.AddRange(ClaudeQuery.Arguments);
+        command.AddRange(arguments);
 
         var result = await _runner.RunAsync(
             resolution.Distribution,
             resolution.Invocation.UseHomeDirectory,
             command,
-            ClaudeQuery.DefaultTimeout,
+            timeout,
             cancellationToken).ConfigureAwait(false);
 
         // A launch failure or a non-zero exit with no output suggests the
         // installation moved or the distribution is gone; rediscover next time.
-        if (!result.Launched || (result.ExitCode != 0 && result.StandardOutput.Length == 0 && !result.Cancelled))
+        if (invalidateOnFailure &&
+            (!result.Launched || (result.ExitCode != 0 && result.StandardOutput.Length == 0 && !result.Cancelled)))
         {
             InvalidateCache();
         }

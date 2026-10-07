@@ -86,7 +86,7 @@ public sealed class ClaudeUsageReader : IClaudeUsageReader
             LastWslDistribution = null;
 
             var result = await _native.RunUsageQueryAsync(cancellationToken).ConfigureAwait(false);
-            return Interpret(result);
+            return await InterpretWithSignInCheckAsync(_native, result, cancellationToken).ConfigureAwait(false);
         }
 
         if (_wsl is not null && await _wsl.IsAvailableAsync(cancellationToken).ConfigureAwait(false))
@@ -96,10 +96,51 @@ public sealed class ClaudeUsageReader : IClaudeUsageReader
             LastWslDistribution = _wsl.ResolvedDistribution;
 
             var result = await _wsl.RunUsageQueryAsync(cancellationToken).ConfigureAwait(false);
-            return Interpret(result);
+            return await InterpretWithSignInCheckAsync(_wsl, result, cancellationToken).ConfigureAwait(false);
         }
 
         return Unavailable(cancellationToken);
+    }
+
+    /// <summary>
+    /// A signed-out Claude Code answers <c>/usage</c> with a bare cost summary and
+    /// no login wording, which reads as "unreadable". Only in that case is
+    /// <c>claude auth status --json</c> asked, so a healthy read never pays for it.
+    /// </summary>
+    private static async Task<ProviderUsage> InterpretWithSignInCheckAsync(
+        IClaudeAdapter adapter,
+        ClaudeAdapterResult result,
+        CancellationToken cancellationToken)
+    {
+        var usage = Interpret(result);
+        if (usage.Error?.Code != ProviderIssueCode.ClaudeUsageUnreadable)
+        {
+            return usage;
+        }
+
+        var authStatus = await adapter.RunAuthStatusAsync(cancellationToken).ConfigureAwait(false);
+        return WithSignInCheck(usage, authStatus);
+    }
+
+    /// <summary>
+    /// Turns an unreadable result into "not signed in" only when the auth-status
+    /// run finished cleanly and said <c>loggedIn: false</c>. Anything else keeps
+    /// the original verdict, so an unknown state is never reported as signed out.
+    /// </summary>
+    internal static ProviderUsage WithSignInCheck(ProviderUsage usage, ClaudeAdapterResult authStatus)
+    {
+        ArgumentNullException.ThrowIfNull(usage);
+        ArgumentNullException.ThrowIfNull(authStatus);
+
+        if (usage.Error?.Code != ProviderIssueCode.ClaudeUsageUnreadable ||
+            !authStatus.Launched || authStatus.OutputExceeded || authStatus.TimedOut || authStatus.Cancelled)
+        {
+            return usage;
+        }
+
+        return ClaudeUsageParser.ParseAuthSignedIn(authStatus.StandardOutput) == false
+            ? ProviderUsage.Unavailable(ProviderNames.ClaudeCode, ProviderIssue.ClaudeNotLoggedIn)
+            : usage;
     }
 
     /// <summary>
