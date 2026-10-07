@@ -66,3 +66,22 @@ jobs:
           archs="$(lipo -archs "$executable")"
           echo "lipo -archs: $archs"
           test "$archs" = "arm64"
+      # The app this job just built with the release toolchain, kept briefly so
+      # a change can be tried on a real Mac before any release tag exists. It is
+      # not a release: no attestation, short retention, named by commit.
+      - name: Archive the release-toolchain build
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict build/UsageBar.app
+          ditto -c -k --keepParent build/UsageBar.app "UsageBar-${GITHUB_SHA}-macOS-arm64.zip"
+          shasum -a 256 "UsageBar-${GITHUB_SHA}-macOS-arm64.zip" > "UsageBar-${GITHUB_SHA}-macOS-arm64.zip.sha256"
+      - name: Upload the release-toolchain build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: UsageBar-${{ github.sha }}-release-toolchain-build
+          path: |
+            UsageBar-${{ github.sha }}-macOS-arm64.zip
+            UsageBar-${{ github.sha }}-macOS-arm64.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
