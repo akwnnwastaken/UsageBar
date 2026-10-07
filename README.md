@@ -88,6 +88,8 @@ Click the icon to inspect every window returned for the selected provider. Usage
 
 UsageBar does not sign in to provider websites itself. It uses the existing Codex and Claude Code sessions on your computer.
 
+On macOS, when Claude Code is signed out, the Claude card says so and offers **Sign in to Claude…**. That item runs Claude Code's own `claude auth login`, which opens the Anthropic sign-in page in your browser; UsageBar never sees your password or credentials. Running `claude auth login` in Terminal works the same way.
+
 Usage can refresh every 1, 2, or 5 minutes; the default is 5 minutes.
 
 Opening the panel also starts a refresh when the displayed data is more than 30 seconds old. When both providers are connected and `Auto` is selected, the displayed provider changes every 30 seconds; rotation itself does not run a new provider query.
@@ -115,7 +117,7 @@ If a provider temporarily fails, the last successful value remains visible with 
 #### macOS
 
 - Runs only in the menu bar, without a Dock icon or main window.
-- Reads the ChatGPT app or an installed Codex CLI for Codex, and an installed Claude Code CLI for Claude.
+- Reads the ChatGPT app or an installed Codex CLI for Codex. For Claude it uses an installed Claude Code CLI, or — when there is none — the Claude Code that the **Claude app** downloads for itself, so no Terminal or Homebrew install is needed. That copy is used only if it carries Anthropic's valid Developer ID signature.
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
@@ -149,7 +151,7 @@ Only the provider you want to track needs to be installed and signed in.
 
 | Platform | System | Provider | Build from source |
 | --- | --- | --- | --- |
-| macOS | macOS 13+, Apple Silicon (`arm64`) | ChatGPT app or signed-in Codex CLI; signed-in Claude Code CLI | Xcode Command Line Tools |
+| macOS | macOS 13+, Apple Silicon (`arm64`) | ChatGPT app or signed-in Codex CLI; Claude app or Claude Code CLI, signed in | Xcode Command Line Tools |
 | Windows | Windows 10 version 1809+ (including Windows 11), x64 | Signed-in official Windows Codex installation; native Claude Code or supported WSL path | .NET 8 SDK |
 
 Windows end-user packages are self-contained; no separate .NET Runtime installation is required.
@@ -266,6 +268,7 @@ The diagnostic summary is limited to version, operating-system version, connecti
 - **macOS blocks the app:** Use only the **Privacy & Security → Open Anyway** flow above; do not disable Gatekeeper.
 - **SmartScreen warns:** Verify the download with SHA-256. Do not disable SmartScreen globally.
 - **A provider will not connect:** Confirm that the corresponding Codex or Claude Code installation is signed in, then try again in UsageBar.
+- **Claude Code is not signed in (macOS):** Choose **Sign in to Claude…** under the Claude card and finish in the browser, or run `claude auth login` in Terminal. Claude Code normally keeps itself signed in, but the sign-in can still expire (for example after a long idle period or a sign-out elsewhere).
 - **UsageBar shows stale data:** The panel's timestamp and safe failure reason explain why the last successful measurement was preserved. Check the provider installation and refresh manually.
 - **You moved the portable Windows build:** If autostart still points to the old location, turn the preference off and enable it again from the new location.
 - **When asking for help:** Share **Copy diagnostics** output; do not send tokens, credentials, raw provider output, or private file paths.

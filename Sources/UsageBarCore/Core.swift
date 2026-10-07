@@ -648,6 +648,35 @@ public enum UsageSummaryCalculator {
 
 // MARK: - Provider output parsing
 
+/// Claude.app downloads its own Claude Code under
+/// `~/Library/Application Support/Claude/claude-code/<version>/<hash>/claude.app`
+/// and keeps older versions next to the current one. UsageBar uses it only
+/// when no standalone CLI is installed.
+public enum ClaudeDesktopBundle {
+    /// Anthropic's Developer ID team; the bundled executable must carry it.
+    public static let teamIdentifier = "Q6L2SF6YDW"
+
+    /// The highest purely numeric dotted version (`2.1.289`), compared part by
+    /// part so `2.1.289` beats `2.1.30`. Anything else is ignored.
+    public static func newestVersion(in names: [String]) -> String? {
+        names
+            .compactMap { name -> (name: String, parts: [Int])? in
+                let pieces = name.split(separator: ".", omittingEmptySubsequences: false)
+                guard pieces.count >= 2 else { return nil }
+                var parts: [Int] = []
+                for piece in pieces {
+                    guard !piece.isEmpty, piece.allSatisfy(\.isASCII), piece.allSatisfy(\.isNumber),
+                          let value = Int(piece)
+                    else { return nil }
+                    parts.append(value)
+                }
+                return (name, parts)
+            }
+            .max { $0.parts.lexicographicallyPrecedes($1.parts) }?
+            .name
+    }
+}
+
 public enum UsageParser {
     public static func codexResponse(from data: Data) -> ProviderUsage? {
         guard
