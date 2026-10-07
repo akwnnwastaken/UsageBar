@@ -24,7 +24,7 @@ readonly EXPECTED_MACOS_MAJOR="26"
 readonly EXPECTED_XCODE_VERSION="26.6"
 readonly EXPECTED_XCODE_BUILD="17F113"
 readonly EXPECTED_SDK_VERSION="26.5"
-readonly EXPECTED_SWIFT_FAMILY="TO-BE-READ-FROM-CI"
+readonly EXPECTED_SWIFT_FAMILY="6.3"
 
 fail() {
     printf 'release toolchain guard: %s\n' "$1" >&2
