@@ -63,6 +63,22 @@ public sealed class ClaudeUsageParserTests
     }
 
     /// <summary>
+    /// A signed-out Claude Code prints only a cost summary for <c>/usage</c>, with
+    /// no login wording, so the sign-in state comes from <c>claude auth status</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("{\"loggedIn\": false, \"authMethod\": \"none\"}", false)]
+    [InlineData("{\"loggedIn\": true, \"authMethod\": \"claude.ai\"}", true)]
+    [InlineData("{\"authMethod\": \"none\"}", null)]
+    [InlineData("{\"loggedIn\": \"no\"}", null)]
+    [InlineData("Not logged in", null)]
+    [InlineData("", null)]
+    public void AuthStatusReadsOnlyTheLoggedInFlag(string output, bool? expected)
+    {
+        Assert.Equal(expected, ClaudeUsageParser.ParseAuthSignedIn(System.Text.Encoding.UTF8.GetBytes(output)));
+    }
+
+    /// <summary>
     /// A partially written read must not silently drop the weekly window: the
     /// adapter waits for process exit, and this documents what the parser sees if
     /// it ever did not.

@@ -730,6 +730,20 @@ public enum UsageParser {
     /// ordinary all-models limit or a model-specific one, so the order of the
     /// rows never decides which value becomes `weekly`. The first row per
     /// resulting kind wins; a later duplicate is ignored.
+    /// Reads only the `loggedIn` flag from `claude auth status --json`. A
+    /// signed-out Claude Code answers `/usage` with a bare cost summary that has
+    /// no login wording, so this is the reliable sign-in signal. Every other
+    /// field (account details included) is ignored and never kept. Returns `nil`
+    /// when the output is not the expected JSON.
+    public static func claudeAuthSignedIn(_ data: Data) -> Bool? {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let value = object["loggedIn"],
+            CFGetTypeID(value as CFTypeRef) == CFBooleanGetTypeID()
+        else { return nil }
+        return value as? Bool
+    }
+
     public static func claudePrintUsage(_ raw: String, now: Date = Date()) -> ProviderUsage {
         let session = printWindow("Current session", in: raw, now: now)
         let weeklyWindows = printWeeklyWindows(in: raw, now: now)

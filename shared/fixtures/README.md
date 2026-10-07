@@ -14,7 +14,8 @@ paths. The percentages and reset times are illustrative.
 
 ```text
 codex/    newline-delimited JSON-RPC lines from `codex app-server --stdio`
-claude/   plain-text output of Claude Code's print-mode usage query
+claude/   plain-text output of Claude Code's print-mode usage query, and
+          `claude auth status --json` output
 ```
 
 | Fixture | Covers |
@@ -35,6 +36,8 @@ claude/   plain-text output of Claude Code's print-mode usage query
 | `claude/print-usage-not-logged-in.txt` | signed-out verdict |
 | `claude/print-usage-login-required.txt` | signed-out verdict, alternate `/login` wording |
 | `claude/print-usage-unreadable.txt` | unreadable verdict |
+| `claude/print-usage-signed-out-cost-summary.txt` | what a signed-out Claude Code prints for `/usage` (a cost summary, no login wording) |
+| `claude/auth-status-signed-out.json` | `claude auth status --json` when signed out (only `loggedIn` is read) |
 | `claude/print-usage-truncated.txt` | partially written output (weekly line incomplete) |
 | `claude/screen-usage-panel.txt` | legacy interactive-panel shape, kept as a parser check |
 | `claude/native-git-bash-missing.txt` | stderr of a native Claude that cannot find Git Bash |

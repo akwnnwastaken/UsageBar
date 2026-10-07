@@ -369,6 +369,23 @@ final class CorePolicyTests: XCTestCase {
         }
     }
 
+    /// A signed-out Claude Code prints only a cost summary for `/usage`, with no
+    /// login wording, so the sign-in state comes from `claude auth status`.
+    func testClaudeAuthSignedInReadsOnlyTheLoggedInFlag() {
+        XCTAssertEqual(
+            UsageParser.claudeAuthSignedIn(Data(#"{"loggedIn": false, "authMethod": "none"}"#.utf8)),
+            false
+        )
+        XCTAssertEqual(
+            UsageParser.claudeAuthSignedIn(Data(#"{"loggedIn": true, "authMethod": "claude.ai"}"#.utf8)),
+            true
+        )
+        XCTAssertNil(UsageParser.claudeAuthSignedIn(Data(#"{"authMethod": "none"}"#.utf8)))
+        XCTAssertNil(UsageParser.claudeAuthSignedIn(Data(#"{"loggedIn": "no"}"#.utf8)))
+        XCTAssertNil(UsageParser.claudeAuthSignedIn(Data("Not logged in".utf8)))
+        XCTAssertNil(UsageParser.claudeAuthSignedIn(Data()))
+    }
+
     /// The exact line of `shared/fixtures/claude/print-usage-weekly-only.txt`:
     /// an account that exposes no session window at all.
     func testClaudePrintUsageAcceptsWeeklyOnlyOutput() {

@@ -314,7 +314,10 @@ struct Localizer {
         case .claudeUntrustedExecutable:
             return claudeUntrustedTitle
         case .claudeNotLoggedIn:
-            return pick("Claude Code'a giriş yapılmamış", "Claude Code is not signed in")
+            return pick(
+                "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login",
+                "Claude Code is not signed in\nRun in Terminal: claude auth login"
+            )
         case .claudeUsageUnreadable:
             return pick("Claude kullanım yüzdesi okunamadı", "Could not read Claude usage")
         case .claudeUsageTimedOut:
@@ -807,6 +810,8 @@ final class ClaudeUsageFetcher {
                     completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 } else if Date() >= deadline {
                     completion(.unavailable("Claude Code", .claudeUsageTimedOut))
+                } else if Self.isSignedOut(executable: executable) {
+                    completion(.unavailable("Claude Code", .claudeNotLoggedIn))
                 } else {
                     completion(.unavailable("Claude Code", .claudeUsageUnreadable))
                 }
@@ -815,6 +820,51 @@ final class ClaudeUsageFetcher {
                 completion(.unavailable("Claude Code", .claudeLaunchFailed(error.localizedDescription)))
             }
         }
+    }
+
+    private static let authStatusTimeout: TimeInterval = 5
+
+    /// A signed-out Claude Code answers `/usage` with only a cost summary and no
+    /// login wording, so an unreadable result is checked against
+    /// `claude auth status --json`. Only its `loggedIn` flag is read; the output
+    /// is discarded. Any failure here means "unknown", never "signed out".
+    private static func isSignedOut(executable: String) -> Bool {
+        let process = Process()
+        let output = Pipe()
+        let errors = Pipe()
+        ProviderProcessLauncher.configure(process, executable: executable, arguments: [
+            "auth", "status", "--json"
+        ])
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = output
+        process.standardError = errors
+        ProviderProcessContext.apply(to: process)
+
+        do {
+            try process.run()
+        } catch {
+            ProviderProcessLimits.stop(process)
+            return false
+        }
+        let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
+        let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
+        let dataAvailable = DispatchSemaphore(value: 0)
+        let outputDrainer = PipeDrainer.start(output, capture: captured, dataAvailable: dataAvailable)
+        let errorDrainer = PipeDrainer.start(errors, capture: errorCapture)
+
+        let deadline = Date().addingTimeInterval(authStatusTimeout)
+        while process.isRunning && Date() < deadline {
+            if captured.snapshot().exceeded { break }
+            _ = dataAvailable.wait(timeout: .now() + .milliseconds(100))
+        }
+
+        ProviderProcessLimits.stop(process)
+        _ = outputDrainer.wait(timeout: .now() + .seconds(1))
+        _ = errorDrainer.wait(timeout: .now() + .seconds(1))
+
+        let snapshot = captured.snapshot()
+        guard !snapshot.exceeded else { return false }
+        return UsageParser.claudeAuthSignedIn(snapshot.data) == false
     }
 
 }
@@ -2899,8 +2949,10 @@ private func runSelfTest() -> Int32 {
         AppLanguage.preferred(from: ["tr-TR", "en-US"]) == .turkish,
         AppLanguage.preferred(from: ["en-US", "tr-TR"]) == .english,
         AppLanguage.preferred(from: []) == .english,
-        turkish.issue(.claudeNotLoggedIn) == "Claude Code'a giriş yapılmamış",
-        english.issue(.claudeNotLoggedIn) == "Claude Code is not signed in",
+        turkish.issue(.claudeNotLoggedIn)
+            == "Claude Code'a giriş yapılmamış\nTerminal'de çalıştırın: claude auth login",
+        english.issue(.claudeNotLoggedIn)
+            == "Claude Code is not signed in\nRun in Terminal: claude auth login",
         english.relativeReset(
             durationOrigin.addingTimeInterval(3_600 + 15 * 60),
             now: durationOrigin

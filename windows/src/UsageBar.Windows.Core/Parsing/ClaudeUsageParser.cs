@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using UsageBar.Windows.Core.Providers;
 
@@ -67,6 +68,33 @@ public static partial class ClaudeUsageParser
     {
         "log in", "login", "sign in", "not authenticated", "authenticate"
     };
+
+    /// <summary>
+    /// Reads only the <c>loggedIn</c> flag from <c>claude auth status --json</c>.
+    /// A signed-out Claude Code answers <c>/usage</c> with a bare cost summary that
+    /// has no login wording, so this is the reliable sign-in signal. Every other
+    /// field (account details included) is ignored and never kept. Returns
+    /// <c>null</c> when the output is not the expected JSON.
+    /// </summary>
+    public static bool? ParseAuthSignedIn(ReadOnlySpan<byte> output)
+    {
+        try
+        {
+            var reader = new Utf8JsonReader(output);
+            using var document = JsonDocument.ParseValue(ref reader);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("loggedIn", out var value) &&
+                value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                return value.GetBoolean();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
+    }
 
     public static ProviderUsage Parse(string? raw, DateTimeOffset now)
     {

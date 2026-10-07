@@ -29,6 +29,15 @@ public static class ClaudeQuery
 
     public static TimeSpan DefaultTimeout { get; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>
+    /// Asked only after a usage read produced nothing readable: a signed-out
+    /// Claude Code answers <c>/usage</c> with a bare cost summary, so only this
+    /// tells "signed out" apart from "unreadable". Only <c>loggedIn</c> is read.
+    /// </summary>
+    public static IReadOnlyList<string> AuthStatusArguments { get; } = new[] { "auth", "status", "--json" };
+
+    public static TimeSpan AuthStatusTimeout { get; } = TimeSpan.FromSeconds(5);
+
     /// <summary>Probing must be quick: several distributions may be tried.</summary>
     public static TimeSpan ProbeTimeout { get; } = TimeSpan.FromSeconds(15);
 }
@@ -70,6 +79,9 @@ public interface IClaudeAdapter
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
 
     Task<ClaudeAdapterResult> RunUsageQueryAsync(CancellationToken cancellationToken);
+
+    /// <summary>Runs <c>claude auth status --json</c> the same bounded way.</summary>
+    Task<ClaudeAdapterResult> RunAuthStatusAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Called after a run that failed in a way that suggests the cached
