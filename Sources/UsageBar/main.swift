@@ -1711,7 +1711,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func updateStatusTitle() {
         if let statusProviderName,
-           let summary = UsageSummaryCalculator.summary(for: statusProviderName, in: displayUsages) {
+           let summary = MenuBarUsageSummaryCalculator.summary(for: statusProviderName, in: displayUsages) {
             var title = "%\(summary.remainingPercent)"
             if showResetInMenuBar, let resetsAt = summary.resetsAt {
                 title += " · \(text.relativeReset(resetsAt))"
@@ -3759,6 +3759,21 @@ private func runSelfTest() -> Int32 {
     else {
         fputs("Claude 5 saatlik pencere önceliği testi başarısız\n", stderr)
         return 1
+    }
+
+    for provider in ["Claude Code", "Codex"] {
+        let lowWeekly = ProviderUsage(name: provider, windows: claudeSessionFirst.windows, error: nil)
+        let hiddenWeekly = lowWeekly.replacingWindows([
+            UsageWindow(kind: .weekly, usedPercent: 90, resetsAt: nil, durationMinutes: 10_080)
+        ])
+        guard
+            MenuBarUsageSummaryCalculator.summary(for: provider, in: [provider: lowWeekly])?.remainingPercent == 5,
+            MenuBarUsageSummaryCalculator.summary(for: provider, in: [provider: hiddenWeekly])?.remainingPercent == 10,
+            MenuBarUsageSummaryCalculator.summary(for: provider, in: [provider: hiddenWeekly])?.windowKind == .weekly
+        else {
+            fputs("Menu-bar weekly threshold test failed / Menü çubuğu haftalık eşik testi başarısız\n", stderr)
+            return 1
+        }
     }
 
     guard

@@ -74,8 +74,10 @@ Version **2.3.3** is current for both platforms. macOS and Windows use separate 
 
 The displayed value is the **remaining percentage, not the used percentage**.
 
-- **Claude Code:** Uses the five-hour window when available and falls back to weekly only when five-hour data is missing.
-- **Codex:** Uses the lowest remaining percentage among the windows available on the account. If the account exposes only a weekly window, UsageBar uses that window.
+- **macOS menu bar — Claude Code and Codex:** The ordinary weekly window is preferred only when less than **10% remains**. Then five-hour is shown only if its remaining percentage is strictly lower; a tie, or missing five-hour data, selects weekly. At **10% or more**, Claude uses its five-hour headline and Codex selects the most constrained non-weekly window (including other durations or unknown window kinds). If no eligible non-weekly headline exists, weekly is the fallback and shows its actual remaining percentage — including weekly-only accounts. Without an ordinary weekly window, each provider keeps its existing selection policy.
+- **Menu cards, history, phone/mobile snapshots, and Windows are unchanged:** Their shared summary policy still prefers five-hour for Claude Code, falling back to ordinary weekly when five-hour is missing; Codex still selects the lowest remaining percentage across all available windows. History continues recording every window separately.
+
+**Türkçe:** macOS menü çubuğunda Claude Code ve Codex için normal haftalık pencere yalnızca **%10'dan az kaldığında** önceliklidir. Bu durumda beş saatlik pencere ancak kalan yüzdesi haftalıktan kesin olarak düşükse gösterilir; eşitlikte veya beş saatlik veri yoksa haftalık seçilir. **%10 ve üzerinde** Claude beş saatlik başlığı, Codex ise haftalık dışındaki en kısıtlı pencereyi (diğer süreler ve bilinmeyen türler dahil) kullanır. Uygun bir haftalık dışı başlık yoksa haftalık pencere gerçek kalan yüzdesiyle gösterilir; yalnızca haftalık veri sunan hesaplar da buna dahildir. Normal haftalık pencere yoksa mevcut sağlayıcı kuralı korunur. Menü kartları, geçmiş, telefon/mobil anlık görüntüleri ve Windows değişmez: ortak özet Claude için beş saatliği, yoksa normal haftalığı; Codex için tüm pencereler arasındaki en düşük kalan yüzdeyi seçer. Geçmiş her pencereyi ayrı kaydetmeye devam eder.
 
 Click the icon to inspect every window returned for the selected provider. UsageBar only shows windows actually available on the account.
 
