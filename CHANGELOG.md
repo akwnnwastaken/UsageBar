@@ -9,6 +9,20 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Changed
+- macOS menu bar only: Claude Code and Codex prefer ordinary weekly below
+  10% remaining, unless five-hour has strictly less remaining (ties select
+  weekly). At 10% or above, the existing provider policy selects a non-weekly
+  headline; when none is eligible, weekly is the fallback with its actual
+  remaining percentage. Menu cards, history and phone/mobile snapshots keep
+  their existing policy. Windows behaviour is unchanged.
+- Yalnızca macOS menü çubuğu: Claude Code ve Codex, haftalık kalan %10'un
+  altındaysa haftalığı seçer; beş saatlik kalan kesin olarak daha düşükse onu
+  gösterir (eşitlikte haftalık). %10 ve üzerinde mevcut sağlayıcı kuralı
+  haftalık dışı başlığı seçer; uygun başlık yoksa haftalık gerçek kalan
+  yüzdesiyle gösterilir. Menü kartları, geçmiş ve telefon/mobil anlık
+  görüntülerinin mevcut kuralı korunur. Windows davranışı değişmez.
+
 ## [2.3.3] - 2026-10-07
 
 ### Changed
