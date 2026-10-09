@@ -218,7 +218,7 @@ public sealed class CodexUsageReaderTests
     [Fact]
     public void TheDefaultClientVersionIsTheCurrentProductVersion()
     {
-        Assert.Equal("2.3.3", CodexUsageReader.ResolveClientVersion(null));
+        Assert.Equal("2.3.4", CodexUsageReader.ResolveClientVersion(null));
     }
 
     [Fact]

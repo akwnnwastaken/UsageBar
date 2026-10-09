@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-10-09
+
 ### Changed
 - macOS menu bar only: Claude Code and Codex prefer ordinary weekly below
   10% remaining, unless five-hour has strictly less remaining (ties select
@@ -22,6 +24,12 @@ Releases before v1.5.2 are listed on the
   haftalık dışı başlığı seçer; uygun başlık yoksa haftalık gerçek kalan
   yüzdesiyle gösterilir. Menü kartları, geçmiş ve telefon/mobil anlık
   görüntülerinin mevcut kuralı korunur. Windows davranışı değişmez.
+
+### Notes
+- **Windows 2.3.4 is a version-synchronization release.** Its behaviour is
+  unchanged from 2.3.3; the weekly menu-bar change is macOS-only.
+- **Windows 2.3.4 yalnızca sürüm eşitleme yayınıdır.** Davranışı 2.3.3 ile
+  aynıdır; haftalık menü çubuğu değişikliği yalnızca macOS içindir.
 
 ## [2.3.3] - 2026-10-07
 
@@ -336,7 +344,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.4...HEAD
+[2.3.4]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.0...v2.3.1

@@ -22,9 +22,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.3/UsageBar-2.3.3-macOS-arm64.zip"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.4/UsageBar-2.3.4-macOS-arm64.zip"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.3/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.4/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
 </p>
 
 ---
@@ -46,21 +46,21 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
 - **macOS + Windows:** A native menu bar app on macOS, a system tray app on Windows.
-- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.3.3**, so a current Mac build cannot serve the phone; the source stays in this repository.
+- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.3.4**, so a current Mac build cannot serve the phone; the source stays in this repository.
 - **Local-first:** Reuse the provider sessions you already have, and keep raw provider output out of history.
 
 ## Downloads
 
-Version **2.3.3** is current for both platforms. macOS and Windows use separate release tags.
+Version **2.3.4** is current for both platforms. macOS and Windows use separate release tags.
 
-**macOS 2.3.3** has the same features as 2.3.2 — it works with only the Claude app installed and offers **Sign in to Claude…** when Claude Code is signed out — but is the first release built with Xcode 26.6 against the macOS 26 SDK, so it no longer runs in older-SDK compatibility mode on macOS 26 and later. **Mobile Sync stays hidden.** **Windows 2.3.3 is a version-synchronization release** — same behaviour as 2.3.2; it cannot host the phone.
+**macOS 2.3.4** updates the Claude Code and Codex menu-bar selection: below 10% weekly remaining, five-hour is shown only when strictly lower (ties choose weekly); at 10% or above, the existing non-weekly headline is used, falling back to weekly's actual remaining percentage when none is eligible, including weekly-only accounts. Menu cards, history and phone/mobile snapshots are unchanged. It keeps the Xcode 26.6 / macOS 26 SDK toolchain introduced in 2.3.3. **Mobile Sync stays hidden.** **Windows 2.3.4 is a version-synchronization release** — same behaviour as 2.3.3; it cannot host the phone.
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
-| macOS 13+ · Apple Silicon | `UsageBar-2.3.3-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.3/UsageBar-2.3.3-macOS-arm64.zip) | [`v2.3.3`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.3) |
-| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.3/UsageBar-Setup-x64.exe) | [`windows-v2.3.3`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.3) |
-| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.3/UsageBar-Windows-x64.zip) | [`windows-v2.3.3`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.3) |
-| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.3.3) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
+| macOS 13+ · Apple Silicon | `UsageBar-2.3.4-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.4/UsageBar-2.3.4-macOS-arm64.zip) | [`v2.3.4`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.4) |
+| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.4/UsageBar-Setup-x64.exe) | [`windows-v2.3.4`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.4) |
+| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.4/UsageBar-Windows-x64.zip) | [`windows-v2.3.4`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.4) |
+| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.3.4) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
 
 > [!NOTE]
 > The iPhone companion is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. There is no App Store listing and no TestFlight build.
@@ -121,12 +121,12 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
-- Mobile Sync, the host side of the iPhone companion, is hidden in 2.3.3 — see below.
+- Mobile Sync, the host side of the iPhone companion, is hidden in 2.3.4 — see below.
 
 #### iPhone
 
 > [!IMPORTANT]
-> **Mobile Sync is hidden in UsageBar 2.3.3.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.3.3. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
+> **Mobile Sync is hidden in UsageBar 2.3.4.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.3.4. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
 
 - **UsageBar Mobile** is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. A free **Personal Team** works, with Apple's roughly **7-day** development provisioning limit.
 - The phone never talks to Codex or Claude and holds no provider credentials. Its only input is a sanitized snapshot from your Mac.
@@ -163,7 +163,7 @@ Windows end-user packages are self-contained; no separate .NET Runtime installat
 
 #### macOS
 
-1. Download `UsageBar-2.3.3-macOS-arm64.zip` from the [`v2.3.3` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.3).
+1. Download `UsageBar-2.3.4-macOS-arm64.zip` from the [`v2.3.4` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.4).
 2. Extract the ZIP and move `UsageBar.app` to the **Applications** folder.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
@@ -187,7 +187,7 @@ Apple's official guidance: [Open an app Apple cannot check for malicious softwar
 
 #### Windows installer — recommended
 
-1. Open the [`windows-v2.3.3` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.3).
+1. Open the [`windows-v2.3.4` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.4).
 2. Download `UsageBar-Setup-x64.exe`.
 3. Optionally complete the verification steps below.
 4. Run the installer. It installs for the current user only and does not request administrator permission.
@@ -201,7 +201,7 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 
 #### Windows portable
 
-1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.3/UsageBar-Windows-x64.zip).
+1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.4/UsageBar-Windows-x64.zip).
 2. Extract it to a permanent, writable folder.
 3. Do not run the app directly from inside the ZIP.
 4. Run `UsageBar.exe`.
@@ -213,13 +213,13 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 Compare the download with the `.sha256` file on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-2.3.3-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.3.4-macOS-arm64.zip
 ```
 
 Verify GitHub build provenance for the CI-produced package:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-2.3.3-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.3.4-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
