@@ -784,7 +784,7 @@ require_present \
 # lab build and a shipping build serve the same phone from the same machine.
 require_present \
   "Mobil eşitleme kimlik kapısı üretim paket kimliğinden okumuyor" \
-  'productionBundleIdentifier = "local\.codex\.usagebar"'
+  'productionBundleIdentifier = "com\.akwnnwastaken\.usagebar"'
 
 scan_forbidden \
   "Mobil eşitlemede laboratuvar paket kimliği hâlâ kabul ediliyor" \

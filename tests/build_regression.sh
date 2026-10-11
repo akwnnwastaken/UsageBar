@@ -31,6 +31,15 @@ if [[ "$signature_valid" != true ]]; then
   exit 1
 fi
 
+expected_identifier="com.akwnnwastaken.usagebar"
+plist_identifier="$(plutil -extract CFBundleIdentifier raw "$APP_DIR/Contents/Info.plist")"
+signature_metadata="$(codesign --display --verbose=4 "$APP_DIR" 2>&1)"
+if [[ "$plist_identifier" != "$expected_identifier" ]] || \
+   [[ $'\n'"$signature_metadata"$'\n' != *$'\n'"Identifier=$expected_identifier"$'\n'* ]]; then
+  print -u2 "Uygulama paketinin plist veya imza kimliği beklenen kimlikle eşleşmiyor"
+  exit 1
+fi
+
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
 
 while IFS= read -r file; do

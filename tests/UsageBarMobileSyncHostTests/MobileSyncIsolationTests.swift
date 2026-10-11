@@ -41,10 +41,11 @@ final class MobileSyncIsolationTests: XCTestCase {
     /// this code, or a lab build and a shipping build could serve the same
     /// phone from the same machine.
     func testOnlyUsageBarsOwnBundleIdentifierEnablesMobileSync() {
-        XCTAssertTrue(MobileSyncIdentity.isEnabledForBundle("local.codex.usagebar"))
+        XCTAssertTrue(MobileSyncIdentity.isEnabledForBundle("com.akwnnwastaken.usagebar"))
+        XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("local.codex.usagebar"))
         XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("com.usagebar.mobilelab.host"))
         XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("com.usagebar.mobilelab"))
-        XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("local.codex.usagebar.evil"))
+        XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("com.akwnnwastaken.usagebar.evil"))
         XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle("local.codex"))
         XCTAssertFalse(MobileSyncIdentity.isEnabledForBundle(""))
     }
@@ -134,7 +135,7 @@ final class MobileSyncIsolationTests: XCTestCase {
     /// user pairs once more.
     func testProductionNamespacesAreDistinctFromTheLabHost() {
         XCTAssertEqual(MobileSyncIdentity.loopbackPort, 18642)
-        XCTAssertEqual(MobileSyncIdentity.productionBundleIdentifier, "local.codex.usagebar")
+        XCTAssertEqual(MobileSyncIdentity.productionBundleIdentifier, "com.akwnnwastaken.usagebar")
         XCTAssertEqual(MobileSyncIdentity.keychainService, "local.codex.usagebar.mobile-sync")
         XCTAssertEqual(MobileSyncUserDefaultsPreferences.preferenceKey, "MobileSyncEnabled")
 
@@ -161,6 +162,7 @@ final class MobileSyncIsolationTests: XCTestCase {
             from: try Data(contentsOf: url), format: nil
         ) as? [String: Any]
         let info = try XCTUnwrap(plist)
+        XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.akwnnwastaken.usagebar")
         XCTAssertEqual(info["CFBundleIdentifier"] as? String, MobileSyncIdentity.productionBundleIdentifier)
         XCTAssertEqual(info["CFBundleName"] as? String, "UsageBar")
         XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.3.4")
