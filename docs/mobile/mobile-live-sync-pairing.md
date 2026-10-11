@@ -81,7 +81,7 @@ object, no provider, no preference reference.
 
 ## The desktop identity
 
-Mobile Sync runs inside UsageBar itself, under `local.codex.usagebar`. There is
+Mobile Sync runs inside UsageBar itself, under `com.akwnnwastaken.usagebar`. There is
 no second Mac application.
 
 That identifier does the work: it is the **runtime gate**.

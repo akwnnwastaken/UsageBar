@@ -167,7 +167,7 @@ no Tailscale code, configuration, tailnet, tag, auth key or policy exists.
 
 Phase 4 was a **prototype** that no application depended on. Phase 8 wired the
 transport into a separate host bundle, and Phase 9 moved it into UsageBar
-itself under `local.codex.usagebar`, which is now the runtime gate. Linking the
+itself, whose current bundle identity `com.akwnnwastaken.usagebar` is the runtime gate. Linking the
 module is still not permission to run it: a process that is not UsageBar never
 opens a listener, holds a credential or offers pairing, and the preference
 behind it defaults to off, so a first launch after upgrading opens nothing.

@@ -95,7 +95,7 @@ final class ReleaseConfigurationTests: XCTestCase {
             format: nil
         ) as? [String: Any]
         let info = try XCTUnwrap(plist)
-        XCTAssertEqual(info["CFBundleIdentifier"] as? String, "local.codex.usagebar")
+        XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.akwnnwastaken.usagebar")
         XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.3.4")
     }
 

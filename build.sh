@@ -70,7 +70,7 @@ cp "$PROJECT_DIR/UsageBar.icns" "$APP_DIR/Contents/Resources/UsageBar.icns"
 
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
 xattr -cr "$APP_DIR"
-codesign --force --sign - --identifier local.codex.usagebar "$APP_DIR"
+codesign --force --sign - --identifier com.akwnnwastaken.usagebar "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
 # Publish from a clean directory. Copying into an existing .app would preserve

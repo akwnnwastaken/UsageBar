@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>UsageBar</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.codex.usagebar</string>
+	<string>com.akwnnwastaken.usagebar</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

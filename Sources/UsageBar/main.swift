@@ -538,7 +538,7 @@ enum ExecutableLocator {
 private enum ProviderProcessContext {
     static let workingDirectory: URL = {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("local.codex.usagebar", isDirectory: true)
+            .appendingPathComponent("com.akwnnwastaken.usagebar", isDirectory: true)
         do {
             try FileManager.default.createDirectory(
                 at: directory,

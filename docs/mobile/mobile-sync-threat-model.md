@@ -545,7 +545,7 @@ never advances its age.
 ### T33 — Mobile Sync running when the user never asked for it
 
 **Mitigation.** Two independent gates, both of which must say yes. The bundle
-identifier must be exactly `local.codex.usagebar` — a single permitted value,
+identifier must be exactly `com.akwnnwastaken.usagebar` — a single permitted value,
 so a test runner, an unbundled build or any other application that links the
 module never opens a listener, holds a credential or offers pairing. And the
 `MobileSyncEnabled` preference must be true; absent reads as false, so a first

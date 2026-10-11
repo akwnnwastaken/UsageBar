@@ -18,7 +18,7 @@ public enum MobileSyncIdentity {
     /// mean a lab build and a shipping build could serve the same phone from
     /// the same machine, which is precisely the confusion the identity gate
     /// exists to prevent.
-    public static let productionBundleIdentifier = "local.codex.usagebar"
+    public static let productionBundleIdentifier = "com.akwnnwastaken.usagebar"
 
     /// The Keychain service namespace for the mobile auth record.
     ///
