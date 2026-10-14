@@ -1526,6 +1526,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads or writes a preference: the connection
+        // fallback below would otherwise record "not connected" for an
+        // upgrade whose real choices still sit under the former identifier.
+        // Gated here as well, so an unbundled build never even reads the
+        // former domain.
+        let bundleIdentifier = Bundle.main.bundleIdentifier
+        if bundleIdentifier == LegacyBundlePreferenceMigration.currentBundleIdentifier {
+            let defaults = UserDefaults.standard
+            LegacyBundlePreferenceMigration.run(
+                defaults: defaults,
+                currentDomain: defaults.persistentDomain(
+                    forName: LegacyBundlePreferenceMigration.currentBundleIdentifier
+                ) ?? [:],
+                legacyDomain: defaults.persistentDomain(
+                    forName: LegacyBundlePreferenceMigration.legacyDomain
+                ),
+                bundleIdentifier: bundleIdentifier
+            )
+        }
         migrateLegacyPreferences()
         let defaults = UserDefaults.standard
         let storedHistory = defaults.data(forKey: PreferenceKey.usageHistoryData)

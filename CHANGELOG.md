@@ -9,6 +9,25 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Changed
+- macOS: the app's bundle identifier is now `com.akwnnwastaken.usagebar`
+  (formerly `local.codex.usagebar`). On the first launch after updating,
+  UsageBar copies its preferences — provider connections, settings and usage
+  history — from the former identifier once, so nothing has to be set up
+  again. The former preferences are left untouched. If **Launch at login** was
+  on, check it after updating and turn it on again if needed.
+- macOS: uygulamanın paket kimliği artık `com.akwnnwastaken.usagebar`
+  (önceden `local.codex.usagebar`). Güncellemeden sonraki ilk açılışta UsageBar
+  tercihlerini — sağlayıcı bağlantıları, ayarlar ve kullanım geçmişi — eski
+  kimlikten bir kez kopyalar; hiçbir şeyi yeniden kurmak gerekmez. Eski
+  tercihlere dokunulmaz. **Oturum açılışında başlat** açıksa güncellemeden
+  sonra kontrol edin ve gerekirse yeniden açın.
+
+### Documentation
+- README: new "What UsageBar accesses" section listing, per platform, every
+  command run, path checked, Keychain item, file, defaults domain and registry
+  key involved.
+
 ## [2.3.4] - 2026-10-09
 
 ### Changed
