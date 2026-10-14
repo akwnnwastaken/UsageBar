@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.5] - 2026-10-14
+
 ### Changed
 - macOS: the app's bundle identifier is now `com.akwnnwastaken.usagebar`
   (formerly `local.codex.usagebar`). On the first launch after updating,
@@ -27,6 +29,13 @@ Releases before v1.5.2 are listed on the
 - README: new "What UsageBar accesses" section listing, per platform, every
   command run, path checked, Keychain item, file, defaults domain and registry
   key involved.
+
+### Notes
+- **Windows 2.3.5 is a version-synchronization release.** Its behaviour is
+  unchanged from 2.3.4; the bundle-identifier change and preference copy are
+  macOS-only.
+- **Windows 2.3.5 yalnızca sürüm eşitleme yayınıdır.** Davranışı 2.3.4 ile
+  aynıdır; paket kimliği değişikliği ve tercih kopyalama yalnızca macOS içindir.
 
 ## [2.3.4] - 2026-10-09
 
@@ -363,7 +372,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.4...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.5...HEAD
+[2.3.5]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.1...v2.3.2
