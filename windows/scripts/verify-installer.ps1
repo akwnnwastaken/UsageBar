@@ -107,6 +107,7 @@ Test-Requirement 'The installer does not request highestAvailable' (-not ($text 
 $wide = [System.Text.Encoding]::Unicode.GetString($bytes)
 Test-Requirement 'Version metadata carries the product name' ($wide -match 'UsageBar')
 Test-Requirement 'Version metadata carries a publisher' ($wide -match 'UsageBar contributors')
+Test-Requirement 'Version metadata carries the copyright line' ($wide.Contains('Copyright ' + [char]0x00A9 + ' 2026 Ahmed Tu' + [char]0x011F + 'ra Kasem. MIT License.'))
 Test-Requirement 'Version metadata carries a product version' ($wide -match 'ProductVersion')
 Test-Requirement 'Version metadata carries a file version' ($wide -match 'FileVersion')
 
