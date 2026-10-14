@@ -40,6 +40,13 @@ if [[ "$plist_identifier" != "$expected_identifier" ]] || \
   exit 1
 fi
 
+expected_copyright="Copyright © 2026 Ahmed Tuğra Kasem. MIT License."
+plist_copyright="$(plutil -extract NSHumanReadableCopyright raw "$APP_DIR/Contents/Info.plist" 2>/dev/null || true)"
+if [[ "$plist_copyright" != "$expected_copyright" ]]; then
+  print -u2 "Uygulama paketinin telif hakkı bilgisi beklenen metinle eşleşmiyor"
+  exit 1
+fi
+
 "$APP_DIR/Contents/MacOS/UsageBar" --self-test
 
 while IFS= read -r file; do

@@ -9,6 +9,12 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Changed
+- macOS: Finder's Get Info window now shows the copyright and license line
+  (`Copyright © 2026 Ahmed Tuğra Kasem. MIT License.`).
+- macOS: Finder'ın Bilgi Al penceresi artık telif hakkı ve lisans satırını
+  gösteriyor (`Copyright © 2026 Ahmed Tuğra Kasem. MIT License.`).
+
 ## [2.3.5] - 2026-10-14
 
 ### Changed
