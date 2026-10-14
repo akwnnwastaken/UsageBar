@@ -255,7 +255,7 @@ Timeouts terminate child processes, output is limited to 2 MiB, and provider exe
 
 UsageBar does not require Full Disk Access, Documents/Desktop access, network volume access, Screen Recording, Accessibility, or Automation.
 
-When connecting Claude Code, macOS may ask for access to the existing `Claude Code-credentials` Keychain item; choose **Always Allow** once to prevent repeated prompts.
+When connecting Claude Code, macOS may ask for access to the existing `Claude Code-credentials` Keychain item; choose **Always Allow** once to prevent repeated prompts. The item is read by the Claude Code process that UsageBar launches, not by UsageBar itself — see [What UsageBar accesses](#what-usagebar-accesses).
 
 **Windows behavior**
 
@@ -264,6 +264,47 @@ The installer does not require administrator permission, install a service, driv
 Autostart only manages UsageBar's current-user `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` entry.
 
 The diagnostic summary is limited to version, operating-system version, connection state, window kinds, and fixed safe error codes. It excludes raw CLI output, file paths, user names, and credentials.
+
+## What UsageBar accesses
+
+UsageBar has no server, user account, analytics, telemetry, crash reporting, or update check. The macOS and Windows apps contain no code that connects to the internet. Their only networking code is the macOS Mobile Sync listener, which binds `127.0.0.1` only and is hidden in 2.3.4.
+
+Usage numbers come from the provider tool already installed on your computer. **That tool contacts its own service** — OpenAI for Codex, Anthropic for Claude Code — with your existing sign-in, exactly as it does when you use it yourself. UsageBar reads only the tool's printed answer, keeps the parsed percentages and reset times, and discards the raw output.
+
+UsageBar runs no provider tool before you click **Connect Codex** or **Connect Claude Code**, or while collection for that provider is paused.
+
+#### macOS
+
+| Access | When | What UsageBar does with it |
+| --- | --- | --- |
+| Runs `codex app-server --stdio --disable apps --disable plugins --disable remote_plugin --disable plugin_sharing` | Each Codex refresh | Sends the app-server `initialize` handshake (UsageBar's name and version) and one `account/rateLimits/read` request, then parses the rate-limit answer. |
+| Runs `claude -p /usage --no-session-persistence --setting-sources "" --no-chrome --strict-mcp-config --tools ""` | Each Claude Code refresh | Parses the plain-text usage summary. No session or transcript is recorded and no model quota is used. |
+| Runs `claude auth status --json` | Only when a `/usage` answer is unreadable | Reads only the `loggedIn` flag; everything else is discarded. |
+| Runs `claude auth login --claudeai` | Only when you choose **Sign in to Claude…** | Claude Code opens the browser sign-in itself. Output is discarded; UsageBar never sees the credential. |
+| Checks fixed executable paths: `/Applications/ChatGPT.app/…`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.claude/bin`, `~/.claude/local`, and the Claude app's `~/Library/Application Support/Claude/claude-code/<version>/` | Before each launch, and for **Copy diagnostics** | Checks that the resolved file is executable, owned by you or root, and not writable by others; the Claude app's copy must also carry Anthropic's Developer ID signature (team `Q6L2SF6YDW`). Your `PATH` and the current folder are never searched. |
+| `Claude Code-credentials` Keychain item | When Claude Code runs | **Read by Claude Code, not by UsageBar.** Because UsageBar starts Claude Code, macOS may show a one-time access prompt. |
+| `local.codex.usagebar.mobile-sync` Keychain item | Only if you used Mobile Sync | UsageBar's own item for Mobile Sync pairing digests. Not read or written while Mobile Sync is hidden (2.3.4). |
+| Preferences in the `com.akwnnwastaken.usagebar` defaults domain | Always | Settings, connection choices, and — with mini charts on — history under `usage.history.samples.v2` (timestamp and integer remaining percentage only, at most 24 hours). |
+| `$TMPDIR/com.akwnnwastaken.usagebar` | Each provider launch | Empty working folder for provider processes, so no project settings are picked up. |
+| Login Items (`SMAppService.mainApp`) | Only when you change **Launch at login** | Registers or unregisters UsageBar itself; no helper or LaunchAgent. |
+
+UsageBar does not open files inside `~/.codex` or `~/.claude`, and does not read conversations, projects, or credential files. The provider tool reads its own configuration and sign-in as it normally would.
+
+#### Windows
+
+| Access | When | What UsageBar does with it |
+| --- | --- | --- |
+| Runs `codex.exe` (or, for an npm install, a validated `node.exe` with Codex's script) and `claude.exe` with the same usage and sign-in-status arguments as on macOS, plus `claude --version` when probing an installation; for WSL, `wsl.exe --list --quiet` and `wsl.exe --distribution <name> --exec claude …` | Each refresh | Same parsing as on macOS. Processes start through `CreateProcessW` without a shell and inside a Job Object. |
+| Checks documented installation folders (for example `%USERPROFILE%\.local\bin`, `%LOCALAPPDATA%\Programs`, `%LOCALAPPDATA%\Microsoft\WinGet\Links`, npm global folders, `%USERPROFILE%\.claude\local`), or an executable path you set yourself in Settings | Before each launch | Validates the executable and its install root; see [executable discovery and trust](docs/windows-port.md#5-executable-discovery-and-trust). |
+| Looks for Git for Windows' `bash.exe` | Native Claude Code launches | Passes the trusted path to Claude Code as `CLAUDE_CODE_GIT_BASH_PATH`; UsageBar never runs `bash.exe` itself. |
+| `%LOCALAPPDATA%\UsageBar\settings.json` and `history.json` | Always (history only with mini charts on) | Settings and history, with the same fields and limits as macOS. |
+| `%LOCALAPPDATA%\UsageBar\provider-run` | Each provider launch | Working folder for provider processes. |
+| `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `UsageBar` | Only when you change **Launch at login** | Adds or removes the autostart entry. |
+| `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` | Always | Read-only, to match the tray icon and windows to the light or dark theme. |
+
+The Windows app does not use Windows Credential Manager, read credential files, or open files inside `.codex` or `.claude`.
+
+**Türkçe:** UsageBar'ın sunucusu, hesabı, analitiği, telemetrisi, çökme raporu veya güncelleme denetimi yoktur; macOS ve Windows uygulamalarında internete bağlanan kod bulunmaz (tek ağ kodu, yalnızca `127.0.0.1`'e bağlanan ve 2.3.4'te gizli olan macOS Mobile Sync dinleyicisidir). Kullanım verisini bilgisayarınızda zaten kurulu olan Codex veya Claude Code aracı sağlar; **bu araç kendi hizmetine (OpenAI veya Anthropic) mevcut oturumunuzla bağlanır**, tıpkı onu kendiniz kullandığınızda olduğu gibi. UsageBar yalnızca aracın yazdırdığı yanıtı okur, yüzde ve sıfırlama zamanlarını saklar, ham çıktıyı atar. Sağlayıcıyı bağlamadan veya toplama duraklatılmışken hiçbir sağlayıcı aracı çalıştırılmaz. UsageBar `~/.codex` veya `~/.claude` içindeki dosyaları açmaz; `Claude Code-credentials` Keychain öğesini UsageBar değil, başlattığı Claude Code okur. UsageBar'ın kendi kalıcı verisi ayarlar ve (açıksa) yalnızca zaman damgası ile tam sayı kalan yüzdeden oluşan en fazla 24 saatlik geçmiştir; oturum açılışında başlatmayı açarsanız sistemin başlangıç kaydı da eklenir. Ayrıntılar yukarıdaki tablolardadır.
 
 ## Troubleshooting
 
