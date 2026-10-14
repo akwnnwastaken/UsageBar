@@ -9,6 +9,8 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.3.6] - 2026-10-14
+
 ### Changed
 - macOS: Finder's Get Info window now shows the copyright and license line
   (`Copyright © 2026 Ahmed Tuğra Kasem. MIT License.`).
@@ -382,7 +384,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.5...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.6...HEAD
+[2.3.6]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.2...v2.3.3
