@@ -46,6 +46,8 @@ internal sealed class UsageHistoryChart : FrameworkElement
         typeof(UsageHistoryChart),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public bool StartsAtLatestReset { get; init; } = true;
+
     public IReadOnlyList<UsageHistorySample>? Samples
     {
         get => (IReadOnlyList<UsageHistorySample>?)GetValue(SamplesProperty);
@@ -89,7 +91,7 @@ internal sealed class UsageHistoryChart : FrameworkElement
         var chart = (UsageHistoryChart)dependencyObject;
         var samples = eventArgs.NewValue as IReadOnlyList<UsageHistorySample>;
         chart._chartGeometry = samples is { Count: > 0 }
-            ? new UsageHistoryChartGeometry(new UsageHistoryChartModel(samples))
+            ? new UsageHistoryChartGeometry(new UsageHistoryChartModel(samples, chart.StartsAtLatestReset))
             : null;
 
         // A new series invalidates any previous selection, so the panel falls
@@ -187,7 +189,19 @@ internal sealed class UsageHistoryChart : FrameworkElement
 
         Point At(int index) => ToPoint(chartGeometry.PointForSample(points[index], plotRect));
 
-        var pen = new Pen(LineBrush, 1.75)
+        if (!StartsAtLatestReset)
+        {
+            var gridPen = new Pen(LineBrush, 0.5);
+            drawingContext.PushOpacity(0.15);
+            foreach (var fraction in new[] { 0.0, 0.5, 1.0 })
+            {
+                var y = plot.Top + fraction * plot.Height;
+                drawingContext.DrawLine(gridPen, new Point(plot.Left, y), new Point(plot.Right, y));
+            }
+            drawingContext.Pop();
+        }
+
+        var pen = new Pen(LineBrush, StartsAtLatestReset ? 1.75 : 2)
         {
             LineJoin = PenLineJoin.Round,
             StartLineCap = PenLineCap.Round,
@@ -232,6 +246,21 @@ internal sealed class UsageHistoryChart : FrameworkElement
             }
 
             geometry.Freeze();
+            if (!StartsAtLatestReset)
+            {
+                var fill = new StreamGeometry();
+                using (var context = fill.Open())
+                {
+                    context.BeginFigure(new Point(At(0).X, plot.Bottom), isFilled: true, isClosed: true);
+                    for (var index = 0; index < points.Count; index++)
+                        context.LineTo(At(index), isStroked: false, isSmoothJoin: false);
+                    context.LineTo(new Point(At(points.Count - 1).X, plot.Bottom), isStroked: false, isSmoothJoin: false);
+                }
+                fill.Freeze();
+                drawingContext.PushOpacity(0.07);
+                drawingContext.DrawGeometry(LineBrush, null, fill);
+                drawingContext.Pop();
+            }
             drawingContext.DrawGeometry(null, pen, geometry);
             drawingContext.DrawEllipse(LineBrush, null, At(points.Count - 1), 2.5, 2.5);
         }

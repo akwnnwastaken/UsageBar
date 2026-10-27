@@ -31,6 +31,12 @@ public static class UsageHistoryModel
 {
     public static TimeSpan RetentionInterval { get; } = TimeSpan.FromHours(24);
 
+    public static TimeSpan WeeklyRetentionInterval { get; } = TimeSpan.FromDays(7);
+
+    public const int WeeklyMaximumSamplesPerSeries = 7 * 24 * 60 + 1;
+
+    public const int WeeklyMaximumEncodedBytes = 32 * 1024 * 1024;
+
     public static TimeSpan MinimumSampleInterval { get; } = TimeSpan.FromMinutes(1);
 
     public const int MaximumSamplesPerSeries = 24 * 60 + 1;
@@ -54,11 +60,12 @@ public static class UsageHistoryModel
     public static IReadOnlyList<UsageHistorySample> Adding(
         int remainingPercent,
         DateTimeOffset at,
-        IReadOnlyList<UsageHistorySample> existing)
+        IReadOnlyList<UsageHistorySample> existing,
+        bool weekly = false)
     {
         ArgumentNullException.ThrowIfNull(existing);
 
-        var cutoff = at - RetentionInterval;
+        var cutoff = at - (weekly ? WeeklyRetentionInterval : RetentionInterval);
         var samples = existing
             .Where(sample => sample.RecordedAt >= cutoff && sample.RecordedAt <= at)
             .ToList();
@@ -73,7 +80,7 @@ public static class UsageHistoryModel
             samples.Add(addition);
         }
 
-        return Suffix(samples, MaximumSamplesPerSeries);
+        return Suffix(samples, weekly ? WeeklyMaximumSamplesPerSeries : MaximumSamplesPerSeries);
     }
 
     /// <summary>
@@ -82,11 +89,12 @@ public static class UsageHistoryModel
     /// </summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> Sanitized(
         IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> history,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool weekly = false)
     {
         ArgumentNullException.ThrowIfNull(history);
 
-        var cutoff = now - RetentionInterval;
+        var cutoff = now - (weekly ? WeeklyRetentionInterval : RetentionInterval);
         var latestAllowed = now + MinimumSampleInterval;
         var result = new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal);
 
@@ -123,7 +131,7 @@ public static class UsageHistoryModel
 
             if (samples.Count > 0)
             {
-                result[key] = Suffix(samples, MaximumSamplesPerSeries);
+                result[key] = Suffix(samples, weekly ? WeeklyMaximumSamplesPerSeries : MaximumSamplesPerSeries);
             }
         }
 
@@ -147,10 +155,10 @@ public static class UsageHistoryModel
     /// empty history instead of throwing — a corrupt file must never crash
     /// UsageBar or wipe out an otherwise healthy launch.
     /// </summary>
-    public static IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> Decode(byte[]? data)
+    public static IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> Decode(byte[]? data, bool weekly = false)
     {
         var empty = new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal);
-        if (data is null || data.Length == 0 || data.Length > MaximumEncodedBytes)
+        if (data is null || data.Length == 0 || data.Length > (weekly ? WeeklyMaximumEncodedBytes : MaximumEncodedBytes))
         {
             return empty;
         }

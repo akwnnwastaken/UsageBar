@@ -21,6 +21,7 @@ public sealed class UsageBarStorage
         RootDirectory = rootDirectory ?? DefaultRootDirectory();
         SettingsPath = Path.Combine(RootDirectory, "settings.json");
         HistoryPath = Path.Combine(RootDirectory, "history.json");
+        WeeklyHistoryPath = Path.Combine(RootDirectory, "history-weekly.json");
     }
 
     /// <summary>
@@ -58,6 +59,8 @@ public sealed class UsageBarStorage
 
     public string HistoryPath { get; }
 
+    public string WeeklyHistoryPath { get; }
+
     /// <summary>
     /// Loads settings, applying every default. A missing, truncated or
     /// malformed file yields the defaults instead of an error.
@@ -75,9 +78,11 @@ public sealed class UsageBarStorage
     /// Loads history and immediately enforces every retention limit: maximum
     /// age, maximum samples per series and maximum number of series.
     /// </summary>
-    public IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> LoadHistory(DateTimeOffset now)
+    public IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> LoadHistory(DateTimeOffset now, bool weekly = false)
     {
-        var document = AtomicJsonFile.Read<UsageHistoryDocument>(HistoryPath);
+        var document = AtomicJsonFile.Read<UsageHistoryDocument>(
+            weekly ? WeeklyHistoryPath : HistoryPath,
+            weekly ? UsageHistoryModel.WeeklyMaximumEncodedBytes : AtomicJsonFile.MaximumBytes);
         if (document?.Series is null)
         {
             return new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal);
@@ -92,17 +97,18 @@ public sealed class UsageBarStorage
             }
         }
 
-        return UsageHistoryModel.Sanitized(series, now);
+        return UsageHistoryModel.Sanitized(series, now, weekly);
     }
 
     public bool SaveHistory(
         IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> history,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool weekly = false)
     {
         ArgumentNullException.ThrowIfNull(history);
 
-        var sanitized = UsageHistoryModel.Sanitized(history, now);
-        return AtomicJsonFile.Write(HistoryPath, new UsageHistoryDocument
+        var sanitized = UsageHistoryModel.Sanitized(history, now, weekly);
+        return AtomicJsonFile.Write(weekly ? WeeklyHistoryPath : HistoryPath, new UsageHistoryDocument
         {
             SchemaVersion = UsageHistoryDocument.CurrentSchemaVersion,
             Series = sanitized.ToDictionary(
@@ -112,11 +118,11 @@ public sealed class UsageBarStorage
         });
     }
 
-    public bool ClearHistory()
+    public bool ClearHistory(bool weekly = false)
     {
         try
         {
-            File.Delete(HistoryPath);
+            File.Delete(weekly ? WeeklyHistoryPath : HistoryPath);
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

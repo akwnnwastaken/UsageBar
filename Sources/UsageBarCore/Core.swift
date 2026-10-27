@@ -425,6 +425,9 @@ public struct UsageHistorySample: Codable, Equatable {
 
 public enum UsageHistoryModel {
     public static let retentionInterval: TimeInterval = 24 * 60 * 60
+    public static let weeklyRetentionInterval: TimeInterval = 7 * 24 * 60 * 60
+    public static let weeklyMaximumSamplesPerSeries = 7 * 24 * 60 + 1
+    public static let weeklyMaximumEncodedBytes = 32 * 1_024 * 1_024
     public static let minimumSampleInterval: TimeInterval = 60
     public static let maximumSamplesPerSeries = 24 * 60 + 1
     public static let maximumSeries = 16
@@ -433,9 +436,11 @@ public enum UsageHistoryModel {
     public static func adding(
         remainingPercent: Int,
         at date: Date,
-        to existing: [UsageHistorySample]
+        to existing: [UsageHistorySample],
+        weekly: Bool = false
     ) -> [UsageHistorySample] {
-        let cutoff = date.addingTimeInterval(-retentionInterval)
+        let retention = weekly ? weeklyRetentionInterval : retentionInterval
+        let cutoff = date.addingTimeInterval(-retention)
         var samples = existing.filter { $0.recordedAt >= cutoff && $0.recordedAt <= date }
         let sample = UsageHistorySample(
             recordedAt: date,
@@ -447,23 +452,24 @@ public enum UsageHistoryModel {
         } else {
             samples.append(sample)
         }
-        return Array(samples.suffix(maximumSamplesPerSeries))
+        return Array(samples.suffix(weekly ? weeklyMaximumSamplesPerSeries : maximumSamplesPerSeries))
     }
 
     public static func encode(_ history: [String: [UsageHistorySample]]) -> Data? {
         try? JSONEncoder().encode(history)
     }
 
-    public static func decode(_ data: Data?) -> [String: [UsageHistorySample]] {
-        guard let data, data.count <= maximumEncodedBytes else { return [:] }
+    public static func decode(_ data: Data?, weekly: Bool = false) -> [String: [UsageHistorySample]] {
+        guard let data, data.count <= (weekly ? weeklyMaximumEncodedBytes : maximumEncodedBytes) else { return [:] }
         return (try? JSONDecoder().decode([String: [UsageHistorySample]].self, from: data)) ?? [:]
     }
 
     public static func sanitized(
         _ history: [String: [UsageHistorySample]],
-        now: Date
+        now: Date,
+        weekly: Bool = false
     ) -> [String: [UsageHistorySample]] {
-        let cutoff = now.addingTimeInterval(-retentionInterval)
+        let cutoff = now.addingTimeInterval(-(weekly ? weeklyRetentionInterval : retentionInterval))
         let latestAllowedDate = now.addingTimeInterval(minimumSampleInterval)
         var result: [String: [UsageHistorySample]] = [:]
 
@@ -485,7 +491,7 @@ public enum UsageHistoryModel {
                 }
             }
             if !samples.isEmpty {
-                result[key] = Array(samples.suffix(maximumSamplesPerSeries))
+                result[key] = Array(samples.suffix(weekly ? weeklyMaximumSamplesPerSeries : maximumSamplesPerSeries))
             }
         }
         return result
@@ -501,7 +507,8 @@ public struct UsageHistoryChartModel {
     public let lowerBound: Double
     public let upperBound: Double
 
-    public init(samples: [UsageHistorySample]) {
+    /// The separate weekly chart keeps all resets and uses a fixed 0–100% scale.
+    public init(samples: [UsageHistorySample], startsAtLatestReset: Bool = true) {
         let sortedSamples = samples.sorted { $0.recordedAt < $1.recordedAt }
         self.samples = sortedSamples
 
@@ -514,7 +521,7 @@ public struct UsageHistoryChartModel {
             sortedSamples[index].remainingPercent - sortedSamples[index - 1].remainingPercent
                 >= Self.resetJumpThreshold
         }
-        let windowStart = resetStarts.last ?? 0
+        let windowStart = startsAtLatestReset ? (resetStarts.last ?? 0) : 0
         let windowSamples = Array(sortedSamples[windowStart...])
 
         displaySamples = windowSamples.enumerated().map { index, sample in
@@ -547,8 +554,8 @@ public struct UsageHistoryChartModel {
             upper = 100
         }
 
-        lowerBound = lower
-        upperBound = upper
+        lowerBound = startsAtLatestReset ? lower : 0
+        upperBound = startsAtLatestReset ? upper : 100
     }
 
     /// Duration of the shown window (since the last reset), not the full history.

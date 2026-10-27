@@ -14,13 +14,16 @@ namespace UsageBar.Windows.Core.History;
 /// nothing (a stale value is never recorded as a new sample), and the recorded
 /// value is always the <b>raw</b> remaining percentage — the display noise
 /// filter never touches stored history.
+/// The separate seven-day archive records only the ordinary weekly quota;
+/// mini history still records every window.
 /// </summary>
 public static class UsageHistoryRecorder
 {
     public static IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> Record(
         IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> history,
         IReadOnlyDictionary<string, ProviderUsage> acceptedMeasurements,
-        DateTimeOffset at)
+        DateTimeOffset at,
+        bool weekly = false)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(acceptedMeasurements);
@@ -36,16 +39,18 @@ public static class UsageHistoryRecorder
 
             foreach (var window in usage.Windows)
             {
+                if (weekly && window.Kind != UsageWindowKind.Weekly) continue;
                 var key = UsageHistoryModel.SeriesKey(providerName, window.Kind);
                 updated.TryGetValue(key, out var existing);
                 updated[key] = UsageHistoryModel.Adding(
                     window.RemainingPercent,
                     at,
-                    existing ?? Array.Empty<UsageHistorySample>());
+                    existing ?? Array.Empty<UsageHistorySample>(),
+                    weekly);
             }
         }
 
-        return UsageHistoryModel.Sanitized(updated, at);
+        return UsageHistoryModel.Sanitized(updated, at, weekly);
     }
 
     /// <summary>

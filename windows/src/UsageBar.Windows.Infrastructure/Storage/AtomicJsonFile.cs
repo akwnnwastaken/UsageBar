@@ -24,13 +24,13 @@ public static class AtomicJsonFile
         ReadCommentHandling = JsonCommentHandling.Skip
     };
 
-    public static T? Read<T>(string path)
+    public static T? Read<T>(string path, int maximumBytes = MaximumBytes)
         where T : class
     {
         try
         {
             var info = new FileInfo(path);
-            if (!info.Exists || info.Length == 0 || info.Length > MaximumBytes)
+            if (!info.Exists || info.Length == 0 || info.Length > maximumBytes)
             {
                 return null;
             }
