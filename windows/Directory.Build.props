@@ -18,9 +18,9 @@
     <Product>UsageBar</Product>
     <Company>UsageBar</Company>
     <Copyright>Copyright © 2026 Ahmed Tuğra Kasem. MIT License.</Copyright>
-    <Version>2.3.6</Version>
-    <AssemblyVersion>2.3.6.0</AssemblyVersion>
-    <FileVersion>2.3.6.0</FileVersion>
+    <Version>2.4.0</Version>
+    <AssemblyVersion>2.4.0.0</AssemblyVersion>
+    <FileVersion>2.4.0.0</FileVersion>
     <!-- No telemetry, no crash reporting, no third-party runtime dependencies. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>

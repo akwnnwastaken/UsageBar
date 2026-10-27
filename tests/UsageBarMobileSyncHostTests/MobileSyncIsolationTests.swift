@@ -165,8 +165,8 @@ final class MobileSyncIsolationTests: XCTestCase {
         XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.akwnnwastaken.usagebar")
         XCTAssertEqual(info["CFBundleIdentifier"] as? String, MobileSyncIdentity.productionBundleIdentifier)
         XCTAssertEqual(info["CFBundleName"] as? String, "UsageBar")
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.3.6")
-        XCTAssertEqual(info["CFBundleVersion"] as? String, "36")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.4.0")
+        XCTAssertEqual(info["CFBundleVersion"] as? String, "37")
     }
 
     /// No second Mac application. Mobile Sync is a feature of UsageBar, so the
