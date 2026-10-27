@@ -77,6 +77,9 @@ public sealed class UsageBarSettings
     [JsonPropertyName("usageHistoryEnabled")]
     public bool? UsageHistoryEnabled { get; set; }
 
+    [JsonPropertyName("weeklyHistoryEnabled")]
+    public bool? WeeklyHistoryEnabled { get; set; }
+
     [JsonPropertyName("trayGuidanceVersionShown")]
     public int? TrayGuidanceVersionShown { get; set; }
 
@@ -125,6 +128,7 @@ public static class UsageBarSettingsSanitizer
 
         value.UsageColorsEnabled ??= true;
         value.UsageHistoryEnabled ??= true;
+        value.WeeklyHistoryEnabled ??= false;
         value.ShowResetCountdown ??= false;
         value.CodexCollectionEnabled ??= true;
         value.ClaudeCollectionEnabled ??= true;

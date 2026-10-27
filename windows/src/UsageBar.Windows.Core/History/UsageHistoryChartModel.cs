@@ -15,7 +15,7 @@ public sealed class UsageHistoryChartModel
 
     public const double MinimumVerticalSpan = 10.0;
 
-    public UsageHistoryChartModel(IReadOnlyList<UsageHistorySample> samples)
+    public UsageHistoryChartModel(IReadOnlyList<UsageHistorySample> samples, bool startsAtLatestReset = true)
     {
         ArgumentNullException.ThrowIfNull(samples);
 
@@ -25,7 +25,7 @@ public sealed class UsageHistoryChartModel
         var windowStart = 0;
         for (var index = 1; index < sorted.Count; index++)
         {
-            if (sorted[index].RemainingPercent - sorted[index - 1].RemainingPercent >= ResetJumpThreshold)
+            if (startsAtLatestReset && sorted[index].RemainingPercent - sorted[index - 1].RemainingPercent >= ResetJumpThreshold)
             {
                 windowStart = index;
             }
@@ -79,8 +79,8 @@ public sealed class UsageHistoryChartModel
             upper = 100;
         }
 
-        LowerBound = lower;
-        UpperBound = upper;
+        LowerBound = startsAtLatestReset ? lower : 0;
+        UpperBound = startsAtLatestReset ? upper : 100;
     }
 
     /// <summary>Every retained sample, unmodified.</summary>
@@ -113,6 +113,12 @@ public sealed class UsageHistoryChartModel
         DisplaySamples.Count > 1
             ? DisplaySamples[^1].RemainingPercent - DisplaySamples[0].RemainingPercent
             : null;
+
+    /// <summary>Keep an inspected reading across refreshes; null follows the latest.</summary>
+    public int SelectionIndex(DateTimeOffset? selectedAt) =>
+        DisplaySamples.Count == 0 ? 0 : selectedAt is null ? DisplaySamples.Count - 1 :
+        Enumerable.Range(0, DisplaySamples.Count)
+            .MinBy(index => Math.Abs((DisplaySamples[index].RecordedAt - selectedAt.Value).TotalSeconds));
 
     /// <summary>0 at the bottom of the plotted range, 1 at the top.</summary>
     public double NormalizedY(int remainingPercent)

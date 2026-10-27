@@ -53,6 +53,7 @@ internal sealed class UsageBarController : IDisposable
     private PendingCollectionRefresh _pendingRefreshAfterEnable;
 
     private IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> _history;
+    private IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> _weeklyHistory;
     private CancellationTokenSource? _refresh;
     private int _rotatingProviderIndex;
     private bool _disposed;
@@ -72,6 +73,8 @@ internal sealed class UsageBarController : IDisposable
 
         Settings = _storage.LoadSettings();
         _history = _storage.LoadHistory(DateTimeOffset.Now);
+        _weeklyHistory = _storage.LoadHistory(DateTimeOffset.Now, weekly: true);
+        _storage.SaveHistory(_weeklyHistory, DateTimeOffset.Now, weekly: true);
     }
 
     public event EventHandler? Changed;
@@ -106,6 +109,8 @@ internal sealed class UsageBarController : IDisposable
     public IReadOnlyDictionary<string, ProviderUsage> DisplayUsages => _displayState.Apply(_usages);
 
     public IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> History => _history;
+
+    public IReadOnlyDictionary<string, IReadOnlyList<UsageHistorySample>> WeeklyHistory => _weeklyHistory;
 
     public AutoStartState AutoStartState { get; private set; } = new(AutoStartStatus.Disabled);
 
@@ -327,6 +332,16 @@ internal sealed class UsageBarController : IDisposable
         // that refresh accepted; the raw readings are what history records.
         _displayState.Advance(acceptedMeasurements);
 
+        if (Settings.WeeklyHistoryEnabled ?? false)
+        {
+            _weeklyHistory = UsageHistoryRecorder.Record(_weeklyHistory, acceptedMeasurements, now, weekly: true);
+            _storage.SaveHistory(_weeklyHistory, now, weekly: true);
+        }
+        else
+        {
+            RetainWeeklyHistory(now);
+        }
+
         if (Settings.UsageHistoryEnabled ?? true)
         {
             _history = UsageHistoryRecorder.Record(_history, acceptedMeasurements, now);
@@ -348,6 +363,7 @@ internal sealed class UsageBarController : IDisposable
     /// </summary>
     private void MaintainHistoryRetention(DateTimeOffset now)
     {
+        RetainWeeklyHistory(now);
         if (!(Settings.UsageHistoryEnabled ?? true))
         {
             return;
@@ -361,6 +377,30 @@ internal sealed class UsageBarController : IDisposable
 
         _history = retained;
         _storage.SaveHistory(_history, now);
+        RaiseChanged();
+    }
+
+    public void RetainWeeklyHistory(DateTimeOffset now)
+    {
+        var retained = UsageHistoryModel.Sanitized(_weeklyHistory, now, weekly: true);
+        if (SameHistory(_weeklyHistory, retained))
+        {
+            return;
+        }
+
+        _weeklyHistory = retained;
+        _storage.SaveHistory(_weeklyHistory, now, weekly: true);
+        RaiseChanged();
+    }
+
+    public void ClearWeeklyHistory()
+    {
+        if (!_storage.ClearHistory(weekly: true))
+        {
+            return;
+        }
+
+        _weeklyHistory = new Dictionary<string, IReadOnlyList<UsageHistorySample>>(StringComparer.Ordinal);
         RaiseChanged();
     }
 

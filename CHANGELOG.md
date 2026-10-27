@@ -9,6 +9,25 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-27
+
+### Added
+- macOS and Windows: optional rolling seven-day usage recording, off by default,
+  with a separate chart for each provider’s overall weekly quota, dated hover and keyboard
+  inspection, and its own clear action. Mini charts and mobile snapshots are
+  unchanged; only successful raw readings are stored locally and expire after
+  seven days.
+- macOS ve Windows: varsayılan olarak kapalı, sürekli kayan yedi günlük kullanım
+  kaydı; sağlayıcı seçimi, genel haftalık kota, tarihli fare/klavye incelemesi ve bağımsız
+  temizleme seçeneği olan ayrı grafik. Mini grafikler ve mobil görüntüler
+  değişmez; sadece başarılı ham ölçümler yerel tutulur, yedi gün sonra elenir.
+
+### Fixed
+- Windows: preserve the inspected reading and keyboard focus during automatic
+  provider rotation; keep the selected date when fresh history arrives.
+- Windows: otomatik sağlayıcı geçişinde incelenen ölçüm ve klavye odağı korunur;
+  yeni geçmiş geldiğinde seçilen tarih korunur.
+
 ## [2.3.6] - 2026-10-14
 
 ### Changed
@@ -384,7 +403,8 @@ Releases before v1.5.2 are listed on the
 - Parse whole-hour reset times ("Resets 5pm", "Resets Jul 26 at 10pm") and
   re-insert separators lost to the panel's cursor-move spacing.
 
-[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.6...HEAD
+[Unreleased]: https://github.com/akwnnwastaken/UsageBar/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.6...v2.4.0
 [2.3.6]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/akwnnwastaken/UsageBar/compare/v2.3.3...v2.3.4

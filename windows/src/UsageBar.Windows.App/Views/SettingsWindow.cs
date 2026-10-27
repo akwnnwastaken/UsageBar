@@ -52,6 +52,8 @@ internal sealed class SettingsWindow : Window
 
     public event EventHandler? DiagnosticsRequested;
 
+    public event EventHandler? WeeklyHistoryRequested;
+
     public void ShowSettings()
     {
         _theme = AppTheme.Current();
@@ -139,6 +141,12 @@ internal sealed class SettingsWindow : Window
             _controller.Settings.UsageHistoryEnabled ?? true,
             value => _controller.UpdateSettings(settings => settings.UsageHistoryEnabled = value)));
         _content.Children.Add(Action(text.ClearUsageHistory, _controller.ClearHistory));
+        _content.Children.Add(Toggle(
+            text.RecordWeeklyHistory,
+            _controller.Settings.WeeklyHistoryEnabled ?? false,
+            value => _controller.UpdateSettings(settings => settings.WeeklyHistoryEnabled = value)));
+        _content.Children.Add(Action(text.OpenWeeklyHistory, () => WeeklyHistoryRequested?.Invoke(this, EventArgs.Empty)));
+        _content.Children.Add(Action(text.ClearWeeklyHistory, _controller.ClearWeeklyHistory));
 
         _content.Children.Add(Caption(text.LaunchAtStartup));
         var autoStart = _controller.AutoStartState;

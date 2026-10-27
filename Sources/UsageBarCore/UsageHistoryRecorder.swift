@@ -16,11 +16,13 @@ public enum UsageHistoryRecorder {
     }
 
     /// Adds one sample per window of every accepted measurement, then applies
-    /// retention to the whole history.
+    /// retention to the whole history. The separate seven-day archive records
+    /// only the ordinary weekly quota; mini history still records every window.
     public static func recording(
         _ history: [String: [UsageHistorySample]],
         measurements: [String: ProviderUsage],
-        at date: Date
+        at date: Date,
+        weekly: Bool = false
     ) -> [String: [UsageHistorySample]] {
         var updated = history
 
@@ -29,7 +31,7 @@ public enum UsageHistoryRecorder {
             // provider alone. Move such a series onto the key its primary
             // window now uses, so an upgrade keeps its chart instead of
             // starting an empty one beside the old data.
-            if let legacySamples = updated.removeValue(forKey: providerName),
+            if !weekly, let legacySamples = updated.removeValue(forKey: providerName),
                let summary = UsageSummaryCalculator.summary(for: providerName, in: measurements) {
                 let migratedKey = seriesKey(providerName: providerName, windowKind: summary.windowKind)
                 if updated[migratedKey] == nil {
@@ -37,16 +39,17 @@ public enum UsageHistoryRecorder {
                 }
             }
 
-            for window in usage.windows {
+            for window in usage.windows where !weekly || window.kind == .weekly {
                 let key = seriesKey(providerName: providerName, windowKind: window.kind)
                 updated[key] = UsageHistoryModel.adding(
                     remainingPercent: min(100, max(0, 100 - window.usedPercent)),
                     at: date,
-                    to: updated[key] ?? []
+                    to: updated[key] ?? [],
+                    weekly: weekly
                 )
             }
         }
 
-        return UsageHistoryModel.sanitized(updated, now: date)
+        return UsageHistoryModel.sanitized(updated, now: date, weekly: weekly)
     }
 }

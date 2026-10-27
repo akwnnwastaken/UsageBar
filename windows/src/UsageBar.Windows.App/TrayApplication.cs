@@ -26,6 +26,7 @@ internal sealed class TrayApplication : Application
     private TrayIconController? _tray;
     private UsagePanelWindow? _panel;
     private SettingsWindow? _settings;
+    private WeeklyHistoryWindow? _weeklyHistory;
     private DispatcherTimer? _refreshTimer;
     private DispatcherTimer? _rotationTimer;
     private bool _shuttingDown;
@@ -44,7 +45,7 @@ internal sealed class TrayApplication : Application
             PostToUiThread);
 
         _panel = new UsagePanelWindow(_controller);
-        _panel.IsChildWindowActive = () => _settings?.IsVisible == true;
+        _panel.IsChildWindowActive = () => _settings?.IsVisible == true || _weeklyHistory?.IsVisible == true;
         _panel.SettingsRequested += (_, _) => ShowSettings();
         _panel.DiagnosticsRequested += (_, _) => CopyDiagnostics();
         _panel.ExitRequested += (_, _) => ExitApplication();
@@ -109,6 +110,11 @@ internal sealed class TrayApplication : Application
         if (_settings?.IsVisible == true)
         {
             _settings.Rebuild();
+        }
+
+        if (_weeklyHistory?.IsVisible == true)
+        {
+            _weeklyHistory.Rebuild();
         }
     }
 
@@ -188,6 +194,7 @@ internal sealed class TrayApplication : Application
             _settings = new SettingsWindow(_controller, _panel);
             _settings.TrayGuidanceRequested += (_, _) => _tray?.ShowTrayGuidance();
             _settings.DiagnosticsRequested += (_, _) => CopyDiagnostics();
+            _settings.WeeklyHistoryRequested += (_, _) => ShowWeeklyHistory();
         }
 
         if (!_panel.IsVisible)
@@ -199,6 +206,13 @@ internal sealed class TrayApplication : Application
         // distribution list without probing WSL on every refresh.
         _ = _controller.LoadWslDistributionsAsync();
         _settings.ShowSettings();
+    }
+
+    private void ShowWeeklyHistory()
+    {
+        if (_controller is null) return;
+        _weeklyHistory ??= new WeeklyHistoryWindow(_controller);
+        _weeklyHistory.ShowHistory();
     }
 
     private void CopyDiagnostics()

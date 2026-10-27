@@ -59,7 +59,33 @@ struct Localizer {
     var automatic: String { pick("Otomatik", "Auto") }
     var usageHistoryTitle: String { pick("Kullanım geçmişi", "Usage history") }
     var showUsageHistory: String { pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart") }
-    var clearUsageHistory: String { pick("Geçmişi temizle", "Clear history") }
+    var recordWeeklyHistory: String { pick("Son 7 günlük geçmişi kaydet", "Record rolling 7-day history") }
+    var openWeeklyHistory: String { pick("7 günlük grafiği aç…", "Open 7-day chart…") }
+    var weeklyHistoryTitle: String { pick("Haftalık kullanım", "Weekly usage") }
+    var clearWeeklyHistory: String { pick("7 günlük geçmişi temizle", "Clear 7-day history") }
+    var weeklyHistoryHelp: String {
+        pick("Uygulama açıkken genel haftalık kotanın başarılı ölçümleri kaydedilir; 7 günden eskiler otomatik silinir. Sıfırlamalar dahildir.",
+             "Successful overall weekly quota readings are recorded while the app runs; readings older than 7 days expire automatically. Resets are included.")
+    }
+    var weeklyHistoryEmpty: String {
+        pick("Bu sağlayıcı için henüz haftalık kayıt yok. Kaydı açtıktan sonraki ölçümler burada görünecek.",
+             "No weekly readings for this provider yet. Readings after you enable recording will appear here.")
+    }
+    var weeklyHistoryRecording: String { pick("Kaydediliyor", "Recording") }
+    var weeklyHistoryPaused: String { pick("Kayıt kapalı", "Recording off") }
+    var historyRemaining: String { pick("Haftalık kalan", "Weekly remaining") }
+    var historyLocal: String { pick("Bu cihazda · Son 7 gün", "On this device · Last 7 days") }
+    var historySeries: String { pick("Sağlayıcı", "Provider") }
+    var historySample: String { pick("Kayıt seç (ok tuşları)", "Select reading (arrow keys)") }
+
+    func historyDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .turkish ? "tr_TR" : "en_US")
+        formatter.dateFormat = language == .turkish ? "d MMM HH:mm" : "MMM d, h:mm a"
+        return formatter.string(from: date)
+    }
+
+    var clearUsageHistory: String { pick("Mini grafik geçmişini temizle", "Clear mini-chart history") }
     var copyDiagnostics: String { pick("Tanılama özetini kopyala", "Copy diagnostics") }
     var launchAtLogin: String { pick("Mac açılışında başlat", "Launch at login") }
     var loginItemFailed: String { pick("Başlangıç ayarı değiştirilemedi", "Could not change login item") }
@@ -1051,6 +1077,7 @@ final class UsageSparklineView: NSView {
     /// can be tested without AppKit.
     private let geometry: UsageHistoryChartGeometry
     private let lineColor: NSColor
+    private let isWeeklyChart: Bool
     private var trackingArea: NSTrackingArea?
     private var hoveredSample: UsageHistorySample?
 
@@ -1061,11 +1088,12 @@ final class UsageSparklineView: NSView {
     /// layer decides how to localize them.
     var onHoveredSampleChanged: ((UsageHistorySample?) -> Void)?
 
-    init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor) {
-        let model = UsageHistoryChartModel(samples: samples)
+    init(frame frameRect: NSRect, samples: [UsageHistorySample], lineColor: NSColor, startsAtLatestReset: Bool = true) {
+        let model = UsageHistoryChartModel(samples: samples, startsAtLatestReset: startsAtLatestReset)
         self.model = model
         geometry = UsageHistoryChartGeometry(model: model)
         self.lineColor = lineColor
+        isWeeklyChart = !startsAtLatestReset
         super.init(frame: frameRect)
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
@@ -1083,14 +1111,19 @@ final class UsageSparklineView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         let chartRect = self.chartRect
-        NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
-        NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
+        if !isWeeklyChart {
+            NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: chartRect, xRadius: 4, yRadius: 4).fill()
+        }
         guard let last = model.displaySamples.last else { return }
 
         NSColor.secondaryLabelColor.withAlphaComponent(0.12).setStroke()
         let guide = NSBezierPath()
-        guide.move(to: NSPoint(x: chartRect.minX, y: chartRect.midY))
-        guide.line(to: NSPoint(x: chartRect.maxX, y: chartRect.midY))
+        for fraction: CGFloat in isWeeklyChart ? [0, 0.5, 1] : [0.5] {
+            let y = chartRect.minY + fraction * chartRect.height
+            guide.move(to: NSPoint(x: chartRect.minX, y: y))
+            guide.line(to: NSPoint(x: chartRect.maxX, y: y))
+        }
         guide.lineWidth = 0.5
         guide.stroke()
 
@@ -1110,8 +1143,16 @@ final class UsageSparklineView: NSView {
             let samplePoint = geometry.point(for: sample, in: chartRect)
             if index == 0 { path.move(to: samplePoint) } else { path.line(to: samplePoint) }
         }
+        if isWeeklyChart, let first = model.displaySamples.first, model.displaySamples.count > 1,
+           let area = path.copy() as? NSBezierPath {
+            area.line(to: NSPoint(x: geometry.point(for: last, in: chartRect).x, y: chartRect.minY))
+            area.line(to: NSPoint(x: geometry.point(for: first, in: chartRect).x, y: chartRect.minY))
+            area.close()
+            lineColor.withAlphaComponent(0.07).setFill()
+            area.fill()
+        }
         lineColor.setStroke()
-        path.lineWidth = 1.75
+        path.lineWidth = isWeeklyChart ? 2 : 1.75
         path.lineJoinStyle = .round
         path.lineCapStyle = .round
         path.stroke()
@@ -1206,6 +1247,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         static let autoRotateProviders = "status.providers.auto.rotate"
         static let refreshInterval = "status.refresh.interval"
         static let usageHistoryEnabled = "usage.history.enabled"
+        static let weeklyHistoryEnabled = "usage.history.weekly.enabled"
+        static let weeklyHistoryData = "usage.history.weekly.samples.v1"
         static let usageHistoryData = "usage.history.samples.v2"
         static let legacyUsageHistoryData = "usage.history.samples.v1"
         static let legacyCodexEnabled = "provider.codex.enabled"
@@ -1238,6 +1281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var statusPresentationTimer: Timer?
     private var rotatingProviderIndex = 0
     private var usageHistory: [String: [UsageHistorySample]] = [:]
+    private var weeklyHistory: [String: [UsageHistorySample]] = [:]
+    private let weeklyHistoryWindow = WeeklyHistoryWindowController()
     private var displayFilter = UsageDisplayFilterState()
 
     /// One counter per provider, bumped whenever its connection or collection
@@ -1350,6 +1395,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return UserDefaults.standard.bool(forKey: PreferenceKey.usageHistoryEnabled)
         }
         set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.usageHistoryEnabled) }
+    }
+
+    private var weeklyHistoryEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.weeklyHistoryEnabled) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.weeklyHistoryEnabled) }
     }
 
     private var codexConnected: Bool {
@@ -1554,6 +1604,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             now: Date()
         )
         persistUsageHistory()
+        weeklyHistory = UsageHistoryModel.sanitized(
+            UsageHistoryModel.decode(defaults.data(forKey: PreferenceKey.weeklyHistoryData), weekly: true),
+            now: Date(), weekly: true
+        )
+        persistWeeklyHistory()
         NSApp.setActivationPolicy(.accessory)
         menu.delegate = self
         statusItem.menu = menu
@@ -1813,6 +1868,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// A provider that was not read — paused, disconnected, failed, or simply
     /// not part of this cycle — contributes nothing.
     private func recordUsageHistory(of measurements: [String: ProviderUsage], at date: Date) {
+        if weeklyHistoryEnabled {
+            weeklyHistory = UsageHistoryRecorder.recording(weeklyHistory, measurements: measurements, at: date, weekly: true)
+            persistWeeklyHistory()
+        } else {
+            retainWeeklyHistory(at: date)
+        }
         guard usageHistoryEnabled else { return }
         usageHistory = UsageHistoryRecorder.recording(
             usageHistory,
@@ -1826,6 +1887,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// history just switched back on. It prunes what has aged out and does not
     /// create a sample, because nothing was measured.
     private func maintainUsageHistoryRetention(at date: Date) {
+        retainWeeklyHistory(at: date)
+        updateWeeklyHistoryWindow()
         guard usageHistoryEnabled else { return }
         let retained = UsageHistoryModel.sanitized(usageHistory, now: date)
         guard retained != usageHistory else { return }
@@ -1882,6 +1945,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyUsageHistoryData)
     }
 
+    private func persistWeeklyHistory() {
+        guard let data = UsageHistoryModel.encode(weeklyHistory) else { return }
+        UserDefaults.standard.set(data, forKey: PreferenceKey.weeklyHistoryData)
+    }
+
+    private func retainWeeklyHistory(at date: Date) {
+        let retained = UsageHistoryModel.sanitized(weeklyHistory, now: date, weekly: true)
+        guard retained != weeklyHistory else { return }
+        weeklyHistory = retained
+        persistWeeklyHistory()
+    }
+
+    private func updateWeeklyHistoryWindow() {
+        guard weeklyHistoryWindow.window?.isVisible == true else { return }
+        weeklyHistoryWindow.update(history: weeklyHistory, text: text, recording: weeklyHistoryEnabled)
+    }
+
     private func migrateLegacyPreferences() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: PreferenceKey.codexConnected) == nil {
@@ -1906,6 +1986,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// always was, but only while `menuDisclosure` reveals it; nothing about a
     /// provider is decided down there.
     private func rebuildMenu() {
+        updateWeeklyHistoryWindow()
         menu.removeAllItems()
         let connectedNames = connectedProviderNames
         if connectedNames.isEmpty {
@@ -1953,12 +2034,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             addProviderSelector()
             addMenuBarAppearanceSettings()
             addUsageColorSettings()
-            addUsageHistorySettings()
             addRefreshIntervalSettings()
             addProviderManagementItems(connectedNames)
             menu.addItem(.separator())
         }
 
+        addUsageHistorySettings()
         addMobileSyncSection()
         addLanguageSelector()
         addLaunchAtLoginItem()
@@ -2246,6 +2327,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         clearItem.target = self
         clearItem.isEnabled = usageHistory.values.contains { !$0.isEmpty }
         submenu.addItem(clearItem)
+        submenu.addItem(.separator())
+        let weeklyToggle = NSMenuItem(title: text.recordWeeklyHistory, action: #selector(toggleWeeklyHistory), keyEquivalent: "")
+        weeklyToggle.target = self
+        weeklyToggle.state = weeklyHistoryEnabled ? .on : .off
+        submenu.addItem(weeklyToggle)
+        let openWeekly = NSMenuItem(title: text.openWeeklyHistory, action: #selector(showWeeklyHistory), keyEquivalent: "")
+        openWeekly.target = self
+        submenu.addItem(openWeekly)
+        let clearWeekly = NSMenuItem(title: text.clearWeeklyHistory, action: #selector(clearWeeklyUsageHistory), keyEquivalent: "")
+        clearWeekly.target = self
+        clearWeekly.isEnabled = !weeklyHistory.isEmpty
+        submenu.addItem(clearWeekly)
 
         rootItem.submenu = submenu
         menu.addItem(rootItem)
@@ -3053,6 +3146,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         rebuildMenu()
     }
 
+    @objc private func toggleWeeklyHistory() {
+        weeklyHistoryEnabled.toggle()
+        retainWeeklyHistory(at: Date())
+        rebuildMenu()
+    }
+
+    @objc private func showWeeklyHistory() {
+        retainWeeklyHistory(at: Date())
+        weeklyHistoryWindow.update(history: weeklyHistory, text: text, recording: weeklyHistoryEnabled)
+        NSApp.activate(ignoringOtherApps: true)
+        weeklyHistoryWindow.showWindow(nil)
+        weeklyHistoryWindow.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func clearWeeklyUsageHistory() {
+        weeklyHistory.removeAll()
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.weeklyHistoryData)
+        rebuildMenu()
+    }
+
     @objc private func clearUsageHistory() {
         usageHistory.removeAll()
         UserDefaults.standard.removeObject(forKey: PreferenceKey.usageHistoryData)
@@ -3339,6 +3452,17 @@ private func runSelfTest() -> Int32 {
         englishHover.hasSuffix("· 47% remaining")
     else {
         fputs("Yerel kullanım geçmişi testi başarısız\n", stderr)
+        return 1
+    }
+
+    let weeklyChart = UsageHistoryChartModel(samples: resetChart.samples, startsAtLatestReset: false)
+    guard
+        weeklyChart.displaySamples.map(\.remainingPercent) == [20, 19, 90],
+        weeklyChart.lowerBound == 0, weeklyChart.upperBound == 100,
+        turkish.recordWeeklyHistory != english.recordWeeklyHistory,
+        turkish.weeklyHistoryHelp != english.weeklyHistoryHelp
+    else {
+        fputs("Haftalık geçmiş testi başarısız\n", stderr)
         return 1
     }
 

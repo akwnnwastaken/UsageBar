@@ -47,6 +47,44 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
+    public void WeeklyHistoryPersistsSeparatelyAndClearDoesNotTouchMiniChart()
+    {
+        var history = new Dictionary<string, IReadOnlyList<UsageHistorySample>>
+        {
+            ["Codex|weekly"] = new[]
+            {
+                new UsageHistorySample(TestNow.AddDays(-6), 80),
+                new UsageHistorySample(TestNow, 50)
+            }
+        };
+        Assert.True(_storage.SaveHistory(history, TestNow, weekly: true));
+        Assert.True(_storage.SaveHistory(history, TestNow));
+        Assert.Equal(2, _storage.LoadHistory(TestNow, weekly: true)["Codex|weekly"].Count);
+        Assert.Single(_storage.LoadHistory(TestNow)["Codex|weekly"]);
+        Assert.True(_storage.ClearHistory(weekly: true));
+        Assert.Empty(_storage.LoadHistory(TestNow, weekly: true));
+        Assert.Single(_storage.LoadHistory(TestNow)["Codex|weekly"]);
+        Assert.False(_storage.LoadSettings().WeeklyHistoryEnabled);
+        Assert.True(_storage.SaveSettings(new UsageBarSettings { WeeklyHistoryEnabled = true }));
+        Assert.True(_storage.LoadSettings().WeeklyHistoryEnabled);
+    }
+
+    [Fact]
+    public void FullWeeklyCapacitySurvivesAtomicFileRoundTripAndRestartPruning()
+    {
+        var samples = Enumerable.Range(0, UsageHistoryModel.WeeklyMaximumSamplesPerSeries)
+            .Select(i => new UsageHistorySample(TestNow.AddMinutes(-i), i % 101)).Reverse().ToList();
+        var history = Enumerable.Range(0, UsageHistoryModel.MaximumSeries)
+            .ToDictionary(i => $"Codex|unknown-{i}", _ => (IReadOnlyList<UsageHistorySample>)samples);
+        Assert.True(_storage.SaveHistory(history, TestNow, weekly: true));
+        Assert.InRange(new FileInfo(_storage.WeeklyHistoryPath).Length,
+            AtomicJsonFile.MaximumBytes + 1, UsageHistoryModel.WeeklyMaximumEncodedBytes);
+        var reloaded = new UsageBarStorage(_root).LoadHistory(TestNow, weekly: true);
+        Assert.All(history, pair => Assert.Equal(pair.Value, reloaded[pair.Key]));
+        Assert.Empty(_storage.LoadHistory(TestNow.AddDays(8), weekly: true));
+    }
+
+    [Fact]
     public void SettingsRoundTripThroughDisk()
     {
         var saved = _storage.SaveSettings(new UsageBarSettings

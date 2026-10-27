@@ -22,9 +22,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.6/UsageBar-2.3.6-macOS-arm64.zip"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/v2.4.0/UsageBar-2.4.0-macOS-arm64.zip"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.6/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Setup-x64.exe"><strong>Download for Windows</strong></a>
 </p>
 
 ---
@@ -46,21 +46,31 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
 - **macOS + Windows:** A native menu bar app on macOS, a system tray app on Windows.
-- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.3.6**, so a current Mac build cannot serve the phone; the source stays in this repository.
+- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.4.0**, so a current Mac build cannot serve the phone; the source stays in this repository.
 - **Local-first:** Reuse the provider sessions you already have, and keep raw provider output out of history.
+
+### Rolling 7-day history
+
+In **Usage history** on macOS, or **Settings → Usage history** on Windows, enable **Record rolling 7-day history**, then choose **Open 7-day chart…**. This is optional and off by default. It works independently of the 24-hour mini chart and opens a separate chart for each provider’s overall weekly quota, with a provider selector, dated readings, and a slider you can inspect with the arrow keys.
+
+Recording continues while enabled: each successful refresh adds the overall weekly quota’s raw remaining-percentage reading, and readings older than seven days expire automatically. The separate chart includes quota resets across the retained period. It starts collecting when enabled, cannot reconstruct earlier usage or readings while the app was closed, and shows the actual recorded span. Turning recording off keeps the retained readings available until they expire; **Clear 7-day history** deletes only this separate history.
+
+Only timestamps and integer remaining percentages are stored, keyed by provider/window: `usage.history.weekly.samples.v1` in macOS preferences, or `%LOCALAPPDATA%\UsageBar\history-weekly.json` on Windows. These records stay on the computer and are not added to the mini chart or mobile snapshots.
+
+**Türkçe:** macOS'ta **Kullanım geçmişi**, Windows'ta **Ayarlar → Kullanım geçmişi** bölümünden **Son 7 günlük geçmişi kaydet** ayarını açın, ardından **7 günlük grafiği aç…** seçeneğini kullanın. Varsayılan olarak kapalıdır ve 24 saatlik mini grafikten bağımsız çalışır. Ayrı grafik genel haftalık kotayı gösterir, yalnızca sağlayıcı seçilir; tarihli kayıtlar fareyle veya kaydırıcının ok tuşlarıyla incelenir. Ayar açık kaldıkça her başarılı yenilemede genel haftalık kotanın ham kalan yüzdesi eklenir, yedi günden eski kayıtlar otomatik elenir; kota sıfırlamaları da görünür. Kayıt ayar açılınca başlar; geçmişe dönük veya uygulama kapalıyken ölçüm üretilemez. Kapatıldığında kayıt durur; mevcut veriler süreleri dolana kadar görülebilir. **7 günlük geçmişi temizle** yalnızca bu geçmişi siler. Sadece sağlayıcı/pencere anahtarı altında zaman damgası ve tam sayı kalan yüzde yerel olarak saklanır; ana grafiğe veya mobil görüntülere eklenmez.
 
 ## Downloads
 
-Version **2.3.6** is current for both platforms. macOS and Windows use separate release tags.
+Version **2.4.0** is current for both platforms. macOS and Windows use separate release tags.
 
-**macOS 2.3.6** adds the copyright and license line (`Copyright © 2026 Ahmed Tuğra Kasem. MIT License.`) to the app bundle, so Finder's Get Info window shows it. Behaviour is unchanged from 2.3.6, which moved the app to the `com.akwnnwastaken.usagebar` bundle identifier and copies preferences from the former `local.codex.usagebar` once on the first launch after updating; if **Launch at login** was on before 2.3.6, check it after updating. **Mobile Sync stays hidden.** **Windows 2.3.6** carries the same copyright line in its app and installer version metadata; runtime behaviour is unchanged from 2.3.6 and it cannot host the phone.
+**macOS and Windows 2.4.0** add optional rolling seven-day history for each provider’s overall weekly quota, viewed in a separate chart. Recording is off by default and independent of mini charts. macOS uses native Liquid Glass on macOS 26+ and a system material on older supported versions; Windows keeps its native tray interface. **Mobile Sync stays hidden.**
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
-| macOS 13+ · Apple Silicon | `UsageBar-2.3.6-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.3.6/UsageBar-2.3.6-macOS-arm64.zip) | [`v2.3.6`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.6) |
-| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.6/UsageBar-Setup-x64.exe) | [`windows-v2.3.6`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.6) |
-| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.6/UsageBar-Windows-x64.zip) | [`windows-v2.3.6`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.6) |
-| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.3.6) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
+| macOS 13+ · Apple Silicon | `UsageBar-2.4.0-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.4.0/UsageBar-2.4.0-macOS-arm64.zip) | [`v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.4.0) |
+| Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Setup-x64.exe) | [`windows-v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.4.0) |
+| Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Windows-x64.zip) | [`windows-v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.4.0) |
+| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.4.0) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
 
 > [!NOTE]
 > The iPhone companion is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. There is no App Store listing and no TestFlight build.
@@ -121,12 +131,12 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
-- Mobile Sync, the host side of the iPhone companion, is hidden in 2.3.6 — see below.
+- Mobile Sync, the host side of the iPhone companion, is hidden in 2.4.0 — see below.
 
 #### iPhone
 
 > [!IMPORTANT]
-> **Mobile Sync is hidden in UsageBar 2.3.6.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.3.6. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
+> **Mobile Sync is hidden in UsageBar 2.4.0.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.4.0. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
 
 - **UsageBar Mobile** is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. A free **Personal Team** works, with Apple's roughly **7-day** development provisioning limit.
 - The phone never talks to Codex or Claude and holds no provider credentials. Its only input is a sanitized snapshot from your Mac.
@@ -163,7 +173,7 @@ Windows end-user packages are self-contained; no separate .NET Runtime installat
 
 #### macOS
 
-1. Download `UsageBar-2.3.6-macOS-arm64.zip` from the [`v2.3.6` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.3.6).
+1. Download `UsageBar-2.4.0-macOS-arm64.zip` from the [`v2.4.0` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.4.0).
 2. Extract the ZIP and move `UsageBar.app` to the **Applications** folder.
 3. Open UsageBar and connect a provider from the `%—` icon in the menu bar.
 
@@ -187,7 +197,7 @@ Apple's official guidance: [Open an app Apple cannot check for malicious softwar
 
 #### Windows installer — recommended
 
-1. Open the [`windows-v2.3.6` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.3.6).
+1. Open the [`windows-v2.4.0` release](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.4.0).
 2. Download `UsageBar-Setup-x64.exe`.
 3. Optionally complete the verification steps below.
 4. Run the installer. It installs for the current user only and does not request administrator permission.
@@ -201,7 +211,7 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 
 #### Windows portable
 
-1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.3.6/UsageBar-Windows-x64.zip).
+1. Download [`UsageBar-Windows-x64.zip`](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Windows-x64.zip).
 2. Extract it to a permanent, writable folder.
 3. Do not run the app directly from inside the ZIP.
 4. Run `UsageBar.exe`.
@@ -213,13 +223,13 @@ The installer deliberately does not launch UsageBar automatically. The autostart
 Compare the download with the `.sha256` file on the Release page:
 
 ```sh
-shasum -a 256 ~/Downloads/UsageBar-2.3.6-macOS-arm64.zip
+shasum -a 256 ~/Downloads/UsageBar-2.4.0-macOS-arm64.zip
 ```
 
 Verify GitHub build provenance for the CI-produced package:
 
 ```sh
-gh attestation verify ~/Downloads/UsageBar-2.3.6-macOS-arm64.zip \
+gh attestation verify ~/Downloads/UsageBar-2.4.0-macOS-arm64.zip \
   --repo akwnnwastaken/UsageBar \
   --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml
 ```
@@ -267,7 +277,7 @@ The diagnostic summary is limited to version, operating-system version, connecti
 
 ## What UsageBar accesses
 
-UsageBar has no server, user account, analytics, telemetry, crash reporting, or update check. The macOS and Windows apps contain no code that connects to the internet. Their only networking code is the macOS Mobile Sync listener, which binds `127.0.0.1` only and is hidden in 2.3.6.
+UsageBar has no server, user account, analytics, telemetry, crash reporting, or update check. The macOS and Windows apps contain no code that connects to the internet. Their only networking code is the macOS Mobile Sync listener, which binds `127.0.0.1` only and is hidden in 2.4.0.
 
 Usage numbers come from the provider tool already installed on your computer. **That tool contacts its own service** — OpenAI for Codex, Anthropic for Claude Code — with your existing sign-in, exactly as it does when you use it yourself. UsageBar reads only the tool's printed answer, keeps the parsed percentages and reset times, and discards the raw output.
 
@@ -283,8 +293,8 @@ UsageBar runs no provider tool before you click **Connect Codex** or **Connect C
 | Runs `claude auth login --claudeai` | Only when you choose **Sign in to Claude…** | Claude Code opens the browser sign-in itself. Output is discarded; UsageBar never sees the credential. |
 | Checks fixed executable paths: `/Applications/ChatGPT.app/…`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.claude/bin`, `~/.claude/local`, and the Claude app's `~/Library/Application Support/Claude/claude-code/<version>/` | Before each launch, and for **Copy diagnostics** | Checks that the resolved file is executable, owned by you or root, and not writable by others; the Claude app's copy must also carry Anthropic's Developer ID signature (team `Q6L2SF6YDW`). Your `PATH` and the current folder are never searched. |
 | `Claude Code-credentials` Keychain item | When Claude Code runs | **Read by Claude Code, not by UsageBar.** Because UsageBar starts Claude Code, macOS may show a one-time access prompt. |
-| `local.codex.usagebar.mobile-sync` Keychain item | Only if you used Mobile Sync | UsageBar's own item for Mobile Sync pairing digests. Not read or written while Mobile Sync is hidden (2.3.6). |
-| Preferences in the `com.akwnnwastaken.usagebar` defaults domain | Always | Settings, connection choices, and — with mini charts on — history under `usage.history.samples.v2` (timestamp and integer remaining percentage only, at most 24 hours). |
+| `local.codex.usagebar.mobile-sync` Keychain item | Only if you used Mobile Sync | UsageBar's own item for Mobile Sync pairing digests. Not read or written while Mobile Sync is hidden (2.4.0). |
+| Preferences in the `com.akwnnwastaken.usagebar` defaults domain | Always | Settings, connection choices, and — with mini charts on — history under `usage.history.samples.v2` (timestamp and integer remaining percentage only, at most 24 hours). With seven-day recording enabled, the app stores a separate rolling week under `usage.history.weekly.samples.v1` with the same fields. |
 | Preferences in the former `local.codex.usagebar` defaults domain | Once, on the first launch after updating from 2.3.4 or earlier | Copied into the new domain so connections, settings and history survive the bundle-identifier change. The old domain is left as it was. |
 | `$TMPDIR/com.akwnnwastaken.usagebar` | Each provider launch | Empty working folder for provider processes, so no project settings are picked up. |
 | Login Items (`SMAppService.mainApp`) | Only when you change **Launch at login** | Registers or unregisters UsageBar itself; no helper or LaunchAgent. |
@@ -298,14 +308,14 @@ UsageBar does not open files inside `~/.codex` or `~/.claude`, and does not read
 | Runs `codex.exe` (or, for an npm install, a validated `node.exe` with Codex's script) and `claude.exe` with the same usage and sign-in-status arguments as on macOS, plus `claude --version` when probing an installation; for WSL, `wsl.exe --list --quiet` and `wsl.exe --distribution <name> --exec claude …` | Each refresh | Same parsing as on macOS. Processes start through `CreateProcessW` without a shell and inside a Job Object. |
 | Checks documented installation folders (for example `%USERPROFILE%\.local\bin`, `%LOCALAPPDATA%\Programs`, `%LOCALAPPDATA%\Microsoft\WinGet\Links`, npm global folders, `%USERPROFILE%\.claude\local`), or an executable path you set yourself in Settings | Before each launch | Validates the executable and its install root; see [executable discovery and trust](docs/windows-port.md#5-executable-discovery-and-trust). |
 | Looks for Git for Windows' `bash.exe` | Native Claude Code launches | Passes the trusted path to Claude Code as `CLAUDE_CODE_GIT_BASH_PATH`; UsageBar never runs `bash.exe` itself. |
-| `%LOCALAPPDATA%\UsageBar\settings.json` and `history.json` | Always (history only with mini charts on) | Settings and history, with the same fields and limits as macOS. |
+| `%LOCALAPPDATA%\UsageBar\settings.json` and `history.json` | Always (history only with mini charts on) | Settings and 24-hour mini-chart history. With seven-day recording enabled, the app stores a separate rolling week in `history-weekly.json`, with the same timestamp/percentage fields. |
 | `%LOCALAPPDATA%\UsageBar\provider-run` | Each provider launch | Working folder for provider processes. |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `UsageBar` | Only when you change **Launch at login** | Adds or removes the autostart entry. |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` | Always | Read-only, to match the tray icon and windows to the light or dark theme. |
 
 The Windows app does not use Windows Credential Manager, read credential files, or open files inside `.codex` or `.claude`.
 
-**Türkçe:** UsageBar'ın sunucusu, hesabı, analitiği, telemetrisi, çökme raporu veya güncelleme denetimi yoktur; macOS ve Windows uygulamalarında internete bağlanan kod bulunmaz (tek ağ kodu, yalnızca `127.0.0.1`'e bağlanan ve 2.3.6'te gizli olan macOS Mobile Sync dinleyicisidir). Kullanım verisini bilgisayarınızda zaten kurulu olan Codex veya Claude Code aracı sağlar; **bu araç kendi hizmetine (OpenAI veya Anthropic) mevcut oturumunuzla bağlanır**, tıpkı onu kendiniz kullandığınızda olduğu gibi. UsageBar yalnızca aracın yazdırdığı yanıtı okur, yüzde ve sıfırlama zamanlarını saklar, ham çıktıyı atar. Sağlayıcıyı bağlamadan veya toplama duraklatılmışken hiçbir sağlayıcı aracı çalıştırılmaz. UsageBar `~/.codex` veya `~/.claude` içindeki dosyaları açmaz; `Claude Code-credentials` Keychain öğesini UsageBar değil, başlattığı Claude Code okur. UsageBar'ın kendi kalıcı verisi ayarlar ve (açıksa) yalnızca zaman damgası ile tam sayı kalan yüzdeden oluşan en fazla 24 saatlik geçmiştir; oturum açılışında başlatmayı açarsanız sistemin başlangıç kaydı da eklenir. 2.3.4 veya daha eski bir sürümden güncellemede, eski `local.codex.usagebar` tercihleri ilk açılışta bir kez yeni alana kopyalanır; eski alana dokunulmaz. Ayrıntılar yukarıdaki tablolardadır.
+**Türkçe:** UsageBar'ın sunucusu, hesabı, analitiği, telemetrisi, çökme raporu veya güncelleme denetimi yoktur; macOS ve Windows uygulamalarında internete bağlanan kod bulunmaz (tek ağ kodu, yalnızca `127.0.0.1`'e bağlanan ve 2.4.0'te gizli olan macOS Mobile Sync dinleyicisidir). Kullanım verisini bilgisayarınızda zaten kurulu olan Codex veya Claude Code aracı sağlar; **bu araç kendi hizmetine (OpenAI veya Anthropic) mevcut oturumunuzla bağlanır**, tıpkı onu kendiniz kullandığınızda olduğu gibi. UsageBar yalnızca aracın yazdırdığı yanıtı okur, yüzde ve sıfırlama zamanlarını saklar, ham çıktıyı atar. Sağlayıcıyı bağlamadan veya toplama duraklatılmışken hiçbir sağlayıcı aracı çalıştırılmaz. UsageBar `~/.codex` veya `~/.claude` içindeki dosyaları açmaz; `Claude Code-credentials` Keychain öğesini UsageBar değil, başlattığı Claude Code okur. UsageBar'ın kendi kalıcı verisi ayarlar ve (açıksa) yalnızca zaman damgası ile tam sayı kalan yüzdeden oluşan en fazla 24 saatlik mini grafik geçmişidir (isteğe bağlı olarak ayrıca ayrı bir kayan 7 günlük geçmiş tutulabilir); oturum açılışında başlatmayı açarsanız sistemin başlangıç kaydı da eklenir. 2.3.4 veya daha eski bir sürümden güncellemede, eski `local.codex.usagebar` tercihleri ilk açılışta bir kez yeni alana kopyalanır; eski alana dokunulmaz. Ayrıntılar yukarıdaki tablolardadır.
 
 ## Troubleshooting
 

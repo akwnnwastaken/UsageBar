@@ -81,7 +81,28 @@ public sealed class Localizer
     public string ShowResetCountdown => Pick("Sıfırlanma süresini ipucunda göster", "Show reset countdown in the tooltip");
     public string UsageHistoryTitle => Pick("Kullanım geçmişi", "Usage history");
     public string ShowUsageHistory => Pick("24 saatlik mini grafiği göster", "Show 24-hour mini chart");
-    public string ClearUsageHistory => Pick("Geçmişi temizle", "Clear history");
+    public string RecordWeeklyHistory => Pick("Son 7 günlük geçmişi kaydet", "Record rolling 7-day history");
+    public string OpenWeeklyHistory => Pick("7 günlük grafiği aç…", "Open 7-day chart…");
+    public string WeeklyHistoryTitle => Pick("Haftalık kullanım", "Weekly usage");
+    public string ClearWeeklyHistory => Pick("7 günlük geçmişi temizle", "Clear 7-day history");
+    public string WeeklyHistoryHelp => Pick(
+        "Uygulama açıkken genel haftalık kotanın başarılı ölçümleri kaydedilir; 7 günden eskiler otomatik silinir. Sıfırlamalar dahildir.",
+        "Successful overall weekly quota readings are recorded while the app runs; readings older than 7 days expire automatically. Resets are included.");
+    public string WeeklyHistoryEmpty => Pick(
+        "Bu sağlayıcı için henüz haftalık kayıt yok. Kaydı açtıktan sonraki ölçümler burada görünecek.",
+        "No weekly readings for this provider yet. Readings after you enable recording will appear here.");
+    public string WeeklyHistoryRecording => Pick("Kaydediliyor", "Recording");
+    public string WeeklyHistoryPaused => Pick("Kayıt kapalı", "Recording off");
+    public string HistoryRemaining => Pick("Haftalık kalan", "Weekly remaining");
+    public string HistoryLocal => Pick("Bu cihazda · Son 7 gün", "On this device · Last 7 days");
+    public string HistorySeries => Pick("Sağlayıcı", "Provider");
+    public string HistorySample => Pick("Kayıt seç (ok tuşları)", "Select reading (arrow keys)");
+
+    public string HistoryDate(DateTimeOffset date) => date.ToLocalTime().ToString(
+        Language == AppLanguage.Turkish ? "d MMM HH:mm" : "MMM d, h:mm tt",
+        System.Globalization.CultureInfo.GetCultureInfo(Language == AppLanguage.Turkish ? "tr-TR" : "en-US"));
+
+    public string ClearUsageHistory => Pick("Mini grafik geçmişini temizle", "Clear mini-chart history");
     public string CopyDiagnostics => Pick("Tanılama özetini kopyala", "Copy diagnostics");
     public string DiagnosticsCopied => Pick("Tanılama özeti panoya kopyalandı", "Diagnostics copied to the clipboard");
     public string RefreshIntervalTitle => Pick("Yenileme aralığı", "Refresh interval");
