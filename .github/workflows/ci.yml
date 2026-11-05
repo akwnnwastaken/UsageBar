@@ -48,9 +48,24 @@ jobs:
       - name: Require pinned macOS release toolchain
         run: ./tests/release_toolchain_guard.sh
       - name: Unit tests (XCTest)
+        timeout-minutes: 12
         run: swift test
       - name: Security acceptance suite
+        timeout-minutes: 12
         run: ./tests/security_acceptance.sh
+      # Test output is buffered, so after a hang the log stops well before the
+      # test that is stuck. Its stack names it. The step limits above leave room
+      # in the job for this to run.
+      - name: Capture hung test process
+        if: failure()
+        shell: bash
+        run: |
+          ps -axo pid,etime,stat,command | grep -E '[x]ctest|[s]wift-' || true
+          for pid in $(pgrep -x xctest || true); do
+            report="$(mktemp)"
+            sample "$pid" 5 -mayDie -file "$report" || true
+            cat "$report"
+          done
       - name: Reject whitespace errors
         run: git diff --check
       # Nothing cross-compiles, so the runner architecture decides what the
