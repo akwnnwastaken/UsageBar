@@ -1,6 +1,6 @@
 import Foundation
 
-/// Selection for the macOS status item only; history and mobile headlines use
+/// Selection for the macOS status item only; menu cards and history use
 /// `UsageSummaryCalculator` independently.
 public enum MenuBarUsageSummaryCalculator {
     public static func summary(for providerName: String, in usages: [String: ProviderUsage]) -> UsageSummary? {
