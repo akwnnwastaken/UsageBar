@@ -415,4 +415,6 @@ UsageBar/
 
 Changes are developed through separate commits and pull requests. UsageBar is available under the [MIT License](LICENSE).
 
+macOS maintainers: see the [production release runbook](docs/MACOS-RELEASE.md) for the protected Developer ID workflow. Windows releases retain their own process.
+
 <p align="right"><a href="#top">Back to top ↑</a></p>
