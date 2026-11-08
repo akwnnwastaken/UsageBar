@@ -60,7 +60,11 @@ Only timestamps and integer remaining percentages are stored, keyed by provider/
 
 ## Downloads
 
-Version **2.4.0** is current for both platforms. macOS and Windows use separate release tags.
+Version **2.4.0** is the current public download for both platforms. macOS and Windows use separate release tags.
+
+The source is prepared for **2.5.0**. This upcoming version removes the retired iPhone companion and improves how macOS handles malformed quota responses. See the [cleanup guide](docs/retired-mobile-sync.md) if you previously used the companion.
+
+**Türkçe:** Yayımlanmış indirme sürümü her iki platformda da **2.4.0**. Hazırlanan **2.5.0** sürümünde iPhone eşlikçisi kaldırıldı ve macOS'ta hatalı kota yanıtları daha güvenli işleniyor. Daha önce eşlikçiyi kullandıysanız [temizlik kılavuzuna](docs/retired-mobile-sync.md#türkçe) bakın.
 
 **macOS and Windows 2.4.0** add optional rolling seven-day history for each provider’s overall weekly quota, viewed in a separate chart. Recording is off by default and independent of mini charts. macOS uses native Liquid Glass on macOS 26+ and a system material on older supported versions; Windows keeps its native tray interface.
 
