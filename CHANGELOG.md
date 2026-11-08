@@ -9,6 +9,12 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+### Removed
+- macOS: retire Mobile Sync and the iPhone companion source, including widgets,
+  pairing and the snapshot listener. See [cleanup for older installations](docs/retired-mobile-sync.md).
+- macOS: Mobil Eşitleme, iPhone eşlikçi kaynak kodu, widget'lar, eşleştirme ve
+  dinleyici kaldırıldı. [Eski kurulumlar için temizlik](docs/retired-mobile-sync.md#türkçe).
+
 ## [2.4.0] - 2026-10-27
 
 ### Added
