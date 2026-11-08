@@ -313,7 +313,12 @@ public struct UsageWindow {
     ) {
         self.kind = kind ?? .classified(durationMinutes: durationMinutes, position: position)
         self.usedPercent = usedPercent
-        self.resetsAt = resetsAt
+        // Provider reset times outside the calendar range cannot be displayed.
+        self.resetsAt = resetsAt.flatMap { date in
+            let seconds = date.timeIntervalSinceReferenceDate
+            return (Date.distantPast.timeIntervalSinceReferenceDate...Date.distantFuture.timeIntervalSinceReferenceDate)
+                .contains(seconds) ? date : nil
+        }
         self.durationMinutes = durationMinutes
     }
 }
@@ -866,13 +871,13 @@ public enum UsageParser {
 
     private static func rateWindow(_ value: Any?, position: Int) -> UsageWindow? {
         guard let dictionary = value as? [String: Any] else { return nil }
-        guard let used = number(dictionary["usedPercent"]) else { return nil }
+        guard let used = number(dictionary["usedPercent"]), used.isFinite else { return nil }
         let resetSeconds = number(dictionary["resetsAt"])
         let duration = number(dictionary["windowDurationMins"])
         return UsageWindow(
-            usedPercent: min(100, max(0, Int(used.rounded()))),
+            usedPercent: Int(min(100, max(0, used)).rounded()),
             resetsAt: resetSeconds.map { Date(timeIntervalSince1970: $0) },
-            durationMinutes: duration.map { Int($0) },
+            durationMinutes: duration.flatMap { Int(exactly: $0.rounded(.towardZero)) },
             position: position
         )
     }

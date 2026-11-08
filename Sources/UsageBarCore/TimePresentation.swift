@@ -89,7 +89,7 @@ public struct TimePresentation {
     }
 
     func countdown(to date: Date, now: Date) -> Countdown {
-        let interval = max(0, Int(date.timeIntervalSince(now)))
+        let interval = max(0, Int(exactly: date.timeIntervalSince(now).rounded(.towardZero)) ?? 0)
         return Countdown(
             days: interval / 86_400,
             hours: (interval % 86_400) / 3_600,
