@@ -46,13 +46,14 @@ final class LegacyBundlePreferenceMigrationTests: XCTestCase {
         XCTAssertEqual(LegacyBundlePreferenceMigration.currentBundleIdentifier, Self.currentBundle)
     }
 
-    func testCopiesEveryLegacyValueIntoAnEmptyDomain() {
+    func testCopiesDesktopPreferencesWithoutRestoringRetiredMobileSetting() {
         let history = Data([1, 2, 3])
         let copied = run(legacy: [
             "provider.codex.connected": true,
             "provider.claude.connected": true,
             "app.language": "tr",
-            "usage.history.samples.v2": history
+            "usage.history.samples.v2": history,
+            "MobileSyncEnabled": true
         ])
 
         XCTAssertEqual(copied, 4)
@@ -60,6 +61,7 @@ final class LegacyBundlePreferenceMigrationTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: "provider.claude.connected"))
         XCTAssertEqual(defaults.string(forKey: "app.language"), "tr")
         XCTAssertEqual(defaults.data(forKey: "usage.history.samples.v2"), history)
+        XCTAssertNil(currentDomain["MobileSyncEnabled"])
     }
 
     /// Before the copy has ever run, anything already in the new domain was
@@ -90,6 +92,19 @@ final class LegacyBundlePreferenceMigrationTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "provider.codex.connected"))
     }
 
+    func testClearsRetiredPreferenceAfterBundleMigrationAlreadyRan() {
+        let history = Data([1, 2, 3])
+        defaults.set(true, forKey: LegacyBundlePreferenceMigration.completedKey)
+        defaults.set(true, forKey: "MobileSyncEnabled")
+        defaults.set(history, forKey: "usage.history.weekly.samples.v1")
+
+        XCTAssertEqual(run(legacy: ["MobileSyncEnabled": true]), 0)
+        XCTAssertEqual(run(legacy: ["MobileSyncEnabled": true]), 0)
+        XCTAssertNil(currentDomain["MobileSyncEnabled"])
+        XCTAssertEqual(defaults.data(forKey: "usage.history.weekly.samples.v1"), history)
+        XCTAssertTrue(defaults.bool(forKey: LegacyBundlePreferenceMigration.completedKey))
+    }
+
     func testRunsOnlyOnce() {
         XCTAssertEqual(run(legacy: ["provider.codex.connected": true]), 1)
         defaults.removeObject(forKey: "provider.codex.connected")
@@ -105,10 +120,12 @@ final class LegacyBundlePreferenceMigrationTests: XCTestCase {
     }
 
     func testDoesNothingOutsideTheShippedBundle() {
+        defaults.set(true, forKey: "MobileSyncEnabled")
         for bundle in [nil, "local.codex.usagebar", "com.apple.dt.xctest.tool"] {
             XCTAssertEqual(run(legacy: ["provider.codex.connected": true], bundle: bundle), 0)
             XCTAssertNil(defaults.object(forKey: "provider.codex.connected"))
             XCTAssertNil(defaults.object(forKey: LegacyBundlePreferenceMigration.completedKey))
+            XCTAssertEqual(currentDomain["MobileSyncEnabled"] as? Bool, true)
         }
     }
 

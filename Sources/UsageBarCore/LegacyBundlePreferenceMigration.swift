@@ -16,7 +16,8 @@ import Foundation
 ///   written there, for example the "not connected" fallback a first launch
 ///   records, and the upgrade must restore the user's real choices. Keys only
 ///   the current domain has are kept;
-/// - once it has run it never touches the current domain again;
+/// - the retired mobile preference is removed from the current domain and
+///   excluded from the copy;
 /// - it runs once, recorded by `completedKey`, even when there is nothing to
 ///   copy;
 /// - it leaves the legacy domain untouched, so an older build still finds its
@@ -29,8 +30,10 @@ public enum LegacyBundlePreferenceMigration {
     public static let currentBundleIdentifier = "com.akwnnwastaken.usagebar"
     public static let completedKey = "migration.legacy-bundle-identifier.completed"
 
-    /// Copies every legacy value into `defaults` and returns how many were
-    /// copied.
+    private static let retiredMobileSyncKey = "MobileSyncEnabled"
+
+    /// Removes the retired setting from the current domain and copies the
+    /// supported legacy values once. Returns the number of copied values.
     ///
     /// `currentDomain` and `legacyDomain` are the persistent domains as stored,
     /// passed in rather than read here so the policy can be exercised against a
@@ -44,13 +47,15 @@ public enum LegacyBundlePreferenceMigration {
         legacyDomain: [String: Any]?,
         bundleIdentifier: String?
     ) -> Int {
-        guard bundleIdentifier == currentBundleIdentifier,
-              currentDomain[completedKey] == nil
-        else { return 0 }
+        guard bundleIdentifier == currentBundleIdentifier else { return 0 }
+        if currentDomain[retiredMobileSyncKey] != nil {
+            defaults.removeObject(forKey: retiredMobileSyncKey)
+        }
+        guard currentDomain[completedKey] == nil else { return 0 }
 
         var copied = 0
         for (key, value) in legacyDomain ?? [:]
-        where key != completedKey {
+        where key != completedKey && key != retiredMobileSyncKey {
             defaults.set(value, forKey: key)
             copied += 1
         }

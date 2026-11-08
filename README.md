@@ -46,7 +46,6 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.
 - **macOS + Windows:** A native menu bar app on macOS, a system tray app on Windows.
-- **iPhone companion (paused):** [UsageBar Mobile](docs/mobile/SELF_BUILD.md) reads the same numbers on your phone, served by your own Mac over your own Tailscale network. **Mobile Sync is hidden in UsageBar 2.4.0**, so a current Mac build cannot serve the phone; the source stays in this repository.
 - **Local-first:** Reuse the provider sessions you already have, and keep raw provider output out of history.
 
 ### Rolling 7-day history
@@ -55,25 +54,21 @@ In **Usage history** on macOS, or **Settings → Usage history** on Windows, ena
 
 Recording continues while enabled: each successful refresh adds the overall weekly quota’s raw remaining-percentage reading, and readings older than seven days expire automatically. The separate chart includes quota resets across the retained period. It starts collecting when enabled, cannot reconstruct earlier usage or readings while the app was closed, and shows the actual recorded span. Turning recording off keeps the retained readings available until they expire; **Clear 7-day history** deletes only this separate history.
 
-Only timestamps and integer remaining percentages are stored, keyed by provider/window: `usage.history.weekly.samples.v1` in macOS preferences, or `%LOCALAPPDATA%\UsageBar\history-weekly.json` on Windows. These records stay on the computer and are not added to the mini chart or mobile snapshots.
+Only timestamps and integer remaining percentages are stored, keyed by provider/window: `usage.history.weekly.samples.v1` in macOS preferences, or `%LOCALAPPDATA%\UsageBar\history-weekly.json` on Windows. These records stay on the computer, separate from the mini chart.
 
-**Türkçe:** macOS'ta **Kullanım geçmişi**, Windows'ta **Ayarlar → Kullanım geçmişi** bölümünden **Son 7 günlük geçmişi kaydet** ayarını açın, ardından **7 günlük grafiği aç…** seçeneğini kullanın. Varsayılan olarak kapalıdır ve 24 saatlik mini grafikten bağımsız çalışır. Ayrı grafik genel haftalık kotayı gösterir, yalnızca sağlayıcı seçilir; tarihli kayıtlar fareyle veya kaydırıcının ok tuşlarıyla incelenir. Ayar açık kaldıkça her başarılı yenilemede genel haftalık kotanın ham kalan yüzdesi eklenir, yedi günden eski kayıtlar otomatik elenir; kota sıfırlamaları da görünür. Kayıt ayar açılınca başlar; geçmişe dönük veya uygulama kapalıyken ölçüm üretilemez. Kapatıldığında kayıt durur; mevcut veriler süreleri dolana kadar görülebilir. **7 günlük geçmişi temizle** yalnızca bu geçmişi siler. Sadece sağlayıcı/pencere anahtarı altında zaman damgası ve tam sayı kalan yüzde yerel olarak saklanır; ana grafiğe veya mobil görüntülere eklenmez.
+**Türkçe:** macOS'ta **Kullanım geçmişi**, Windows'ta **Ayarlar → Kullanım geçmişi** bölümünden **Son 7 günlük geçmişi kaydet** ayarını açın, ardından **7 günlük grafiği aç…** seçeneğini kullanın. Varsayılan olarak kapalıdır ve 24 saatlik mini grafikten bağımsız çalışır. Ayrı grafik genel haftalık kotayı gösterir, yalnızca sağlayıcı seçilir; tarihli kayıtlar fareyle veya kaydırıcının ok tuşlarıyla incelenir. Ayar açık kaldıkça her başarılı yenilemede genel haftalık kotanın ham kalan yüzdesi eklenir, yedi günden eski kayıtlar otomatik elenir; kota sıfırlamaları da görünür. Kayıt ayar açılınca başlar; geçmişe dönük veya uygulama kapalıyken ölçüm üretilemez. Kapatıldığında kayıt durur; mevcut veriler süreleri dolana kadar görülebilir. **7 günlük geçmişi temizle** yalnızca bu geçmişi siler. Sadece sağlayıcı/pencere anahtarı altında zaman damgası ve tam sayı kalan yüzde yerel olarak, mini grafikten ayrı saklanır.
 
 ## Downloads
 
 Version **2.4.0** is current for both platforms. macOS and Windows use separate release tags.
 
-**macOS and Windows 2.4.0** add optional rolling seven-day history for each provider’s overall weekly quota, viewed in a separate chart. Recording is off by default and independent of mini charts. macOS uses native Liquid Glass on macOS 26+ and a system material on older supported versions; Windows keeps its native tray interface. **Mobile Sync stays hidden.**
+**macOS and Windows 2.4.0** add optional rolling seven-day history for each provider’s overall weekly quota, viewed in a separate chart. Recording is off by default and independent of mini charts. macOS uses native Liquid Glass on macOS 26+ and a system material on older supported versions; Windows keeps its native tray interface.
 
 | Platform | Package | Download | Release notes |
 | --- | --- | --- | --- |
 | macOS 13+ · Apple Silicon | `UsageBar-2.4.0-macOS-arm64.zip` | [Download ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/v2.4.0/UsageBar-2.4.0-macOS-arm64.zip) | [`v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/v2.4.0) |
 | Windows 10 1809+ · x64 | `UsageBar-Setup-x64.exe` | [Download installer](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Setup-x64.exe) | [`windows-v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.4.0) |
 | Windows 10 1809+ · x64 | `UsageBar-Windows-x64.zip` | [Download portable ZIP](https://github.com/akwnnwastaken/UsageBar/releases/download/windows-v2.4.0/UsageBar-Windows-x64.zip) | [`windows-v2.4.0`](https://github.com/akwnnwastaken/UsageBar/releases/tag/windows-v2.4.0) |
-| iPhone · iOS 18+ | **UsageBar Mobile** — source (paused: Mobile Sync is hidden in 2.4.0) | [Build it yourself](docs/mobile/SELF_BUILD.md) | included in this repository |
-
-> [!NOTE]
-> The iPhone companion is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. There is no App Store listing and no TestFlight build.
 
 > [!NOTE]
 > The `main` branch contains the source for both platforms. Release packages, signing status, and first-launch guidance differ by platform; read the matching installation section below.
@@ -85,9 +80,9 @@ Version **2.4.0** is current for both platforms. macOS and Windows use separate 
 The displayed value is the **remaining percentage, not the used percentage**.
 
 - **macOS menu bar — Claude Code and Codex:** The ordinary weekly window is preferred only when less than **10% remains**. Then five-hour is shown only if its remaining percentage is strictly lower; a tie, or missing five-hour data, selects weekly. At **10% or more**, Claude uses its five-hour headline and Codex selects the most constrained non-weekly window (including other durations or unknown window kinds). If no eligible non-weekly headline exists, weekly is the fallback and shows its actual remaining percentage — including weekly-only accounts. Without an ordinary weekly window, each provider keeps its existing selection policy.
-- **Menu cards, history, phone/mobile snapshots, and Windows are unchanged:** Their shared summary policy still prefers five-hour for Claude Code, falling back to ordinary weekly when five-hour is missing; Codex still selects the lowest remaining percentage across all available windows. History continues recording every window separately.
+- **Menu cards, history, and Windows are unchanged:** Their shared summary policy still prefers five-hour for Claude Code, falling back to ordinary weekly when five-hour is missing; Codex still selects the lowest remaining percentage across all available windows. History continues recording every window separately.
 
-**Türkçe:** macOS menü çubuğunda Claude Code ve Codex için normal haftalık pencere yalnızca **%10'dan az kaldığında** önceliklidir. Bu durumda beş saatlik pencere ancak kalan yüzdesi haftalıktan kesin olarak düşükse gösterilir; eşitlikte veya beş saatlik veri yoksa haftalık seçilir. **%10 ve üzerinde** Claude beş saatlik başlığı, Codex ise haftalık dışındaki en kısıtlı pencereyi (diğer süreler ve bilinmeyen türler dahil) kullanır. Uygun bir haftalık dışı başlık yoksa haftalık pencere gerçek kalan yüzdesiyle gösterilir; yalnızca haftalık veri sunan hesaplar da buna dahildir. Normal haftalık pencere yoksa mevcut sağlayıcı kuralı korunur. Menü kartları, geçmiş, telefon/mobil anlık görüntüleri ve Windows değişmez: ortak özet Claude için beş saatliği, yoksa normal haftalığı; Codex için tüm pencereler arasındaki en düşük kalan yüzdeyi seçer. Geçmiş her pencereyi ayrı kaydetmeye devam eder.
+**Türkçe:** macOS menü çubuğunda Claude Code ve Codex için normal haftalık pencere yalnızca **%10'dan az kaldığında** önceliklidir. Bu durumda beş saatlik pencere ancak kalan yüzdesi haftalıktan kesin olarak düşükse gösterilir; eşitlikte veya beş saatlik veri yoksa haftalık seçilir. **%10 ve üzerinde** Claude beş saatlik başlığı, Codex ise haftalık dışındaki en kısıtlı pencereyi (diğer süreler ve bilinmeyen türler dahil) kullanır. Uygun bir haftalık dışı başlık yoksa haftalık pencere gerçek kalan yüzdesiyle gösterilir; yalnızca haftalık veri sunan hesaplar da buna dahildir. Normal haftalık pencere yoksa mevcut sağlayıcı kuralı korunur. Menü kartları, geçmiş ve Windows değişmez: ortak özet Claude için beş saatliği, yoksa normal haftalığı; Codex için tüm pencereler arasındaki en düşük kalan yüzdeyi seçer. Geçmiş her pencereyi ayrı kaydetmeye devam eder.
 
 Click the icon to inspect every window returned for the selected provider. UsageBar only shows windows actually available on the account.
 
@@ -131,22 +126,6 @@ If a provider temporarily fails, the last successful value remains visible with 
 - Launch at login uses the macOS **Login Items** system.
 - Provider commands run in a separate process group.
 - Distributed for Apple Silicon (`arm64`).
-- Mobile Sync, the host side of the iPhone companion, is hidden in 2.4.0 — see below.
-
-#### iPhone
-
-> [!IMPORTANT]
-> **Mobile Sync is hidden in UsageBar 2.4.0.** The Mac shows no Mobile Sync menu, opens no listener and publishes nothing, so the iPhone app cannot receive data from 2.4.0. An existing pairing is kept in the Keychain and resumes when Mobile Sync returns. The notes below describe the feature as built.
-
-- **UsageBar Mobile** is distributed as **source**, not as an `.ipa`: you build it once in Xcode and sign it with your own Apple account. A free **Personal Team** works, with Apple's roughly **7-day** development provisioning limit.
-- The phone never talks to Codex or Claude and holds no provider credentials. Its only input is a sanitized snapshot from your Mac.
-- **Tailscale is required**, with the Mac and the iPhone on the same tailnet. Reachability comes from your own network; there is no UsageBar server anywhere in the path, and Tailscale Funnel is never used.
-- The Mac side is UsageBar itself. **Mobile Sync is off until you enable it**, and while it is off UsageBar opens no listener, runs no Tailscale command and stores no mobile credential. There is no separate Mac application to install.
-- Pairing is a QR code carrying a one-time code, scanned once. The Mac stores only digests, never the credential itself.
-- UsageBar's listener binds `127.0.0.1` and nothing else. **You configure the `tailscale serve` route yourself** — UsageBar never creates, changes or removes Tailscale configuration; it only reads `tailscale status`.
-- Home Screen widgets, Lock Screen widgets and Control Center controls are part of the same build.
-- **Windows cannot host the phone yet.** The host side is macOS only.
-- Start at [docs/mobile/SELF_BUILD.md](docs/mobile/SELF_BUILD.md), then [docs/mobile/TAILSCALE_SETUP.md](docs/mobile/TAILSCALE_SETUP.md).
 
 #### Windows
 
@@ -277,7 +256,7 @@ The diagnostic summary is limited to version, operating-system version, connecti
 
 ## What UsageBar accesses
 
-UsageBar has no server, user account, analytics, telemetry, crash reporting, or update check. The macOS and Windows apps contain no code that connects to the internet. Their only networking code is the macOS Mobile Sync listener, which binds `127.0.0.1` only and is hidden in 2.4.0.
+UsageBar has no server, user account, analytics, telemetry, crash reporting, or update check. The macOS and Windows apps do not open a network listener or connect to the internet themselves.
 
 Usage numbers come from the provider tool already installed on your computer. **That tool contacts its own service** — OpenAI for Codex, Anthropic for Claude Code — with your existing sign-in, exactly as it does when you use it yourself. UsageBar reads only the tool's printed answer, keeps the parsed percentages and reset times, and discards the raw output.
 
@@ -293,7 +272,6 @@ UsageBar runs no provider tool before you click **Connect Codex** or **Connect C
 | Runs `claude auth login --claudeai` | Only when you choose **Sign in to Claude…** | Claude Code opens the browser sign-in itself. Output is discarded; UsageBar never sees the credential. |
 | Checks fixed executable paths: `/Applications/ChatGPT.app/…`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.claude/bin`, `~/.claude/local`, and the Claude app's `~/Library/Application Support/Claude/claude-code/<version>/` | Before each launch, and for **Copy diagnostics** | Checks that the resolved file is executable, owned by you or root, and not writable by others; the Claude app's copy must also carry Anthropic's Developer ID signature (team `Q6L2SF6YDW`). Your `PATH` and the current folder are never searched. |
 | `Claude Code-credentials` Keychain item | When Claude Code runs | **Read by Claude Code, not by UsageBar.** Because UsageBar starts Claude Code, macOS may show a one-time access prompt. |
-| `local.codex.usagebar.mobile-sync` Keychain item | Only if you used Mobile Sync | UsageBar's own item for Mobile Sync pairing digests. Not read or written while Mobile Sync is hidden (2.4.0). |
 | Preferences in the `com.akwnnwastaken.usagebar` defaults domain | Always | Settings, connection choices, and — with mini charts on — history under `usage.history.samples.v2` (timestamp and integer remaining percentage only, at most 24 hours). With seven-day recording enabled, the app stores a separate rolling week under `usage.history.weekly.samples.v1` with the same fields. |
 | Preferences in the former `local.codex.usagebar` defaults domain | Once, on the first launch after updating from 2.3.4 or earlier | Copied into the new domain so connections, settings and history survive the bundle-identifier change. The old domain is left as it was. |
 | `$TMPDIR/com.akwnnwastaken.usagebar` | Each provider launch | Empty working folder for provider processes, so no project settings are picked up. |
@@ -315,9 +293,12 @@ UsageBar does not open files inside `~/.codex` or `~/.claude`, and does not read
 
 The Windows app does not use Windows Credential Manager, read credential files, or open files inside `.codex` or `.claude`.
 
-**Türkçe:** UsageBar'ın sunucusu, hesabı, analitiği, telemetrisi, çökme raporu veya güncelleme denetimi yoktur; macOS ve Windows uygulamalarında internete bağlanan kod bulunmaz (tek ağ kodu, yalnızca `127.0.0.1`'e bağlanan ve 2.4.0'te gizli olan macOS Mobile Sync dinleyicisidir). Kullanım verisini bilgisayarınızda zaten kurulu olan Codex veya Claude Code aracı sağlar; **bu araç kendi hizmetine (OpenAI veya Anthropic) mevcut oturumunuzla bağlanır**, tıpkı onu kendiniz kullandığınızda olduğu gibi. UsageBar yalnızca aracın yazdırdığı yanıtı okur, yüzde ve sıfırlama zamanlarını saklar, ham çıktıyı atar. Sağlayıcıyı bağlamadan veya toplama duraklatılmışken hiçbir sağlayıcı aracı çalıştırılmaz. UsageBar `~/.codex` veya `~/.claude` içindeki dosyaları açmaz; `Claude Code-credentials` Keychain öğesini UsageBar değil, başlattığı Claude Code okur. UsageBar'ın kendi kalıcı verisi ayarlar ve (açıksa) yalnızca zaman damgası ile tam sayı kalan yüzdeden oluşan en fazla 24 saatlik mini grafik geçmişidir (isteğe bağlı olarak ayrıca ayrı bir kayan 7 günlük geçmiş tutulabilir); oturum açılışında başlatmayı açarsanız sistemin başlangıç kaydı da eklenir. 2.3.4 veya daha eski bir sürümden güncellemede, eski `local.codex.usagebar` tercihleri ilk açılışta bir kez yeni alana kopyalanır; eski alana dokunulmaz. Ayrıntılar yukarıdaki tablolardadır.
+**Türkçe:** UsageBar'ın sunucusu, hesabı, analitiği, telemetrisi, çökme raporu veya güncelleme denetimi yoktur; macOS ve Windows uygulamaları ağ dinleyicisi açmaz ve doğrudan internete bağlanmaz. Kullanım verisini bilgisayarınızda zaten kurulu olan Codex veya Claude Code aracı sağlar; **bu araç kendi hizmetine (OpenAI veya Anthropic) mevcut oturumunuzla bağlanır**, tıpkı onu kendiniz kullandığınızda olduğu gibi. UsageBar yalnızca aracın yazdırdığı yanıtı okur, yüzde ve sıfırlama zamanlarını saklar, ham çıktıyı atar. Sağlayıcıyı bağlamadan veya toplama duraklatılmışken hiçbir sağlayıcı aracı çalıştırılmaz. UsageBar `~/.codex` veya `~/.claude` içindeki dosyaları açmaz; `Claude Code-credentials` Keychain öğesini UsageBar değil, başlattığı Claude Code okur. UsageBar'ın kendi kalıcı verisi ayarlar ve (açıksa) yalnızca zaman damgası ile tam sayı kalan yüzdeden oluşan en fazla 24 saatlik mini grafik geçmişidir (isteğe bağlı olarak ayrıca ayrı bir kayan 7 günlük geçmiş tutulabilir); oturum açılışında başlatmayı açarsanız sistemin başlangıç kaydı da eklenir. 2.3.4 veya daha eski bir sürümden güncellemede, eski `local.codex.usagebar` tercihleri ilk açılışta bir kez yeni alana kopyalanır; eski alana dokunulmaz. Ayrıntılar yukarıdaki tablolardadır.
 
 ## Troubleshooting
+
+- **Previously used the iPhone companion?** The current source retires it. Follow the [upgrade cleanup guide](docs/retired-mobile-sync.md) for the old phone connection, Keychain entry and Tailscale route.
+- **iPhone eşlikçi uygulamasını kullandınız mı?** Özellik güncel kaynakta kaldırıldı. Eski telefon bağlantısı, Anahtar Zinciri kaydı ve Tailscale rotası için [temizlik adımlarına](docs/retired-mobile-sync.md#türkçe) bakın.
 
 - **Windows icon is missing:** Check the `^` overflow area on the taskbar.
 - **macOS blocks the app:** Use only the **Privacy & Security → Open Anyway** flow above; do not disable Gatekeeper.
@@ -387,13 +368,6 @@ UsageBar/
 ├── Sources/UsageBar/                       # macOS app and provider readers
 ├── Sources/UsageBarCore/                   # Shared pure policies and models
 ├── Sources/UsageBarProcessLauncher/        # Shell-free process-group launcher
-├── Sources/UsageBarSync/                   # Schema-v1 mobile snapshot model
-├── Sources/UsageBarSyncTransport/          # Loopback-only HTTP listener
-├── Sources/UsageBarPairing/                # QR pairing wire format, Mac + iPhone
-├── Sources/UsageBarMobileSyncHost/         # Mobile Sync: auth, pairing, lifecycle
-├── ios/UsageBarMobileLab/                  # iPhone app, widgets and controls
-├── shared/sync-schema/                     # Mobile wire schema and parity fixtures
-├── docs/mobile/                            # iPhone setup, privacy and design docs
 ├── Package.swift                           # Canonical SwiftPM build definition
 ├── Info.plist                              # macOS app and version metadata
 ├── build.sh                                # macOS build, tests, and local signing
