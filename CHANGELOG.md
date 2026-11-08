@@ -9,11 +9,17 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
+## 2.5.0 (unpublished)
+
 ### Removed
 - macOS: retire Mobile Sync and the iPhone companion source, including widgets,
   pairing and the snapshot listener. See [cleanup for older installations](docs/retired-mobile-sync.md).
 - macOS: Mobil Eşitleme, iPhone eşlikçi kaynak kodu, widget'lar, eşleştirme ve
   dinleyici kaldırıldı. [Eski kurulumlar için temizlik](docs/retired-mobile-sync.md#türkçe).
+
+### Fixed
+- macOS: retain valid quota readings and skip invalid reset data when a provider returns malformed numbers.
+- macOS: sağlayıcı hatalı sayısal değer döndürdüğünde geçerli kota ölçümleri korunur ve geçersiz sıfırlama verisi atlanır.
 
 ## [2.4.0] - 2026-10-27
 
