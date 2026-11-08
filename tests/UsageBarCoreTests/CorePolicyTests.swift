@@ -340,6 +340,33 @@ final class CorePolicyTests: XCTestCase {
         XCTAssertNil(usage?.error)
     }
 
+    func testCodexResponseSkipsNonFiniteUsageAndKeepsValidSibling() {
+        let json = """
+        {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":"NaN"},"secondary":{"usedPercent":"12.4","windowDurationMins":"10080"}}}}
+        """
+        let usage = UsageParser.codexResponse(from: Data(json.utf8))
+        XCTAssertEqual(usage?.windows.count, 1)
+        XCTAssertEqual(usage?.weekly?.usedPercent, 12)
+    }
+
+    func testCodexResponseBoundsNumericFieldsBeforeConversion() throws {
+        let json = """
+        {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":1e30,"windowDurationMins":1e30,"resetsAt":"Infinity"},"secondary":{"usedPercent":-1e30,"windowDurationMins":4320.5,"resetsAt":1e30}}}}
+        """
+        let usage = try XCTUnwrap(UsageParser.codexResponse(from: Data(json.utf8)))
+        XCTAssertEqual(usage.windows.map(\.usedPercent), [100, 0])
+        XCTAssertEqual(usage.windows.map(\.kind), [.unknown(position: 0), .duration(minutes: 4_320)])
+        XCTAssertTrue(usage.windows.allSatisfy { $0.resetsAt == nil })
+    }
+
+    func testClaudePrintUsageOmitsAnOutOfRangeReset() {
+        let usage = UsageParser.claudePrintUsage(
+            "Current session: 10% used · resets in 999999999999999999999999 days"
+        )
+        XCTAssertEqual(usage.session?.usedPercent, 10)
+        XCTAssertNil(usage.session?.resetsAt)
+    }
+
     func testCodexResponseMissingLimitsIsUnavailable() {
         let usage = UsageParser.codexResponse(from: Data(#"{"id":2,"result":{}}"#.utf8))
         XCTAssertEqual(usage?.error?.diagnosticCode, "codex_limit_missing")

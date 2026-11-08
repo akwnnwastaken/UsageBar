@@ -215,6 +215,12 @@ final class TimePresentationTests: XCTestCase {
     // MARK: - Menu-bar form
 
     /// The compact form stays countdown-only: no label, no clock, no separator.
+    func testCountdownDoesNotConvertAnOutOfRangeIntervalToInt() {
+        let now = Date(timeIntervalSinceReferenceDate: 0)
+        let reset = Date(timeIntervalSinceReferenceDate: 1e30)
+        XCTAssertEqual(english().relativeReset(reset, now: now), "now")
+    }
+
     func testTheMenuBarFormStaysRelativeOnly() throws {
         let resetsAt = try instant(2026, 8, 24, 18, 45)
         let now = resetsAt.addingTimeInterval(-(3 * 3_600 + 12 * 60))
