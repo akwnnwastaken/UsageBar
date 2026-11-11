@@ -1,5 +1,6 @@
 #!/bin/bash
 # Production staging only. Deliberately rejects embedded code until a project supplies its own signing order.
+set +x
 set -euo pipefail
 die() { printf '%s\n' "$*" >&2; exit 1; }
 [[ $# == 4 || $# == 5 ]] || die 'usage: sign-and-notarize.sh APP EXPECTED_ID TAG OUTPUT.zip [package-builder]'
@@ -27,45 +28,38 @@ fi
 : "${APPLE_TEAM_ID:?}" "${APPLE_DEVELOPER_ID_P12_BASE64:?}" "${APPLE_DEVELOPER_ID_P12_PASSWORD:?}"
 : "${APPLE_NOTARY_KEY_P8_BASE64:?}" "${APPLE_NOTARY_KEY_ID:?}" "${APPLE_NOTARY_ISSUER_ID:?}"
 [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || die 'Invalid Apple Team ID'
+export -n APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD APPLE_NOTARY_KEY_P8_BASE64
+export -n APPLE_INSTALLER_P12_BASE64 APPLE_INSTALLER_P12_PASSWORD
+source "$(dirname "$0")/signing-keychain.sh"
 umask 077
 scratch=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/macos-sign.XXXXXXXX")
-keychain="$scratch/signing.keychain-db"
-trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
-keychain_password=$(openssl rand -hex 32)
-security create-keychain -p "$keychain_password" "$keychain"
-security set-keychain-settings -lut 7200 "$keychain"
-security unlock-keychain -p "$keychain_password" "$keychain"
-printf '%s' "$APPLE_DEVELOPER_ID_P12_BASE64" | base64 -D > "$scratch/application.p12"
-security import "$scratch/application.p12" -k "$keychain" -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
-rm -f "$scratch/application.p12"
+open_signing_keychain
+printf '%s' "$APPLE_DEVELOPER_ID_P12_BASE64" | base64 -D > "$scratch/application.p12" ||
+  die 'Developer ID PKCS#12 secret is not valid Base64'
+import_signing_identity "$scratch/application.p12" "$APPLE_DEVELOPER_ID_P12_PASSWORD" /usr/bin/codesign
 unset APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD
 if [[ -n "$package_builder" ]]; then
   : "${APPLE_INSTALLER_P12_BASE64:?}" "${APPLE_INSTALLER_P12_PASSWORD:?}" "${APPLE_INSTALLER_IDENTITY:?}"
   [[ "$APPLE_INSTALLER_IDENTITY" == 'Developer ID Installer: '*" ($APPLE_TEAM_ID)" ]] || die 'Invalid installer identity'
   printf '%s' "$APPLE_INSTALLER_P12_BASE64" | base64 -D > "$scratch/installer.p12"
-  security import "$scratch/installer.p12" -k "$keychain" -P "$APPLE_INSTALLER_P12_PASSWORD" -T /usr/bin/pkgbuild
-  rm -f "$scratch/installer.p12"
+  import_signing_identity "$scratch/installer.p12" "$APPLE_INSTALLER_P12_PASSWORD" /usr/bin/pkgbuild
   unset APPLE_INSTALLER_P12_BASE64 APPLE_INSTALLER_P12_PASSWORD
 fi
-security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+allow_keychain_signing
 identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="$APPLE_TEAM_ID" '
   /"Developer ID Application: / && index($0, "(" team ")\"") { print $2; n++ }
   END { if (n != 1) exit 1 }
 ') || die 'Expected exactly one valid Developer ID Application identity for this team'
-printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" | base64 -D > "$scratch/AuthKey.p8"
-unset APPLE_NOTARY_KEY_P8_BASE64
-notary=(--key "$scratch/AuthKey.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID")
-unset APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID
 
 verify_app() {
   local signature entitlements
-  codesign --verify --deep --strict --verbose=2 "$1"
-  signature=$(codesign -d --verbose=4 "$1" 2>&1)
-  grep -qx "TeamIdentifier=$APPLE_TEAM_ID" <<< "$signature"
-  grep -q '^Authority=Developer ID Application:' <<< "$signature"
-  grep -Eq '^CodeDirectory .*flags=.*\(.*runtime' <<< "$signature"
-  grep -q '^Timestamp=' <<< "$signature"
-  entitlements=$(codesign -d --entitlements - "$1" 2>/dev/null)
+  codesign --verify --deep --strict --verbose=2 "$1" || return 1
+  signature=$(codesign -d --verbose=4 "$1" 2>&1) || return 1
+  grep -qx "TeamIdentifier=$APPLE_TEAM_ID" <<< "$signature" || return 1
+  grep -q '^Authority=Developer ID Application:' <<< "$signature" || return 1
+  grep -Eq '^CodeDirectory .*flags=.*\(.*runtime' <<< "$signature" || return 1
+  grep -q '^Timestamp=' <<< "$signature" || return 1
+  entitlements=$(codesign -d --entitlements - "$1" 2>/dev/null) || return 1
   if [[ -n "$entitlements" ]]; then
     # The four initial apps declare no entitlements. Review and allowlist any future additions.
     [[ "$(plutil -convert json -o - -- - <<< "$entitlements")" == '{}' ]] || die 'Unexpected app entitlements'
@@ -86,8 +80,14 @@ notarize() {
   [[ "$status" == Accepted ]] || die "Apple did not accept submission $id"
 }
 
-codesign --force --keychain "$keychain" --sign "$identity" --options runtime --timestamp "$app"
-verify_app "$app"
+codesign --force --keychain "$keychain" --sign "$identity" --options runtime --timestamp "$app" ||
+  die 'Developer ID signing failed after import. Check Keychain access, certificate trust chain and timestamp availability.'
+verify_app "$app" || die 'Developer ID signature failed post-signing verification'
+printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" | base64 -D > "$scratch/AuthKey.p8" ||
+  die 'Apple notarization key secret is not valid Base64'
+unset APPLE_NOTARY_KEY_P8_BASE64
+notary=(--key "$scratch/AuthKey.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID")
+unset APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID
 ditto -c -k --sequesterRsrc --keepParent "$app" "$scratch/submission.zip"
 notarize "$scratch/submission.zip"
 xcrun stapler staple "$app"

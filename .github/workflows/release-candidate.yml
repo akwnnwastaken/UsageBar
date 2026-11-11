@@ -86,6 +86,8 @@ jobs:
         run: |
           set -euo pipefail
           swift package dump-package | jq -e '.dependencies == []' >/dev/null
+      - name: Test temporary Keychain signing without Apple credentials
+        run: bash tests/signing_keychain.sh
       - name: Run macOS regression tests
         run: |
           ./tests/release_toolchain_guard.sh
