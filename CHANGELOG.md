@@ -9,7 +9,9 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
-## 2.5.0 (unpublished)
+## macOS 2.5.1 (unpublished)
+
+This release includes the macOS changes from the unpublished 2.5.0 candidate.
 
 ### Removed
 - macOS: retire Mobile Sync and the iPhone companion source, including widgets,
@@ -18,14 +20,21 @@ Releases before v1.5.2 are listed on the
   dinleyici kaldırıldı. [Eski kurulumlar için temizlik](docs/retired-mobile-sync.md#türkçe).
 
 ### Changed
-- Windows: build and package with the supported .NET 10 LTS runtime.
-- Windows: derleme ve paketleme, desteği süren .NET 10 LTS çalışma zamanını kullanır.
 - macOS: turning off **Show details** hides mini charts and their summaries while keeping remaining quota and reset times visible.
 - macOS: **Ayrıntıları göster** kapalıyken mini grafikler ve özetleri gizlenir, kalan kota ve sıfırlanma zamanları görünür kalır.
 
 ### Fixed
 - macOS: retain valid quota readings and skip invalid reset data when a provider returns malformed numbers.
 - macOS: sağlayıcı hatalı sayısal değer döndürdüğünde geçerli kota ölçümleri korunur ve geçersiz sıfırlama verisi atlanır.
+
+- macOS: use the temporary signing Keychain for Developer ID certificate-chain lookup, then restore the runner’s original search list.
+- macOS: Developer ID sertifika zinciri için geçici Anahtar Zinciri kullanılır. İşlem sonunda runner’ın önceki arama listesi geri yüklenir.
+
+## Windows 2.5.0 (unpublished)
+
+### Changed
+- Windows: build and package with the supported .NET 10 LTS runtime.
+- Windows: derleme ve paketleme, desteği süren .NET 10 LTS çalışma zamanını kullanır.
 
 ## [2.4.0] - 2026-10-27
 

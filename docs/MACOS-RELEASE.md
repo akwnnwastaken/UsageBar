@@ -1,10 +1,12 @@
 # Production release for macOS and Windows
 
-UsageBar uses a solo maintainer model. macOS `v2.5.0` and Windows
+UsageBar uses a solo maintainer model. macOS `v2.5.1` and Windows
 `windows-v2.5.0` can ship on different dates from separately reviewed
 `main` commits. The macOS release workflow uses only the macOS tag and macOS
 build. Pull requests still build and test both platforms. A manual dispatch
 with empty inputs produces staging artifacts for the selected platform.
+The existing signed macOS `v2.5.0` tag records an unpublished candidate and
+must remain intact. The next macOS release uses `v2.5.1` (build 39).
 
 ## Repository setup
 
@@ -99,6 +101,21 @@ rationale and follow-up for any accepted low/medium residual risk.
    Keep secret values out of chat, source, logs, shell arguments and artifacts.
    Leave `MACOS_RELEASE_APPROVED_SHA` unset until the final SHA is approved.
 
+## Signing regression
+
+The macOS staging job generates a short-lived fixture identity, imports it
+into a temporary Keychain, signs an app with `codesign`, and verifies the
+signature and search-list cleanup. A failed import exercises cleanup too.
+The fixture uses no Apple secrets or timestamp service. Developer ID chain
+trust, the actual protected credentials, secure timestamping and Apple
+notarization are verified during the authorized production run.
+
+If PKCS#12 import fails, check the archive format and its matching password
+without printing either. If the import and identity lookup succeed but
+`codesign` fails, check the logged stage, private-key access, runner trust
+chain and timestamp availability. Preserve the default Keychain and Apple
+trust settings. The temporary Keychain is the only credential store used.
+
 ## Prepare and publish macOS
 
 1. Merge approved macOS release changes, including the changelog. Keep public
@@ -126,7 +143,9 @@ rationale and follow-up for any accepted low/medium residual risk.
    `vX.Y.Z` for `tag` and the full approved commit for `release_sha`.
    The run, current `main` tip, verified macOS tag and
    `MACOS_RELEASE_APPROVED_SHA` must identify the same commit. The signing
-   job uses a temporary keychain, requires Apple Accepted, staples the app
+   job adds a temporary Keychain to the runner’s user search list, restores
+   the previous list and deletes the Keychain at exit. It requires Apple
+   Accepted, staples the app
    and verifies Gatekeeper and the final archive. The draft job attests the
    final ZIP, attaches its checksum and provenance, and checks GitHub's
    stored asset digests. Retain the successful run ID and attempt.
