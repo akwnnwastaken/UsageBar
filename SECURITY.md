@@ -33,11 +33,11 @@ yürütüldüğü için kesin yanıt süresi taahhüt edilmez.
 
 UsageBar mevcut yerel Codex ve Claude Code oturumlarını kullanır. API anahtarı,
 parola, erişim belirteci, ham CLI çıktısı veya sağlayıcı yanıtı saklamaz. Yerel
-geçmiş yalnızca zaman damgası ile kalan tam sayı yüzdesini, en fazla 24 saat
-boyunca saklar.
+geçmiş yalnızca zaman damgası ile kalan tam sayı yüzdesini saklar. Standart
+geçmiş 24 saat, isteğe bağlı haftalık geçmiş 7 gün tutulur.
 
-Release paketleri şu anda ad-hoc imzalıdır ve Apple tarafından notarize
-edilmemiştir. Developer ID ve notarization tamamlanana kadar Release sayfasındaki
+Yayımlanmış macOS paketleri ad-hoc imzalıdır ve Apple tarafından notarize
+edilmemiştir. Windows paketleri imzasızdır. Developer ID ve notarization tamamlanana kadar Release sayfasındaki
 SHA-256 değeri ile GitHub artifact attestation kaydı birlikte doğrulanmalıdır.
 
 Eski Mobil Eşitleme kurulumlarından geçişte yalnız UsageBar'a ait eşleşmeyi ve
@@ -74,10 +74,11 @@ project, so no fixed response-time guarantee is offered.
 
 UsageBar uses existing local Codex and Claude Code sessions. It does not store
 API keys, passwords, access tokens, raw CLI output, or provider responses. Local
-history stores only a timestamp and integer remaining percentage for at most 24
-hours.
+history stores only timestamps and integer remaining percentages. Standard
+history is retained for 24 hours and opt-in weekly history for 7 days.
 
-Release packages are currently ad-hoc signed and are not notarized by Apple.
+Published macOS packages are ad-hoc signed and are not notarized by Apple.
+Windows packages are unsigned.
 Until Developer ID signing and notarization are available, verify both the
 SHA-256 value on the Release page and the GitHub artifact attestation record.
 

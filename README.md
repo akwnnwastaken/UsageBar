@@ -60,7 +60,7 @@ Only timestamps and integer remaining percentages are stored, keyed by provider/
 
 ## Downloads
 
-Version **2.4.0** is the current public download for both platforms. macOS and Windows use separate release tags.
+Version **2.4.0** is the current public download for both platforms. macOS and Windows use separate release tags and can ship on different dates.
 
 The source is prepared for **2.5.0**. This upcoming version removes the retired iPhone companion and improves how macOS handles malformed quota responses. See the [cleanup guide](docs/retired-mobile-sync.md) if you previously used the companion.
 

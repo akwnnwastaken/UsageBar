@@ -1,6 +1,6 @@
 name: Windows CI
 
-# Standalone Windows CI and the Windows job of the paired release candidate.
+# Standalone Windows CI and the Windows job of pull request staging.
 #
 # The job is deliberately NOT called `build-and-test`: that context name is the
 # required status check for the macOS build on `main`, and a second job sharing
@@ -18,12 +18,23 @@ on:
       - 'windows/**'
       - 'shared/**'
       - '.github/workflows/windows-ci.yml'
+      - 'scripts/verify-release-refs.sh'
   pull_request:
     paths:
       - 'windows/**'
       - 'shared/**'
       - '.github/workflows/windows-ci.yml'
+      - 'scripts/verify-release-refs.sh'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing signed Windows tag on this main commit; leave empty for CI'
+        type: string
+        required: false
+      release_sha:
+        description: 'Full approved main commit SHA for Windows packaging; leave empty with no tag for CI'
+        type: string
+        required: false
   workflow_call:
 
 permissions:
@@ -58,6 +69,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify Windows release tag and source
+        if: inputs.tag != '' || inputs.release_sha != ''
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/verify-release-refs.sh windows "$TAG" "$RELEASE_SHA"
+
+      - name: Verify Windows release version
+        if: inputs.tag != '' || inputs.release_sha != ''
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $version = $env:TAG.Substring('windows-v'.Length)
+          $versions = $props.Project.PropertyGroup
+          if ($versions.Version -cne $version -or
+              $versions.AssemblyVersion -cne "$version.0" -or
+              $versions.FileVersion -cne "$version.0") {
+            throw 'Windows version metadata does not match the release tag.'
+          }
 
       # Static analysis of the seven scripts under scripts/ before any build
       # work. The analyzer is the PSScriptAnalyzer module the runner image
