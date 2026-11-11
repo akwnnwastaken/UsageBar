@@ -1,7 +1,6 @@
 name: Windows CI
 
-# Builds, tests and packages the Windows port only. The macOS workflows
-# (ci.yml, release-candidate.yml) are untouched and keep their own triggers.
+# Standalone Windows CI and the Windows job of the paired release candidate.
 #
 # The job is deliberately NOT called `build-and-test`: that context name is the
 # required status check for the macOS build on `main`, and a second job sharing
@@ -25,18 +24,22 @@ on:
       - 'shared/**'
       - '.github/workflows/windows-ci.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-ci-${{ github.workflow }}-${{ github.workflow == 'Windows CI' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.workflow == 'Windows CI' }}
 
 env:
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  NuGetAudit: 'true'
+  NuGetAuditMode: all
+  WarningsAsErrors: 'NU1900;NU1903;NU1904;NU1905'
 
 jobs:
   windows-build-and-test:
@@ -53,6 +56,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Static analysis of the seven scripts under scripts/ before any build
       # work. The analyzer is the PSScriptAnalyzer module the runner image
@@ -106,20 +111,20 @@ jobs:
           }
           Write-Host 'PSScriptAnalyzer: 0 findings'
 
-      - name: Install the .NET 8 SDK
+      - name: Install the .NET 10 SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      # Fails the run if anything other than .NET 8 is in effect, so a silent
+      # Fails the run if anything other than .NET 10 is in effect, so a silent
       # SDK drift can never be discovered only after shipping.
-      - name: Verify the SDK in use is .NET 8
+      - name: Verify the SDK in use is .NET 10
         run: |
           $sdk = dotnet --version
           Write-Host "dotnet --version: $sdk"
           dotnet --list-sdks
-          if (-not $sdk.StartsWith('8.')) {
-            Write-Host "::error::Expected the .NET 8 SDK, resolved $sdk"
+          if (-not $sdk.StartsWith('10.')) {
+            Write-Host "::error::Expected the .NET 10 SDK, resolved $sdk"
             exit 1
           }
 

@@ -133,7 +133,7 @@ If a provider temporarily fails, the last successful value remains visible with 
 
 #### Windows
 
-- A native **C# / .NET 8 / WPF** system tray application with no taskbar button or main window.
+- A native **C# / .NET 10 / WPF** system tray application with no taskbar button or main window.
 - Supports Codex's official Windows installation and Claude Code's native Windows installation.
 - Can read Claude Code through **WSL**; that path is still not physically validated as of the 2.3.3 release.
 - Distributed as a portable ZIP and a per-user installer.
@@ -148,7 +148,7 @@ Only the provider you want to track needs to be installed and signed in.
 | Platform | System | Provider | Build from source |
 | --- | --- | --- | --- |
 | macOS | macOS 13+, Apple Silicon (`arm64`) | ChatGPT app or signed-in Codex CLI; Claude app or Claude Code CLI, signed in | Xcode Command Line Tools |
-| Windows | Windows 10 version 1809+ (including Windows 11), x64 | Signed-in official Windows Codex installation; native Claude Code or supported WSL path | .NET 8 SDK |
+| Windows | Windows 10 version 1809+ (including Windows 11), x64 | Signed-in official Windows Codex installation; native Claude Code or supported WSL path | .NET 10 SDK |
 
 Windows end-user packages are self-contained; no separate .NET Runtime installation is required.
 
@@ -338,7 +338,7 @@ Additional checks:
 
 #### Windows
 
-Run commands from `windows/`; `windows/global.json` pins the SDK to .NET 8.
+Run commands from `windows/`; `windows/global.json` pins the SDK to .NET 10.
 
 ```powershell
 git clone https://github.com/akwnnwastaken/UsageBar.git
@@ -363,7 +363,7 @@ Package and verify:
 ./scripts/verify-installer.ps1
 ```
 
-`package.ps1` creates the self-contained portable ZIP; `package-installer.ps1` creates the Inno Setup installer. `Core` and `Core.Tests` target `net8.0`; Windows-specific tests are skipped on other platforms.
+`package.ps1` creates the self-contained portable ZIP; `package-installer.ps1` creates the Inno Setup installer. `Core` and `Core.Tests` target `net10.0`; Windows-specific tests are skipped on other platforms.
 
 ## Repository map
 
@@ -393,6 +393,6 @@ UsageBar/
 
 Changes are developed through separate commits and pull requests. UsageBar is available under the [MIT License](LICENSE).
 
-macOS maintainers: see the [production release runbook](docs/MACOS-RELEASE.md) for the protected Developer ID workflow. Windows releases retain their own process.
+Maintainers can follow the [production release runbook](docs/MACOS-RELEASE.md) to prepare both platform drafts from the same reviewed commit and verify the protected macOS Developer ID build.
 
 <p align="right"><a href="#top">Back to top ↑</a></p>
