@@ -17,6 +17,10 @@ Releases before v1.5.2 are listed on the
 - macOS: Mobil Eşitleme, iPhone eşlikçi kaynak kodu, widget'lar, eşleştirme ve
   dinleyici kaldırıldı. [Eski kurulumlar için temizlik](docs/retired-mobile-sync.md#türkçe).
 
+### Changed
+- macOS: turning off **Show details** hides mini charts and their summaries while keeping remaining quota and reset times visible.
+- macOS: **Ayrıntıları göster** kapalıyken mini grafikler ve özetleri gizlenir, kalan kota ve sıfırlanma zamanları görünür kalır.
+
 ### Fixed
 - macOS: retain valid quota readings and skip invalid reset data when a provider returns malformed numbers.
 - macOS: sağlayıcı hatalı sayısal değer döndürdüğünde geçerli kota ölçümleri korunur ve geçersiz sıfırlama verisi atlanır.

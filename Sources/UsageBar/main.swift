@@ -2339,9 +2339,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             collectItem.state = isCollecting ? .on : .off
             submenu.addItem(collectItem)
 
-            // Lives here rather than inside the body it hides, so hiding the
-            // details can never hide the way back. It is a separate control
-            // from "Collect usage" because it answers a separate question.
             let detailsItem = NSMenuItem(
                 title: text.showDetails,
                 action: providerName == "Codex"
@@ -2375,38 +2372,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         detailsVisible: Bool,
         hostsQuickControls: Bool
     ) {
-        // The whole rendering decision, taken once. `usage` itself is never
-        // rewritten to produce the compact form: the readings, their history
-        // and their freshness are all still there, simply not drawn.
         let plan = ProviderDetailPresentationPolicy.card(
             collectionEnabled: collectionEnabled,
             detailsVisible: detailsVisible,
             hasIssue: usage.error != nil
         )
 
-        // The single gate on the detailed body. Making the *list* empty rather
-        // than skipping a loop is deliberate: there is one place windows are
-        // enumerated, so no usage row, reset line, history summary or chart can
-        // be built for a hidden provider by any other route.
-        let detailWindows = plan.showsDetailBody ? usage.windows : []
-
         var rows: [(title: NSAttributedString, history: [UsageHistorySample])] = []
-        for (position, window) in detailWindows.enumerated() {
-            let samples = usageHistoryEnabled
+        for (position, window) in usage.windows.enumerated() {
+            let samples = plan.showsDetails && usageHistoryEnabled
                 ? usageHistory[historyKey(providerName: usage.name, windowKind: window.kind)] ?? []
                 : []
             rows.append((windowTitle(text.usageWindowLabel(window, position: position), window), samples))
         }
-        // A paused provider keeps whatever error it last had, but UsageBar is
-        // not trying to collect from it, so the row would blame the provider for
-        // a state the user chose. The paused marker takes its place.
-        //
-        // A hidden body still keeps this one line — it says what the provider is
-        // doing, not how much quota is left. The stale form of it carries a
-        // last-successful clock, which is detail, so the concise form stands in
-        // while the body is hidden.
+        // Keep active issues visible in compact mode, with a shorter status line.
         if let error = usage.error, plan.showsOperationalIssue {
-            if plan.showsDetailBody, let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
+            if plan.showsDetails, let lastSuccessfulAt = usage.lastSuccessfulAt, usage.isStale {
                 rows.append((staleTitle(error, lastSuccessfulAt: lastSuccessfulAt), []))
             } else {
                 rows.append((errorTitle(error), []))
@@ -3361,14 +3342,12 @@ private func runSelfTest() -> Int32 {
         detailsMissing == true,
         detailsHidden == false,
         claudeUntouched == true,
-        // Gizlenen ayrıntı yalnızca gövdeyi kaldırır: başlık, duraklatma
-        // işareti ve etkin hata satırı yerinde kalır.
-        hiddenWhileCollecting.showsDetailBody == false,
+        hiddenWhileCollecting.showsDetails == false,
         hiddenWhileCollecting.showsPausedMarker == false,
-        hiddenWhilePaused.showsDetailBody == false,
+        hiddenWhilePaused.showsDetails == false,
         hiddenWhilePaused.showsPausedMarker,
         hiddenWhilePaused.showsOperationalIssue == false,
-        shownWhileCollecting.showsDetailBody,
+        shownWhileCollecting.showsDetails,
         shownWhileCollecting.showsOperationalIssue,
         // Ayrıntı görünürlüğü uygunluğa karışmaz.
         ProviderCollectionPolicy.isEligible(connected: true, collectionEnabled: true)

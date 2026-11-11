@@ -118,7 +118,7 @@ final class MenuDisclosureTests: XCTestCase {
 
     func testProviderDetailVisibilityIsTheSameWhicheverHalfIsOpen() {
         // Per-provider "Show details" is its own preference. Collapsing the
-        // menu's controls neither hides a visible body nor reveals a hidden one.
+        // menu's controls does not affect mini-chart visibility.
         for state in bothStates {
             let shown = ProviderDetailPresentationPolicy.card(
                 collectionEnabled: true,
@@ -136,10 +136,10 @@ final class MenuDisclosureTests: XCTestCase {
                 hasIssue: true
             )
 
-            XCTAssertTrue(shown.showsDetailBody, "expanded: \(state.isExpanded)")
-            XCTAssertFalse(hidden.showsDetailBody, "expanded: \(state.isExpanded)")
+            XCTAssertTrue(shown.showsDetails, "expanded: \(state.isExpanded)")
+            XCTAssertFalse(hidden.showsDetails, "expanded: \(state.isExpanded)")
             XCTAssertTrue(hidden.showsOperationalIssue, "expanded: \(state.isExpanded)")
-            XCTAssertTrue(paused.showsDetailBody, "expanded: \(state.isExpanded)")
+            XCTAssertTrue(paused.showsDetails, "expanded: \(state.isExpanded)")
             XCTAssertTrue(paused.showsPausedMarker, "expanded: \(state.isExpanded)")
             XCTAssertFalse(paused.showsOperationalIssue, "expanded: \(state.isExpanded)")
         }
