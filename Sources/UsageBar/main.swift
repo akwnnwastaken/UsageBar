@@ -403,6 +403,7 @@ enum ExecutableLocator {
             [home, home + "/.local", home + "/.local/bin", codexHome, packages, standalone, releases]
                 .allSatisfy({ ownedItem($0, type: .typeDirectory) }),
             ownedItem(command, type: .typeSymbolicLink, writableMask: 0),
+            hasTrustedACLs(along: command),
             let destination = try? files.destinationOfSymbolicLink(atPath: command)
         else { return nil }
 
@@ -410,6 +411,7 @@ enum ExecutableLocator {
         if destination == current + executableSuffix {
             guard
                 ownedItem(current, type: .typeSymbolicLink, writableMask: 0),
+                hasTrustedACL(at: current),
                 let target = try? files.destinationOfSymbolicLink(atPath: current)
             else { return nil }
             release = target.hasPrefix("/") ? target : standalone + "/" + target
@@ -551,7 +553,56 @@ enum ExecutableLocator {
             guard parent.path != directory.path else { return nil }
             directory = parent
         }
+        guard
+            hasTrustedACLs(along: resolvedPath),
+            path == resolvedPath || hasTrustedACLs(along: path)
+        else { return nil }
         return resolvedPath
+    }
+
+    private static func hasTrustedACLs(along path: String) -> Bool {
+        var item = path
+        while hasTrustedACL(at: item) {
+            if item == "/" { return true }
+            item = (item as NSString).deletingLastPathComponent
+        }
+        return false
+    }
+
+    private static let mutationACLMask: acl_permset_mask_t = [
+        ACL_WRITE_DATA, ACL_APPEND_DATA, ACL_DELETE, ACL_DELETE_CHILD,
+        ACL_WRITE_ATTRIBUTES, ACL_WRITE_EXTATTRIBUTES, ACL_WRITE_SECURITY, ACL_CHANGE_OWNER
+    ].reduce(0) { $0 | acl_permset_mask_t($1.rawValue) }
+
+    private static func hasTrustedACL(at path: String) -> Bool {
+        guard let security = filesec_init() else { return false }
+        defer { filesec_free(security) }
+        var metadata = stat()
+        guard lstatx_np(path, &metadata, security) == 0 else { return false }
+        var acl: acl_t?
+        guard filesec_get_property(security, FILESEC_ACL, &acl) == 0 else {
+            return errno == ENOENT
+        }
+        guard let acl else { return false }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+
+        // Treat write grants as unsafe without relying on local or directory-service group membership.
+        var entry: acl_entry_t?
+        var index = ACL_FIRST_ENTRY
+        while acl_get_entry(acl, Int32(index.rawValue), &entry) == 0 {
+            index = ACL_NEXT_ENTRY
+            var tag = ACL_UNDEFINED_TAG
+            guard acl_get_tag_type(entry, &tag) == 0 else { return false }
+            if tag == ACL_EXTENDED_DENY { continue }
+            var mask: acl_permset_mask_t = 0
+            guard
+                tag == ACL_EXTENDED_ALLOW,
+                acl_get_permset_mask_np(entry, &mask) == 0,
+                mask & mutationACLMask == 0
+            else { return false }
+        }
+        // Darwin reports end of ACL entries as EINVAL.
+        return errno == EINVAL
     }
 }
 
@@ -3004,7 +3055,25 @@ private func testStandaloneCodexLookup() throws -> Bool {
         return false
     }
 
+    func changeACL(_ path: String, _ arguments: [String]) throws -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        process.arguments = ["-h"] + arguments + [path]
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    defer { _ = try? changeACL(home, ["-N"]) }
     guard ExecutableLocator.localCodex(in: home).path == command else { return false }
+    guard
+        try changeACL(home, ["+a", "everyone deny delete"]),
+        try changeACL(command, ["+a", "everyone allow read"]),
+        ExecutableLocator.localCodex(in: home).path == command,
+        try changeACL(command, ["+a", "everyone allow write"]),
+        isUntrusted()
+    else { return false }
+
     try replaceWithLink(command, to: binary)
     guard ExecutableLocator.localCodex(in: home).path == binary else { return false }
 
@@ -3026,6 +3095,19 @@ private func testStandaloneCodexLookup() throws -> Bool {
         try files.setAttributes([.posixPermissions: unsafeMode], ofItemAtPath: path)
         guard isUntrusted() else { return false }
         try files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    }
+
+    try replaceWithLink(command, to: current + "/bin/codex")
+    try replaceWithLink(current, to: "releases/" + version)
+    for (path, permission) in [(binary, "append"), (release, "delete_child"),
+                               (localBin, "add_file"), (command, "delete"),
+                               (current, "writesecurity")] {
+        guard
+            try changeACL(path, ["+a", "everyone allow " + permission]),
+            isUntrusted(),
+            try changeACL(path, ["-N"]),
+            ExecutableLocator.localCodex(in: home).path == binary
+        else { return false }
     }
 
     try replaceWithLink(binary, to: outside)
