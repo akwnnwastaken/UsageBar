@@ -9,9 +9,9 @@ Releases before v1.5.2 are listed on the
 
 ## [Unreleased]
 
-## macOS 2.5.1 (unpublished)
+## macOS 2.5.2 (unpublished)
 
-This release includes the macOS changes from the unpublished 2.5.0 candidate.
+This release includes the macOS changes from the unpublished 2.5.0 and 2.5.1 candidates. The production package is prepared for Developer ID signing and Apple notarization.
 
 ### Removed
 - macOS: retire Mobile Sync and the iPhone companion source, including widgets,
@@ -24,6 +24,9 @@ This release includes the macOS changes from the unpublished 2.5.0 candidate.
 - macOS: **Ayrıntıları göster** kapalıyken mini grafikler ve özetleri gizlenir, kalan kota ve sıfırlanma zamanları görünür kalır.
 
 ### Fixed
+- macOS: recognize the official standalone Codex CLI installed through `~/.local/bin/codex`. Validate the command link, versioned package path, ownership and permissions before launching it.
+- macOS: `~/.local/bin/codex` üzerinden kurulan resmî bağımsız Codex CLI tanınır. Başlatmadan önce komut bağlantısı, sürümlü paket yolu, sahiplik ve izinler doğrulanır.
+
 - macOS: retain valid quota readings and skip invalid reset data when a provider returns malformed numbers.
 - macOS: sağlayıcı hatalı sayısal değer döndürdüğünde geçerli kota ölçümleri korunur ve geçersiz sıfırlama verisi atlanır.
 
