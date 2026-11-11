@@ -30,9 +30,9 @@ UsageBar/
     ├── UsageBar.Windows.sln
     ├── Directory.Build.props             settings scoped to the Windows build only
     ├── src/
-    │   ├── UsageBar.Windows.Core/            net8.0        platform-independent behavior
-    │   ├── UsageBar.Windows.Infrastructure/  net8.0-windows platform mechanics
-    │   └── UsageBar.Windows.App/             net8.0-windows WPF tray application
+    │   ├── UsageBar.Windows.Core/            net10.0        platform-independent behavior
+    │   ├── UsageBar.Windows.Infrastructure/  net10.0-windows platform mechanics
+    │   └── UsageBar.Windows.App/             net10.0-windows WPF tray application
     └── tests/
         ├── UsageBar.Windows.Core.Tests/
         └── UsageBar.Windows.Infrastructure.Tests/
@@ -558,7 +558,7 @@ raised to 2 so everyone sees the correction once.
 
 ## 8. Building and running locally
 
-Requirements: Windows 10 1809 (x64) or newer and the .NET 8 SDK.
+Requirements: Windows 10 1809 (x64) or newer and the .NET 10 SDK.
 
 ```powershell
 dotnet restore windows/UsageBar.Windows.sln
@@ -572,8 +572,8 @@ Run the tray application:
 dotnet run --project windows/src/UsageBar.Windows.App/UsageBar.Windows.App.csproj -c Release
 ```
 
-`Core` and `Core.Tests` target `net8.0` and build and run on any platform.
-`Infrastructure`, `App` and `Infrastructure.Tests` target `net8.0-windows`; they
+`Core` and `Core.Tests` target `net10.0` and build and run on any platform.
+`Infrastructure`, `App` and `Infrastructure.Tests` target `net10.0-windows`; they
 **compile** on macOS or Linux (`EnableWindowsTargeting` is set) but the tests
 that need a real Windows kernel are marked `[WindowsFact]` / `[WindowsTheory]`
 and report as **skipped** — never as passed — anywhere else.
@@ -778,7 +778,7 @@ the warning it removes.
 `.github/workflows/windows-ci.yml` runs on `windows-latest`:
 
 1. checkout
-2. install the .NET 8 SDK
+2. install the .NET 10 SDK
 3. **verify the resolved SDK is 8.x** — the run fails otherwise
 4. restore
 5. Release build
@@ -793,6 +793,8 @@ the SDK the CLI resolves. Without it the muxer picks the newest SDK on the
 runner, which is not the one the workflow installs.
 
 The workflow does not create a tag, publish a GitHub Release, or push anywhere.
+The [production release workflow](MACOS-RELEASE.md) reuses this job and
+requires it to pass before macOS signing starts.
 
 Its job is named **`windows-build-and-test`**, deliberately *not*
 `build-and-test`: that context name is the required status check the macOS
@@ -1108,4 +1110,4 @@ summary.
 9. The portable ZIP is ~61 MB compressed / ~145 MB extracted because the .NET
    runtime is bundled. That is the cost of not requiring a .NET installation.
 10. Reproducibility holds for the same commit **and** the same SDK feature band.
-    A different 8.0.x SDK can emit different IL and change the hash.
+    A different 10.0.x SDK can emit different IL and change the hash.

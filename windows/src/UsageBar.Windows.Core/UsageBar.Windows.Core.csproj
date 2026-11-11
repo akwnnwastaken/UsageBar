@@ -7,7 +7,7 @@
     Windows-specific surface — that all lives in UsageBar.Windows.Infrastructure.
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>UsageBar.Windows.Core</AssemblyName>
     <RootNamespace>UsageBar.Windows.Core</RootNamespace>
   </PropertyGroup>

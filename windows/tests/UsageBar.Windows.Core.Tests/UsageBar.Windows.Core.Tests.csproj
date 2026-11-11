@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>UsageBar.Windows.Core.Tests</AssemblyName>
     <RootNamespace>UsageBar.Windows.Core.Tests</RootNamespace>
     <IsPackable>false</IsPackable>

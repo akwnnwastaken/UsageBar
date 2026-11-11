@@ -18,6 +18,8 @@ Releases before v1.5.2 are listed on the
   dinleyici kaldırıldı. [Eski kurulumlar için temizlik](docs/retired-mobile-sync.md#türkçe).
 
 ### Changed
+- Windows: build and package with the supported .NET 10 LTS runtime.
+- Windows: derleme ve paketleme, desteği süren .NET 10 LTS çalışma zamanını kullanır.
 - macOS: turning off **Show details** hides mini charts and their summaries while keeping remaining quota and reset times visible.
 - macOS: **Ayrıntıları göster** kapalıyken mini grafikler ve özetleri gizlenir, kalan kota ve sıfırlanma zamanları görünür kalır.
 
