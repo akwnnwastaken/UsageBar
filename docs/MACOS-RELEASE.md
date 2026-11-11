@@ -1,12 +1,13 @@
 # Production release for macOS and Windows
 
-UsageBar uses a solo maintainer model. macOS `v2.5.1` and Windows
+UsageBar uses a solo maintainer model. macOS `v2.5.2` and Windows
 `windows-v2.5.0` can ship on different dates from separately reviewed
 `main` commits. The macOS release workflow uses only the macOS tag and macOS
 build. Pull requests still build and test both platforms. A manual dispatch
 with empty inputs produces staging artifacts for the selected platform.
-The existing signed macOS `v2.5.0` tag records an unpublished candidate and
-must remain intact. The next macOS release uses `v2.5.1` (build 39).
+The existing signed macOS `v2.5.0` and `v2.5.1` tags record unpublished
+candidates. The `v2.5.1` release stays in draft. The next macOS release uses
+`v2.5.2` (build 40).
 
 ## Repository setup
 
@@ -153,6 +154,12 @@ trust settings. The temporary Keychain is the only credential store used.
    Verify the checksum, attestation for the approved SHA, Developer ID,
    stapled ticket and Gatekeeper assessment. Test first launch, provider
    login, Keychain access and Launch at Login under the new signing identity.
+   In a clean account with no ChatGPT.app or Homebrew Codex candidate, install
+   the official standalone Codex CLI and sign in. Confirm
+   `~/.local/bin/codex --version` and check the link with
+   `readlink ~/.local/bin/codex`. Connect Codex in UsageBar and confirm that
+   quota and reset times appear without a trust warning, then quit and reopen
+   UsageBar and confirm they still appear.
    For the first release without Mobile Sync, also check upgrade from a
    legacy paired setup using the [retirement guide](retired-mobile-sync.md)
    on a disposable Mac.

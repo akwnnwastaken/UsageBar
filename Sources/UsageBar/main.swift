@@ -350,7 +350,7 @@ enum ExecutableLocator {
     }
 
     static func codex() -> ExecutableLookup {
-        firstTrusted([
+        let system = firstTrusted([
             Candidate(
                 path: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
                 allowedRoot: "/Applications/ChatGPT.app"
@@ -360,12 +360,77 @@ enum ExecutableLocator {
                 allowedRoot: "/Applications/ChatGPT.app"
             ),
             Candidate(path: "/opt/homebrew/bin/codex", allowedRoot: "/opt/homebrew"),
-            Candidate(path: "/usr/local/bin/codex", allowedRoot: "/usr/local"),
-            Candidate(
-                path: NSString(string: "~/.local/bin/codex").expandingTildeInPath,
-                allowedRoot: NSString(string: "~/.local").expandingTildeInPath
-            )
+            Candidate(path: "/usr/local/bin/codex", allowedRoot: "/usr/local")
         ])
+        if case .found = system { return system }
+        let local = localCodex(in: NSHomeDirectory())
+        if case .missing = local { return system }
+        return local
+    }
+
+    static func localCodex(in home: String) -> ExecutableLookup {
+        let local = home + "/.local"
+        let command = local + "/bin/codex"
+        if let path = standaloneCodex(command: command, home: home) {
+            return .found(path)
+        }
+        return firstTrusted([Candidate(path: command, allowedRoot: local)])
+    }
+
+    private static func standaloneCodex(command: String, home: String) -> String? {
+        let files = FileManager.default
+        let codexHome = home + "/.codex"
+        let packages = codexHome + "/packages"
+        let standalone = packages + "/standalone"
+        let releases = standalone + "/releases"
+        let current = standalone + "/current"
+        let executableSuffix = "/bin/codex"
+
+        func ownedItem(_ path: String, type: FileAttributeType, writableMask: Int = 0o022) -> Bool {
+            guard
+                let attributes = try? files.attributesOfItem(atPath: path),
+                attributes[.type] as? FileAttributeType == type,
+                let owner = attributes[.ownerAccountID] as? NSNumber,
+                owner.uint32Value == 0 || owner.uint32Value == getuid(),
+                let mode = attributes[.posixPermissions] as? NSNumber
+            else { return false }
+            return mode.intValue & writableMask == 0
+        }
+
+        // The installer owns only the command and current symlinks. Every
+        // directory leading to the selected release must be a real directory.
+        guard
+            [home, home + "/.local", home + "/.local/bin", codexHome, packages, standalone, releases]
+                .allSatisfy({ ownedItem($0, type: .typeDirectory) }),
+            ownedItem(command, type: .typeSymbolicLink, writableMask: 0),
+            let destination = try? files.destinationOfSymbolicLink(atPath: command)
+        else { return nil }
+
+        let release: String
+        if destination == current + executableSuffix {
+            guard
+                ownedItem(current, type: .typeSymbolicLink, writableMask: 0),
+                let target = try? files.destinationOfSymbolicLink(atPath: current)
+            else { return nil }
+            release = target.hasPrefix("/") ? target : standalone + "/" + target
+        } else {
+            guard destination.hasSuffix(executableSuffix) else { return nil }
+            release = String(destination.dropLast(executableSuffix.count))
+        }
+
+        let prefix = releases + "/"
+        guard release.hasPrefix(prefix) else { return nil }
+        let version = String(release.dropFirst(prefix.count))
+        guard
+            version.range(
+                of: #"\A[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?-aarch64-apple-darwin\z"#,
+                options: .regularExpression
+            ) != nil,
+            ownedItem(release, type: .typeDirectory),
+            ownedItem(release + "/bin", type: .typeDirectory),
+            ownedItem(release + executableSuffix, type: .typeRegular)
+        else { return nil }
+        return trustedExecutable(at: release + executableSuffix, allowedRoot: releases)
     }
 
     static func claude() -> ExecutableLookup {
@@ -2902,6 +2967,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
+private func testStandaloneCodexLookup() throws -> Bool {
+    let files = FileManager.default
+    let temp = try ProviderProcessContext.prepare(Process()).resolvingSymlinksInPath()
+    defer { try? files.removeItem(at: temp) }
+    let home = temp.path
+    let localBin = home + "/.local/bin"
+    let command = localBin + "/codex"
+    let standalone = home + "/.codex/packages/standalone"
+    let version = "0.167.1-aarch64-apple-darwin"
+    let release = standalone + "/releases/" + version
+    let otherRelease = standalone + "/releases-other/" + version
+    let binary = release + "/bin/codex"
+    let current = standalone + "/current"
+    let outside = home + "/.codex/codex"
+
+    for path in [command, binary, outside, otherRelease + "/bin/codex"] {
+        try files.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o755]
+        )
+        try Data().write(to: URL(fileURLWithPath: path))
+        try files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    }
+
+    func replaceWithLink(_ path: String, to target: String) throws {
+        if (try? files.attributesOfItem(atPath: path)) != nil {
+            try files.removeItem(atPath: path)
+        }
+        try files.createSymbolicLink(atPath: path, withDestinationPath: target)
+    }
+
+    func isUntrusted() -> Bool {
+        if case .untrusted = ExecutableLocator.localCodex(in: home) { return true }
+        return false
+    }
+
+    guard ExecutableLocator.localCodex(in: home).path == command else { return false }
+    try replaceWithLink(command, to: binary)
+    guard ExecutableLocator.localCodex(in: home).path == binary else { return false }
+
+    try replaceWithLink(command, to: current + "/bin/codex")
+    for target in [release, "releases/" + version] {
+        try replaceWithLink(current, to: target)
+        guard ExecutableLocator.localCodex(in: home).path == binary else { return false }
+    }
+    try replaceWithLink(current, to: otherRelease)
+    guard isUntrusted() else { return false }
+
+    for target in [outside, otherRelease + "/bin/codex", standalone + "/releases/../releases/" + version + "/bin/codex"] {
+        try replaceWithLink(command, to: target)
+        guard isUntrusted() else { return false }
+    }
+    try replaceWithLink(command, to: binary)
+    for (path, unsafeMode) in [(binary, 0o775), (binary, 0o757), (binary, 0o644),
+                               (release, 0o775), (localBin, 0o777)] {
+        try files.setAttributes([.posixPermissions: unsafeMode], ofItemAtPath: path)
+        guard isUntrusted() else { return false }
+        try files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    }
+
+    try replaceWithLink(binary, to: outside)
+    guard isUntrusted() else { return false }
+    try replaceWithLink(release, to: otherRelease)
+    return isUntrusted()
+}
+
 private func runSelfTest() -> Int32 {
     let turkish = Localizer(language: .turkish)
     let english = Localizer(language: .english)
@@ -3695,7 +3827,8 @@ private func runSelfTest() -> Int32 {
         boundedCapture.snapshot().data == Data([1, 2, 3, 4]),
         boundedCapture.snapshot().exceeded,
         ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/bin") != nil,
-        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil
+        ExecutableLocator.trustedExecutable(at: "/bin/echo", allowedRoot: "/opt/homebrew") == nil,
+        (try? testStandaloneCodexLookup()) == true
     else {
         fputs("Süreç güvenliği testi başarısız\n", stderr)
         return 1
