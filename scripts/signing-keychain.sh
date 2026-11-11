@@ -38,7 +38,10 @@ open_signing_keychain() {
   security create-keychain -p "$keychain_password" "$keychain" || die 'Could not create the temporary signing Keychain'
   security set-keychain-settings -lut 7200 "$keychain" || die 'Could not set temporary Keychain timeout'
   security unlock-keychain -p "$keychain_password" "$keychain" || die 'Could not unlock the temporary signing Keychain'
-  # codesign uses the search list for trust-chain discovery even with an explicit identity Keychain.
+}
+
+register_signing_keychain() {
+  # Make the chain available to certificate lookups while keeping identity selection scoped.
   security list-keychains -d user -s "$keychain" ${original_keychains[@]+"${original_keychains[@]}"} ||
     die 'Could not register the temporary signing Keychain in the user search list'
 }

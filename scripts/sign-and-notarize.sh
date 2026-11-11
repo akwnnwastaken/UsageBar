@@ -46,6 +46,7 @@ if [[ -n "$package_builder" ]]; then
   unset APPLE_INSTALLER_P12_BASE64 APPLE_INSTALLER_P12_PASSWORD
 fi
 allow_keychain_signing
+register_signing_keychain
 identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="$APPLE_TEAM_ID" '
   /"Developer ID Application: / && index($0, "(" team ")\"") { print $2; n++ }
   END { if (n != 1) exit 1 }

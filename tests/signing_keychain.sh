@@ -49,11 +49,28 @@ printf 'int main(void) { return 0; }\n' | xcrun clang -x c - -o "$app/Contents/M
   mkdir "$scratch"
   cp "$fixture/identity.p12" "$scratch/test.p12"
   open_signing_keychain
-  listed=$(security list-keychains -d user)
-  [[ "$listed" == *"\"$keychain\""* ]] || die 'Temporary Keychain missing from search list'
   import_signing_identity "$scratch/test.p12" "$password" /usr/bin/codesign
   test ! -e "$scratch/test.p12"
   allow_keychain_signing
+  identities=$(security find-identity -p codesigning "$keychain")
+  [[ "$identities" == *"$identity"* ]] || die 'Test identity not found in the temporary Keychain'
+  listed=$(security list-keychains -d user)
+  if [[ "$listed" == *""$keychain""* ]]; then
+    echo 'The runner automatically registered the temporary Keychain.'
+  else
+    echo 'The runner did not automatically register the temporary Keychain.'
+  fi
+  # Probe the previous flow with the same fixture before registering explicitly.
+  if codesign --force --keychain "$keychain" --sign "$identity" --options runtime --timestamp=none "$app" >"$scratch/before.log" 2>&1; then
+    echo 'Fixture signing also worked before explicit registration.'
+  elif grep -Fq 'no identity found' "$scratch/before.log"; then
+    echo 'Fixture reproduced codesign no identity found before explicit registration.'
+  else
+    echo 'Fixture signing failed before explicit registration with a different error.'
+  fi
+  register_signing_keychain
+  listed=$(security list-keychains -d user)
+  [[ "$listed" == *""$keychain""* ]] || die 'Temporary Keychain missing from search list'
   # No Apple service is used by this ephemeral certificate.
   codesign --force --keychain "$keychain" --sign "$identity" --options runtime --timestamp=none "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
@@ -72,6 +89,7 @@ set +e
   mkdir "$scratch"
   cp "$fixture/identity.p12" "$scratch/test.p12"
   open_signing_keychain
+  register_signing_keychain
   import_signing_identity "$scratch/test.p12" "wrong-$password" /usr/bin/codesign
   exit 0
 ) >"$fixture/failure.log" 2>&1
