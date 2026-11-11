@@ -146,7 +146,7 @@ jobs:
       artifact-id: ${{ steps.final.outputs.artifact-id }}
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' &&
+      github.ref == 'refs/heads/main' && github.ref_protected &&
       github.actor_id == github.repository_owner_id &&
       github.triggering_actor == github.repository_owner &&
       inputs.tag != '' && inputs.release_sha == github.sha
@@ -161,7 +161,7 @@ jobs:
       TAG: ${{ inputs.tag }}
       RELEASE_SHA: ${{ inputs.release_sha }}
     steps:
-      - name: Require the maintainer’s recorded approval for this exact SHA
+      - name: Require recorded maintainer approval for this exact SHA
         env:
           APPROVED_SHA: ${{ vars.MACOS_RELEASE_APPROVED_SHA }}
         shell: bash
@@ -228,7 +228,7 @@ jobs:
     needs: sign-notarize
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' &&
+      github.ref == 'refs/heads/main' && github.ref_protected &&
       github.actor_id == github.repository_owner_id &&
       github.triggering_actor == github.repository_owner &&
       inputs.tag != '' && inputs.release_sha == github.sha

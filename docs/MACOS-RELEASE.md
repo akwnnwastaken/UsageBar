@@ -21,8 +21,9 @@ artifacts without signing credentials or GitHub Release write access.
    is enabled.
 3. In **Settings → Environments**, explicitly create `macos-production-signing`.
    Choose **Selected branches and tags** and allow only the **branch** `main`.
-   Leave **Required reviewers** unset. Verify the saved branch rule before
-   adding any credentials. The workflow checks both settings before entering
+   Leave **Required reviewers** unset. Verify the saved branch rule and
+   confirm the owner-only workflow is on protected `main` before loading any
+   credentials. The workflow checks both settings before entering
    the environment and again before the signing step reads the secrets.
 
 ## Solo maintainer security policy

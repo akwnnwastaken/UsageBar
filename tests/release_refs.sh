@@ -6,6 +6,7 @@ temp=$(mktemp -d)
 trap 'rm -rf "$temp"' EXIT
 export PATH="$temp:$PATH"
 export GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=example/usagebar
+export GITHUB_REF_PROTECTED=true
 export GITHUB_ACTOR_ID=42 GITHUB_REPOSITORY_OWNER_ID=42
 export GITHUB_TRIGGERING_ACTOR=example GITHUB_REPOSITORY_OWNER=example
 export GITHUB_SHA=0123456789abcdef0123456789abcdef01234567
@@ -64,6 +65,7 @@ bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
 reject bash scripts/verify-release-refs.sh windows-v2.5.0 "$GITHUB_SHA"
 reject env GITHUB_EVENT_NAME=pull_request bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
 reject env GITHUB_REF=refs/heads/topic bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env GITHUB_REF_PROTECTED=false bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
 reject env REMOTE_MAIN="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
 reject env WINDOWS=missing bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
 reject env WINDOWS=lightweight bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
