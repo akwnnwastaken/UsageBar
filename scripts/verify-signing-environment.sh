@@ -5,10 +5,9 @@ environment="repos/$GITHUB_REPOSITORY/environments/macos-production-signing"
 gh api "$environment" | jq -e '
   .deployment_branch_policy.custom_branch_policies == true and
   .deployment_branch_policy.protected_branches == false and
-  any(.protection_rules[]; .type == "required_reviewers" and
-    .prevent_self_review == true and (.reviewers | length) > 0)
+  all(.protection_rules[]; .type != "required_reviewers")
 ' >/dev/null || {
-  echo 'Configure macos-production-signing with selected branches and an independent required reviewer.' >&2
+  echo 'Configure macos-production-signing with selected branches and tags and leave Required reviewers unset.' >&2
   exit 1
 }
 

@@ -2,8 +2,14 @@
 set -euo pipefail
 
 tag=${1:-}
+release_sha=${2:-}
 [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]] ||
   { echo 'Production releases require a manual run on main.' >&2; exit 1; }
+[[ "$GITHUB_ACTOR_ID" == "$GITHUB_REPOSITORY_OWNER_ID" &&
+   "$GITHUB_TRIGGERING_ACTOR" == "$GITHUB_REPOSITORY_OWNER" ]] ||
+  { echo 'Only the personal repository owner may start or retry production releases.' >&2; exit 1; }
+[[ "$release_sha" =~ ^[0-9a-f]{40}$ && "$release_sha" == "$GITHUB_SHA" ]] ||
+  { echo 'Enter the full approved SHA that matches this workflow run.' >&2; exit 1; }
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
   { echo 'Expected a macOS version tag (vX.Y.Z).' >&2; exit 1; }
 

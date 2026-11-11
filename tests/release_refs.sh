@@ -6,6 +6,8 @@ temp=$(mktemp -d)
 trap 'rm -rf "$temp"' EXIT
 export PATH="$temp:$PATH"
 export GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=example/usagebar
+export GITHUB_ACTOR_ID=42 GITHUB_REPOSITORY_OWNER_ID=42
+export GITHUB_TRIGGERING_ACTOR=example GITHUB_REPOSITORY_OWNER=example
 export GITHUB_SHA=0123456789abcdef0123456789abcdef01234567
 export MAC_OBJECT=1111111111111111111111111111111111111111 WIN_OBJECT=2222222222222222222222222222222222222222
 
@@ -33,9 +35,10 @@ case "$2" in
   */environments/macos-production-signing)
     case "${ENVIRONMENT:-}" in
       missing) exit 1 ;;
-      no-reviewer) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[]}' ;;
-      self-review) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]}]}' ;;
-      *) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"required_reviewers","prevent_self_review":true,"reviewers":[{}]}]}' ;;
+      reviewers) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"required_reviewers","reviewers":[{}]}]}' ;;
+      unrestricted) echo '{"deployment_branch_policy":null,"protection_rules":[]}' ;;
+      protected-branches) echo '{"deployment_branch_policy":{"custom_branch_policies":false,"protected_branches":true},"protection_rules":[]}' ;;
+      *) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"branch_policy"}]}' ;;
     esac
     ;;
   */deployment-branch-policies)
@@ -57,18 +60,23 @@ reject() {
   fi
 }
 
-bash scripts/verify-release-refs.sh v2.5.0
-reject bash scripts/verify-release-refs.sh windows-v2.5.0
-reject env GITHUB_EVENT_NAME=pull_request bash scripts/verify-release-refs.sh v2.5.0
-reject env GITHUB_REF=refs/heads/topic bash scripts/verify-release-refs.sh v2.5.0
-reject env REMOTE_MAIN="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0
-reject env WINDOWS=missing bash scripts/verify-release-refs.sh v2.5.0
-reject env WINDOWS=lightweight bash scripts/verify-release-refs.sh v2.5.0
-reject env WINDOWS_VERIFIED=false bash scripts/verify-release-refs.sh v2.5.0
-reject env WINDOWS_SHA="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0
-reject env WINDOWS_TAG=v2.5.0 bash scripts/verify-release-refs.sh v2.5.0
+bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject bash scripts/verify-release-refs.sh windows-v2.5.0 "$GITHUB_SHA"
+reject env GITHUB_EVENT_NAME=pull_request bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env GITHUB_REF=refs/heads/topic bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env REMOTE_MAIN="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env WINDOWS=missing bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env WINDOWS=lightweight bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env WINDOWS_VERIFIED=false bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env WINDOWS_SHA="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env WINDOWS_TAG=v2.5.0 bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env GITHUB_ACTOR_ID=99 bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject env GITHUB_TRIGGERING_ACTOR=collaborator bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
+reject bash scripts/verify-release-refs.sh v2.5.0
+reject bash scripts/verify-release-refs.sh v2.5.0 "${GITHUB_SHA:0:7}"
+reject bash scripts/verify-release-refs.sh v2.5.0 "$WIN_OBJECT"
 bash scripts/verify-signing-environment.sh
-for environment in missing no-reviewer self-review wrong-ref extra-ref; do
+for environment in missing unrestricted protected-branches reviewers wrong-ref extra-ref; do
   reject env ENVIRONMENT="$environment" bash scripts/verify-signing-environment.sh
 done
 echo 'Release ref and environment tests passed.'
