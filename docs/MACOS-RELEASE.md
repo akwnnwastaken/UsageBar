@@ -1,17 +1,19 @@
 # Production release for macOS and Windows
 
-UsageBar uses a solo maintainer model. The owner reviews one `main` commit
-for separate macOS and Windows releases. The **macOS release candidate**
-workflow builds and tests both platforms. Pull requests and manual runs with both inputs empty produce staging
-artifacts without signing credentials or GitHub Release write access.
+UsageBar uses a solo maintainer model. macOS `v2.5.0` and Windows
+`windows-v2.5.0` can ship on different dates from separately reviewed
+`main` commits. The macOS release workflow uses only the macOS tag and macOS
+build. Pull requests still build and test both platforms. A manual dispatch
+with empty inputs produces staging artifacts for the selected platform.
 
 ## Repository setup
 
 1. In **Settings → Branches**, require pull requests to `main` with zero
    required human approvals and the required GitHub Actions `build-and-test`
    check. Preserve the strict up-to-date check, admin enforcement and blocks
-   on force pushes and deletion. Review the pinned macOS toolchain job,
-   Windows CI and CodeQL on the final SHA as release gates.
+   on force pushes and deletion. Review the pinned macOS toolchain job
+   and CodeQL results on the final macOS SHA. Review Windows CI on the
+   final Windows SHA.
 2. In **Settings → Rules → Rulesets**, protect both `v*` and `windows-v*` tags.
    In an active tag ruleset, enable **Restrict creations** and give bypass
    access to the repository owner. In a separate active ruleset for
@@ -97,106 +99,108 @@ rationale and follow-up for any accepted low/medium residual risk.
    Keep secret values out of chat, source, logs, shell arguments and artifacts.
    Leave `MACOS_RELEASE_APPROVED_SHA` unset until the final SHA is approved.
 
-## Prepare the release pair
+## Prepare and publish macOS
 
-1. Merge all approved release changes, including features and changelog
-   entries, before choosing the candidate SHA. Keep public download links and
-   signing claims aligned with the published release until the new assets
-   are live. Dispatch **macOS release candidate** on `main` with both inputs
-   empty. On the exact main SHA, verify the secret scans, macOS tests and
-   packaging, and Windows package verification and installer
-   install/upgrade/uninstall smoke. Check the ordinary macOS CI, pinned
-   toolchain lane and CodeQL for the same SHA. Review the Windows NuGet
-   audit, which includes transitive dependencies and fails on high/critical
-   advisories or a failed advisory lookup.
-2. Complete the security assessment above and record the evidence and the
-   owner's decision on the exact final SHA. Verify the commit is still the
-   current `main` tip.
-3. After the owner explicitly authorizes the two tags and signing, confirm
-   the version matches in `Info.plist` and `windows/Directory.Build.props`
-   and that neither platform has a release or draft for that version. Create
-   signed annotated tags `vX.Y.Z` and
-   `windows-vX.Y.Z` on the same approved SHA. Push both together and verify
-   GitHub reports both signatures as verified. Pause merges through draft
-   creation, since the workflow requires the SHA to remain the
-   `main` tip. Set the environment variable `MACOS_RELEASE_APPROVED_SHA` to
-   the full approved commit SHA.
+1. Merge approved macOS release changes, including the changelog. Keep public
+   download links and signing claims aligned with the published release.
+   Dispatch **macOS release candidate** on `main` with both inputs empty.
+   On the exact `main` SHA, check the required build, pinned toolchain,
+   staging tests, package checks, secret scans and CodeQL.
+2. Complete the full security assessment for that SHA. Record the evidence
+   and the owner's separate decision authorizing the release steps below.
+   Check that the SHA is still the current `main` tip and that the macOS
+   version has no release or draft. Pause merges through draft creation.
+3. Record the full approved commit in `MACOS_RELEASE_APPROVED_SHA` in the
+   protected signing environment. After the owner authorizes tag creation,
+   confirm the version in `Info.plist`, create the signed annotated macOS
+   tag and verify that GitHub reports the signature as verified.
 
    ```bash
    # Set version and approved_sha to the reviewed version and full SHA first.
    git tag -s "v$version" "$approved_sha"
-   git tag -s "windows-v$version" "$approved_sha"
-   git push --atomic origin "refs/tags/v$version" "refs/tags/windows-v$version"
+   git push origin "refs/tags/v$version"
    ```
 
-4. From the repository owner's GitHub account, dispatch **macOS release
-   candidate** on `main`. Enter `vX.Y.Z` for `tag` and the full approved
-   commit for `release_sha`. The run, current `main` tip, both verified
-   tags and `MACOS_RELEASE_APPROVED_SHA` must identify the same commit.
-   Only the owner can start or retry production signing and draft creation.
-   The signing job waits for both builds, signs with a temporary keychain,
-   requires Apple Accepted, staples the app, verifies Gatekeeper, attests
-   the final ZIP, and creates a macOS draft with a checksum and provenance.
-   Verify the run completed successfully and retain its run ID and attempt.
-5. Download the two Windows artifacts from **the same tagged workflow run and
-   successful attempt**. Check the run SHA, the package and installer
-   verification logs, and both SHA-256 manifests. Then create the Windows
-   draft for the existing verified `windows-vX.Y.Z` tag. Attach only the
-   following files. Include the source SHA, run URL, checksum values, Windows
-   testing status and unsigned/SmartScreen status in the notes. Compare
-   GitHub's stored asset digests with the four local files.
+4. After the owner authorizes signing and notarization, dispatch **macOS
+   release candidate** on `main` from the repository owner's account. Enter
+   `vX.Y.Z` for `tag` and the full approved commit for `release_sha`.
+   The run, current `main` tip, verified macOS tag and
+   `MACOS_RELEASE_APPROVED_SHA` must identify the same commit. The signing
+   job uses a temporary keychain, requires Apple Accepted, staples the app
+   and verifies Gatekeeper and the final archive. The draft job attests the
+   final ZIP, attaches its checksum and provenance, and checks GitHub's
+   stored asset digests. Retain the successful run ID and attempt.
+5. Download the macOS draft through a browser on a clean Apple Silicon Mac.
+   Verify the checksum, attestation for the approved SHA, Developer ID,
+   stapled ticket and Gatekeeper assessment. Test first launch, provider
+   login, Keychain access and Launch at Login under the new signing identity.
+   For the first release without Mobile Sync, also check upgrade from a
+   legacy paired setup using the [retirement guide](retired-mobile-sync.md)
+   on a disposable Mac.
+
+   ```bash
+   shasum -a 256 -c "UsageBar-$version-macOS-arm64.zip.sha256"
+   gh attestation verify "UsageBar-$version-macOS-arm64.zip" \
+     --repo akwnnwastaken/UsageBar \
+     --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml \
+     --source-ref refs/heads/main --source-digest "$approved_sha" --deny-self-hosted-runners
+   codesign --verify --deep --strict UsageBar.app
+   codesign --display --verbose=4 UsageBar.app
+   xcrun stapler validate UsageBar.app
+   spctl --assess --type execute --verbose=4 UsageBar.app
+   ```
+
+6. After successful Mac acceptance and explicit publication authorization,
+   publish the macOS draft for the verified digest. Verify that the public
+   release is immutable with `gh release verify` and check the assets with
+   `gh release verify-asset`. Update the macOS
+   download links and signing claims, then clear `MACOS_RELEASE_APPROVED_SHA`.
+
+A pre-existing macOS release stops signing. Check for macOS drafts before
+dispatch. The draft job refuses to overwrite a macOS release or draft. Inspect
+a failed or abandoned draft with the maintainer before retrying.
+
+## Prepare and publish Windows separately
+
+1. Pick and review the exact current `main` SHA for Windows. Run **Windows
+   CI** on that commit with empty inputs. Review the NuGet audit, which
+   includes transitive dependencies and fails on high/critical advisories
+   or an unavailable advisory lookup. Verify tests, package and installer
+   metadata, and install/upgrade/uninstall smoke. Complete the
+   [Windows acceptance checklist](windows-port.md#13-windows-installer-physical-test-checklist)
+   on supported physical x64 hardware before creating a release tag. Keep
+   SmartScreen and Defender enabled.
+2. With owner authorization, confirm version metadata in
+   `windows/Directory.Build.props` and check that the Windows release or
+   draft does not already exist. Create and push only the signed annotated
+   Windows tag for the approved Windows SHA.
+
+   ```bash
+   git tag -s "windows-v$version" "$approved_sha"
+   git push origin "refs/tags/windows-v$version"
+   ```
+
+3. From the owner's account, dispatch **Windows CI** on protected `main`
+   with the Windows tag and full approved SHA. It verifies the tag
+   signature, target, SHA and Windows version before building. Download the
+   following artifacts from that successful tagged dispatch and its exact
+   attempt. Check source-revision and package verification logs and the
+   manifests, and repeat the relevant physical acceptance checks with
+   those exact files if their digests differ from the tested packages.
 
    | CI artifact | Draft files |
    | --- | --- |
    | `UsageBar-Windows-Installer-x64` | `UsageBar-Setup-x64.exe` and `UsageBar-Setup-x64.exe.sha256` |
    | `UsageBar-Windows-x64` | `UsageBar-Windows-x64.zip` and `UsageBar-Windows-x64.zip.sha256` |
 
-   To check the Windows manifests on a Mac, run these commands from the
-   download directory:
-
    ```bash
    shasum -a 256 -c UsageBar-Setup-x64.exe.sha256
    shasum -a 256 -c UsageBar-Windows-x64.zip.sha256
    ```
 
-## Accept and publish the drafts
-
-1. Download the macOS draft through a browser on a clean Apple Silicon Mac.
-   Check SHA-256 and the attestation for the approved `refs/heads/main` SHA,
-   then check the extracted app's Developer ID, stapled ticket and Gatekeeper
-   assessment. Test launch, provider login, Keychain access and Launch at
-   Login with the new identity. For the first release without Mobile Sync,
-   also check the upgrade from a legacy paired setup using the
-   [retirement guide](retired-mobile-sync.md) on a disposable Mac.
-
-   ```bash
-   gh attestation verify "UsageBar-$version-macOS-arm64.zip" \
-     --repo akwnnwastaken/UsageBar \
-     --signer-workflow akwnnwastaken/UsageBar/.github/workflows/release-candidate.yml \
-     --source-ref refs/heads/main --source-digest "$approved_sha" --deny-self-hosted-runners
-   xcrun stapler validate UsageBar.app
-   spctl --assess --type execute --verbose=4 UsageBar.app
-   ```
-
-2. On a Windows x64 test machine verify first launch, tray and provider
-   behavior, and upgrade from the current public installer. Follow the
-   [Windows checklist](windows-port.md#13-windows-installer-physical-test-checklist)
-   and record what was tested. Windows CI does not replace a hands-on check
-   of a supported desktop, including the oldest Windows version claimed for
-   the release. Keep SmartScreen and Defender enabled.
-3. Review both drafts, exact digests, smoke results and release notes together.
-   The owner explicitly approves both before publishing them in one release
-   window. GitHub publishes the two drafts separately. If the second publish
-   fails, keep the verified tags and assets intact and resolve the failure
-   before updating download links. Verify both releases and their asset
-   digests are public and immutable, update README links and signing claims,
-   and clear `MACOS_RELEASE_APPROVED_SHA`.
-
-For another personal repository, the same pattern binds production jobs to
-GitHub's repository owner, a full approved commit, and a branch-restricted
-environment. Adapt the required build jobs and signed tag checks to that
-repository's release targets.
-
-A pre-existing public release stops signing. Before dispatch, check for private
-drafts as well. The draft job refuses to overwrite either tag's release or
-draft. Inspect failed or abandoned drafts with the maintainer before retrying.
+4. Create a Windows-only draft for the existing verified tag. Record the
+   source SHA, run URL and attempt, checksum values, physical test results
+   and unsigned/SmartScreen status in the notes. Compare GitHub's stored
+   asset digests with the verified files. Publish after the owner explicitly
+   approves the draft. Check public immutability and digests, then update
+   the Windows download links.

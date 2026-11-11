@@ -437,21 +437,6 @@ enum ExecutableLocator {
             .deletingLastPathComponent()
         guard bundle.pathExtension == "app" else { return false }
 
-        // A full check reads the whole bundle (~0.5 s), so a verified
-        // executable is remembered until it is replaced or modified.
-        let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
-        let identity = SignatureCacheKey(
-            path: executablePath,
-            team: team,
-            modified: attributes?[.modificationDate] as? Date,
-            size: (attributes?[.size] as? NSNumber)?.int64Value,
-            inode: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
-        )
-        signatureCacheLock.lock()
-        let cached = verifiedSignature == identity
-        signatureCacheLock.unlock()
-        if cached { return true }
-
         var code: SecStaticCode?
         var requirement: SecRequirement?
         let text = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
@@ -462,23 +447,8 @@ enum ExecutableLocator {
             let requirement
         else { return false }
         let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate)
-        guard SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess else { return false }
-        signatureCacheLock.lock()
-        verifiedSignature = identity
-        signatureCacheLock.unlock()
-        return true
+        return SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess
     }
-
-    private struct SignatureCacheKey: Equatable {
-        let path: String
-        let team: String
-        let modified: Date?
-        let size: Int64?
-        let inode: UInt64?
-    }
-
-    private static let signatureCacheLock = NSLock()
-    private static var verifiedSignature: SignatureCacheKey?
 
     static func trustedExecutable(at path: String, allowedRoot: String) -> String? {
         let fileManager = FileManager.default
@@ -527,20 +497,6 @@ enum ExecutableLocator {
 /// UsageBar. Quota checks only need the user's local login, so they run from a
 /// private temporary directory with a deliberately small environment.
 private enum ProviderProcessContext {
-    static let workingDirectory: URL = {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("com.akwnnwastaken.usagebar", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-            return directory
-        } catch {
-            return FileManager.default.temporaryDirectory
-        }
-    }()
-
     static let environment: [String: String] = {
         let inherited = ProcessInfo.processInfo.environment
         var value: [String: String] = [
@@ -560,9 +516,19 @@ private enum ProviderProcessContext {
         return value
     }()
 
-    static func apply(to process: Process) {
-        process.currentDirectoryURL = workingDirectory
+    static func prepare(_ process: Process) throws -> URL {
+        let template = FileManager.default.temporaryDirectory
+            .appendingPathComponent("com.akwnnwastaken.usagebar.XXXXXXXX")
+        var path = template.path.utf8CString
+        let directory = try path.withUnsafeMutableBufferPointer { buffer -> URL in
+            guard let base = buffer.baseAddress, let created = mkdtemp(base) else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            return URL(fileURLWithPath: String(cString: created), isDirectory: true)
+        }
+        process.currentDirectoryURL = directory
         process.environment = environment
+        return directory
     }
 }
 
@@ -730,9 +696,9 @@ final class CodexUsageFetcher {
             process.standardInput = input
             process.standardOutput = output
             process.standardError = errors
-            ProviderProcessContext.apply(to: process)
-
             do {
+                let directory = try ProviderProcessContext.prepare(process)
+                defer { try? FileManager.default.removeItem(at: directory) }
                 try process.run()
                 let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
                 let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
@@ -850,9 +816,9 @@ final class ClaudeUsageFetcher {
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = output
             process.standardError = errors
-            ProviderProcessContext.apply(to: process)
-
             do {
+                let directory = try ProviderProcessContext.prepare(process)
+                defer { try? FileManager.default.removeItem(at: directory) }
                 try process.run()
                 let captured = BoundedDataCapture(limit: ProviderProcessLimits.maxOutputBytes)
                 let errorCapture = BoundedDataCapture(limit: 64 * 1_024)
@@ -919,7 +885,8 @@ final class ClaudeUsageFetcher {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = output
         process.standardError = errors
-        ProviderProcessContext.apply(to: process)
+        guard let directory = try? ProviderProcessContext.prepare(process) else { return false }
+        defer { try? FileManager.default.removeItem(at: directory) }
 
         do {
             try process.run()
@@ -998,7 +965,8 @@ final class ClaudeSignIn {
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = output
             process.standardError = errors
-            ProviderProcessContext.apply(to: process)
+            guard let directory = try? ProviderProcessContext.prepare(process) else { return }
+            defer { try? FileManager.default.removeItem(at: directory) }
 
             do {
                 try process.run()
@@ -3746,8 +3714,20 @@ private func runSelfTest() -> Int32 {
             executable: "/bin/sh",
             arguments: ["-c", script]
         )
-        ProviderProcessContext.apply(to: process)
-        guard (try? process.run()) != nil else { return nil }
+        guard let directory = try? ProviderProcessContext.prepare(process) else { return nil }
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = FileManager.default
+        guard
+            let otherDirectory = try? ProviderProcessContext.prepare(Process())
+        else { return nil }
+        defer { try? files.removeItem(at: otherDirectory) }
+        guard
+            directory != otherDirectory,
+            let attributes = try? files.attributesOfItem(atPath: directory.path),
+            (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700,
+            (try? files.contentsOfDirectory(atPath: directory.path)) == [],
+            (try? process.run()) != nil
+        else { return nil }
         // Mirror the fetcher: let a self-exiting process finish on its own before
         // stopping, so a clean exit keeps its real status instead of the signal
         // stop() would otherwise deliver. A stubborn process outlives this wait

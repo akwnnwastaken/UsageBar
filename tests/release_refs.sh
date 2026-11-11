@@ -17,21 +17,23 @@ cat > "$temp/gh" <<'MOCK'
 set -euo pipefail
 case "$2" in
   */ref/heads/main) echo "${REMOTE_MAIN:-$GITHUB_SHA}" ;;
-  */ref/tags/v2.5.0) echo "$MAC_OBJECT" ;;
-  */ref/tags/windows-v2.5.0)
-    case "${WINDOWS:-}" in
+  */ref/tags/v2.5.0|*/ref/tags/windows-v2.5.0)
+    tag=${2##*/}
+    [[ -z "${EXPECTED_TAG:-}" || "$tag" == "$EXPECTED_TAG" ]] || {
+      touch "$MOCK_UNEXPECTED_TAG"
+      exit 1
+    }
+    case "${TAG_STATE:-}" in
       missing) exit 1 ;;
       lightweight) exit 0 ;;
     esac
-    echo "$WIN_OBJECT"
+    if [[ "$tag" == v2.5.0 ]]; then echo "$MAC_OBJECT"; else echo "$WIN_OBJECT"; fi
     ;;
-  */tags/"$MAC_OBJECT")
-    jq -n --arg sha "$GITHUB_SHA" '{tag:"v2.5.0",verification:{verified:true},object:{type:"commit",sha:$sha}}'
-    ;;
-  */tags/"$WIN_OBJECT")
-    jq -n --arg sha "${WINDOWS_SHA:-$GITHUB_SHA}" --arg tag "${WINDOWS_TAG:-windows-v2.5.0}" \
-      --argjson verified "${WINDOWS_VERIFIED:-true}" \
-      '{tag:$tag,verification:{verified:$verified},object:{type:"commit",sha:$sha}}'
+  */tags/"$MAC_OBJECT"|*/tags/"$WIN_OBJECT")
+    if [[ "$2" == */"$MAC_OBJECT" ]]; then tag=v2.5.0; else tag=windows-v2.5.0; fi
+    jq -n --arg sha "${TAG_SHA:-$GITHUB_SHA}" --arg tag "${TAG_NAME:-$tag}" \
+      --arg type "${TAG_TARGET_TYPE:-commit}" --argjson verified "${TAG_VERIFIED:-true}" \
+      '{tag:$tag,verification:{verified:$verified},object:{type:$type,sha:$sha}}'
     ;;
   */environments/macos-production-signing)
     case "${ENVIRONMENT:-}" in
@@ -61,22 +63,34 @@ reject() {
   fi
 }
 
-bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject bash scripts/verify-release-refs.sh windows-v2.5.0 "$GITHUB_SHA"
-reject env GITHUB_EVENT_NAME=pull_request bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env GITHUB_REF=refs/heads/topic bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env GITHUB_REF_PROTECTED=false bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env REMOTE_MAIN="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env WINDOWS=missing bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env WINDOWS=lightweight bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env WINDOWS_VERIFIED=false bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env WINDOWS_SHA="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env WINDOWS_TAG=v2.5.0 bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env GITHUB_ACTOR_ID=99 bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject env GITHUB_TRIGGERING_ACTOR=collaborator bash scripts/verify-release-refs.sh v2.5.0 "$GITHUB_SHA"
-reject bash scripts/verify-release-refs.sh v2.5.0
-reject bash scripts/verify-release-refs.sh v2.5.0 "${GITHUB_SHA:0:7}"
-reject bash scripts/verify-release-refs.sh v2.5.0 "$WIN_OBJECT"
+export MOCK_UNEXPECTED_TAG="$temp/unexpected-tag"
+# Each platform can release with only its own tag available.
+for platform in macos windows; do
+  tag=v2.5.0
+  if [[ "$platform" == windows ]]; then tag=windows-v2.5.0; fi
+  verify=(bash scripts/verify-release-refs.sh "$platform" "$tag")
+  EXPECTED_TAG="$tag" "${verify[@]}" "$GITHUB_SHA"
+  for state in missing lightweight; do
+    reject env TAG_STATE="$state" "${verify[@]}" "$GITHUB_SHA"
+  done
+  reject env TAG_VERIFIED=false "${verify[@]}" "$GITHUB_SHA"
+  reject env TAG_TARGET_TYPE=tag "${verify[@]}" "$GITHUB_SHA"
+  reject env TAG_SHA="$WIN_OBJECT" "${verify[@]}" "$GITHUB_SHA"
+  reject env TAG_NAME=v9.9.9 "${verify[@]}" "$GITHUB_SHA"
+  reject env GITHUB_EVENT_NAME=pull_request "${verify[@]}" "$GITHUB_SHA"
+  reject env GITHUB_REF=refs/heads/topic "${verify[@]}" "$GITHUB_SHA"
+  reject env GITHUB_REF_PROTECTED=false "${verify[@]}" "$GITHUB_SHA"
+  reject env REMOTE_MAIN="$WIN_OBJECT" "${verify[@]}" "$GITHUB_SHA"
+  reject env GITHUB_ACTOR_ID=99 "${verify[@]}" "$GITHUB_SHA"
+  reject env GITHUB_TRIGGERING_ACTOR=collaborator "${verify[@]}" "$GITHUB_SHA"
+  reject "${verify[@]}"
+  reject "${verify[@]}" "${GITHUB_SHA:0:7}"
+  reject "${verify[@]}" "$WIN_OBJECT"
+done
+test ! -e "$MOCK_UNEXPECTED_TAG"
+reject bash scripts/verify-release-refs.sh macos windows-v2.5.0 "$GITHUB_SHA"
+reject bash scripts/verify-release-refs.sh windows v2.5.0 "$GITHUB_SHA"
+reject bash scripts/verify-release-refs.sh linux v2.5.0 "$GITHUB_SHA"
 bash scripts/verify-signing-environment.sh
 for environment in missing unrestricted protected-branches reviewers wrong-ref extra-ref; do
   reject env ENVIRONMENT="$environment" bash scripts/verify-signing-environment.sh
