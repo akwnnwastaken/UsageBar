@@ -41,7 +41,7 @@ UsageBar shows the selected provider's remaining usage in the macOS menu bar or 
 - **Resilient status:** Keep the last successful value visible with its timestamp and failure reason during temporary errors.
 - **Provider selection:** Pin a provider or rotate every 30 seconds with `Auto | Codex | Claude`.
 - **Collect usage:** Pause and resume collection per provider without disconnecting it (macOS: the provider's submenu; Windows: Settings and the tray menu). A paused provider stays connected and is marked **Paused**; its last readings and recorded history are kept, and the menu bar or tray value follows the providers still being collected.
-- **Show details:** Hide or show each provider's detail body (window values, remaining percentages, reset lines, history summaries and charts) separately; on by default. It is presentation only: connection, collection and history recording are unaffected, and the heading, the paused marker where it applies, and any active issue line stay visible. The preference is stored per provider, independently of **Collect usage**.
+- **Show details:** On macOS, turning this off hides the provider's mini charts, history summaries, and last successful reading timestamp on stale data. Remaining percentages, reset times, and active issues stay visible. On Windows, turning it off collapses the card to its heading and status. The preference is on by default, is stored per provider, and affects presentation only.
 - **Flexible display:** Disable colors, choose from three alert-threshold profiles, and refresh every 1, 2, or 5 minutes.
 - **Launch at login:** Start automatically with the signed-in user when enabled.
 - **Two languages, two platforms:** Turkish and English UI on macOS and Windows.

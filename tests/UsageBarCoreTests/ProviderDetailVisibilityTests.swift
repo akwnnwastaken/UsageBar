@@ -196,21 +196,18 @@ final class ProviderDetailVisibilityTests: XCTestCase {
         )
     }
 
-    func testAVisibleCollectingProviderKeepsItsFullBody() {
+    func testAVisibleCollectingProviderShowsDetails() {
         let card = plan()
 
-        XCTAssertTrue(card.showsDetailBody)
+        XCTAssertTrue(card.showsDetails)
         XCTAssertFalse(card.showsPausedMarker)
         XCTAssertFalse(card.showsOperationalIssue)
     }
 
-    func testHidingTheDetailsOmitsTheWholeBodyAndNothingElse() {
-        // Every usage row, reset line, history summary and chart lives in the
-        // body, so one decision removes all of them together — and the heading
-        // is not part of it.
+    func testHidingDetailsKeepsTheProviderActive() {
         let card = plan(visible: false)
 
-        XCTAssertFalse(card.showsDetailBody)
+        XCTAssertFalse(card.showsDetails)
         XCTAssertFalse(card.showsPausedMarker)
     }
 
@@ -218,7 +215,7 @@ final class ProviderDetailVisibilityTests: XCTestCase {
         let card = plan(collecting: false, visible: false)
 
         XCTAssertTrue(card.showsPausedMarker)
-        XCTAssertFalse(card.showsDetailBody)
+        XCTAssertFalse(card.showsDetails)
     }
 
     func testAPausedProviderWithVisibleDetailsStillShowsThem() {
@@ -226,7 +223,7 @@ final class ProviderDetailVisibilityTests: XCTestCase {
         let card = plan(collecting: false, visible: true)
 
         XCTAssertTrue(card.showsPausedMarker)
-        XCTAssertTrue(card.showsDetailBody)
+        XCTAssertTrue(card.showsDetails)
     }
 
     func testAHiddenProviderStillReportsAnActiveCollectionFailure() {
@@ -234,7 +231,7 @@ final class ProviderDetailVisibilityTests: XCTestCase {
         let card = plan(visible: false, issue: true)
 
         XCTAssertTrue(card.showsOperationalIssue)
-        XCTAssertFalse(card.showsDetailBody)
+        XCTAssertFalse(card.showsDetails)
     }
 
     func testAPausedProviderIsStillNotBlamedForItsRetainedError() {
@@ -251,10 +248,10 @@ final class ProviderDetailVisibilityTests: XCTestCase {
         XCTAssertEqual(plan(collecting: false, visible: true).showsPausedMarker, true)
         XCTAssertEqual(plan(collecting: false, visible: false).showsPausedMarker, true)
 
-        XCTAssertEqual(plan(collecting: true, visible: true).showsDetailBody, true)
-        XCTAssertEqual(plan(collecting: false, visible: true).showsDetailBody, true)
-        XCTAssertEqual(plan(collecting: true, visible: false).showsDetailBody, false)
-        XCTAssertEqual(plan(collecting: false, visible: false).showsDetailBody, false)
+        XCTAssertEqual(plan(collecting: true, visible: true).showsDetails, true)
+        XCTAssertEqual(plan(collecting: false, visible: true).showsDetails, true)
+        XCTAssertEqual(plan(collecting: true, visible: false).showsDetails, false)
+        XCTAssertEqual(plan(collecting: false, visible: false).showsDetails, false)
     }
 
     // MARK: - Collection, status and rotation are untouched

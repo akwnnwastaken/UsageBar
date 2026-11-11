@@ -4,7 +4,7 @@ import Foundation
 /// stored value reads.
 ///
 /// This is a **presentation** preference and nothing else. It decides whether a
-/// connected provider's detailed body is drawn; it never decides whether the
+/// connected provider's supplemental details are drawn; it never decides whether the
 /// provider is read. Collection has its own state in
 /// `ProviderCollectionPreference`, and the two are deliberately kept apart: a
 /// provider whose details are hidden goes on collecting, recording history and
@@ -15,7 +15,7 @@ import Foundation
 /// written, which for these two keys would silently collapse every provider
 /// belonging to a user upgrading from a build that predates them. An absent
 /// preference therefore means *visible*, and only an explicitly stored `false`
-/// hides a body.
+/// hides the supplemental details.
 ///
 /// Neither the connection keys (`provider.*.connected`), the collection keys
 /// (`provider.*.collection.enabled`) nor the historical `provider.*.enabled`
@@ -46,20 +46,19 @@ public struct ProviderCardPlan: Equatable {
     /// The "· Duraklatıldı" / "· Paused" suffix on the heading.
     public let showsPausedMarker: Bool
 
-    /// The quota and history body: usage-window values, remaining percentages,
-    /// reset lines, history summaries and charts. This is the only part detail
-    /// visibility controls.
-    public let showsDetailBody: Bool
+    /// Mini-chart history and the timestamp on stale readings. The quota
+    /// percentages and reset times are shown in either mode.
+    public let showsDetails: Bool
 
     /// The one concise line an active collection failure earns. It survives a
-    /// hidden body on purpose: it is operational state rather than quota data,
+    /// collapsed card on purpose: it is operational state rather than quota data,
     /// and without it a failing provider would be indistinguishable from a
     /// healthy one the user had merely collapsed.
     public let showsOperationalIssue: Bool
 
-    public init(showsPausedMarker: Bool, showsDetailBody: Bool, showsOperationalIssue: Bool) {
+    public init(showsPausedMarker: Bool, showsDetails: Bool, showsOperationalIssue: Bool) {
         self.showsPausedMarker = showsPausedMarker
-        self.showsDetailBody = showsDetailBody
+        self.showsDetails = showsDetails
         self.showsOperationalIssue = showsOperationalIssue
     }
 }
@@ -78,7 +77,7 @@ public enum ProviderDetailPresentationPolicy {
     ) -> ProviderCardPlan {
         ProviderCardPlan(
             showsPausedMarker: !collectionEnabled,
-            showsDetailBody: detailsVisible,
+            showsDetails: detailsVisible,
             showsOperationalIssue: ProviderStatusPolicy.rendersActiveError(
                 collectionEnabled: collectionEnabled,
                 hasError: hasIssue

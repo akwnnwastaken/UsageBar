@@ -296,7 +296,7 @@ require_present \
 #
 # Ayrıntı görünürlüğü yalnızca bir sunum tercihidir. Aşağıdaki kapılar, onun
 # toplama yaşam döngüsüne, seçime, döndürmeye ya da menü çubuğuna sızmadığını
-# ve gizli gövde kararının üretim çiziminde gerçekten uygulandığını korur.
+# ve mini grafik görünürlüğünün üretim çiziminde uygulandığını korur.
 
 # Denetim kanonik sunum yolundan geçer. Tercihi tıklama işleyicisinden yazmak,
 # tek mutasyon noktasını atlardı.
@@ -376,7 +376,7 @@ scan_forbidden_in_function \
 # planı, başlatma, sonuç kabulü, geçmiş kaydı, gösterim filtresi, uygun/bağlı
 # sağlayıcı listeleri ve döndürme zamanlayıcısı bu tercihin hiçbir biçimini
 # göremez: ne tercihin kendisini, ne anahtarını, ne de sunum planını.
-detail_presentation_tokens='etailsVisible|DetailVisibility|details\.visible|ProviderDetailPresentationPolicy|ProviderCardPlan|showsDetailBody'
+detail_presentation_tokens='etailsVisible|DetailVisibility|details\.visible|ProviderDetailPresentationPolicy|ProviderCardPlan|showsDetails'
 
 scan_forbidden_in_function \
   "Yenileme planı ayrıntı görünürlüğüne bakıyor" \
@@ -495,9 +495,8 @@ scan_forbidden_in_function \
   'private func addProviderManagementItems' \
   'UserDefaults|setCollectionEnabled|setDetailsVisible'
 
-# Kart, canlı tercihten kurulan sunum planına göre çizilir ve kullanım
-# pencereleri yalnızca o plandan geçen listeden sayılır: gizli gövdede tek bir
-# kullanım satırı, sıfırlanma satırı, geçmiş özeti ya da grafik kalamaz.
+# Kart kullanım pencerelerini her durumda gösterir. Geçmiş yalnızca
+# sağlayıcının ayrıntıları ve mini grafik ayarı açıkken çizilir.
 require_present \
   "Kart canlı ayrıntı tercihiyle kurulmuyor" \
   'detailsVisible: detailsVisible\(providerName\)'
@@ -508,14 +507,14 @@ require_present_in_function \
   'ProviderDetailPresentationPolicy\.card\('
 
 require_present_in_function \
-  "Ayrıntı gövdesi tek bir kapıdan geçmiyor" \
+  "Kullanım satırları kartın tüm pencerelerinden çizilmiyor" \
   'private func addProvider\($' \
-  'let detailWindows = plan\.showsDetailBody \? usage\.windows : \[\]'
+  'for \(position, window\) in usage\.windows\.enumerated\(\)'
 
-scan_forbidden_in_function \
-  "Kullanım pencereleri kapıdan geçmeyen bir listeden sayılıyor" \
+require_present_in_function \
+  "Mini grafik görünürlüğü iki ayarı birlikte kullanmıyor" \
   'private func addProvider\($' \
-  'usage\.windows\.enumerated\(\)'
+  'let samples = plan\.showsDetails && usageHistoryEnabled$'
 
 require_present_in_function \
   "Etkin hata satırı sunum planından geçmiyor" \
