@@ -30,6 +30,21 @@ case "$2" in
       --argjson verified "${WINDOWS_VERIFIED:-true}" \
       '{tag:$tag,verification:{verified:$verified},object:{type:"commit",sha:$sha}}'
     ;;
+  */environments/macos-production-signing)
+    case "${ENVIRONMENT:-}" in
+      missing) exit 1 ;;
+      no-reviewer) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[]}' ;;
+      self-review) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]}]}' ;;
+      *) echo '{"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false},"protection_rules":[{"type":"required_reviewers","prevent_self_review":true,"reviewers":[{}]}]}' ;;
+    esac
+    ;;
+  */deployment-branch-policies)
+    case "${ENVIRONMENT:-}" in
+      wrong-ref) echo '{"total_count":1,"branch_policies":[{"name":"main","type":"tag"}]}' ;;
+      extra-ref) echo '{"total_count":2,"branch_policies":[{"name":"main","type":"branch"},{"name":"*","type":"tag"}]}' ;;
+      *) echo '{"total_count":1,"branch_policies":[{"name":"main","type":"branch"}]}' ;;
+    esac
+    ;;
   *) exit 1 ;;
 esac
 MOCK
@@ -52,4 +67,8 @@ reject env WINDOWS=lightweight bash scripts/verify-release-refs.sh v2.5.0
 reject env WINDOWS_VERIFIED=false bash scripts/verify-release-refs.sh v2.5.0
 reject env WINDOWS_SHA="$WIN_OBJECT" bash scripts/verify-release-refs.sh v2.5.0
 reject env WINDOWS_TAG=v2.5.0 bash scripts/verify-release-refs.sh v2.5.0
-echo 'Release ref tests passed.'
+bash scripts/verify-signing-environment.sh
+for environment in missing no-reviewer self-review wrong-ref extra-ref; do
+  reject env ENVIRONMENT="$environment" bash scripts/verify-signing-environment.sh
+done
+echo 'Release ref and environment tests passed.'

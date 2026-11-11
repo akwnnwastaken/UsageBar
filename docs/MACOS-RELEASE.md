@@ -12,10 +12,11 @@ artifacts without signing credentials or GitHub Release write access.
    up-to-date check and admin enforcement. Review the pinned macOS toolchain
    job, Windows CI and CodeQL on the final SHA as release gates.
 2. In **Settings → Rules → Rulesets**, protect both `v*` and `windows-v*` tags.
-   Use an active tag ruleset to restrict creation to designated release
-   maintainers, and a separate active rule to restrict updates and deletions
-   without a routine bypass. In **Settings → General → Releases**, verify
-   [release immutability](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-immutable-releases/enabling-release-immutability)
+   Use an active tag ruleset to enable **Restrict creations** and give only the designated
+   release maintainer role bypass access. In a separate active ruleset for
+   the same patterns, enable **Restrict updates** and **Restrict deletions**
+   with an empty bypass list. In **Settings → General → Releases**, verify
+   [release immutability](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes)
    is enabled.
 3. In **Settings → Environments**, explicitly create `macos-production-signing`.
    Choose **Selected branches and tags** and allow only the **branch** `main`.
@@ -23,17 +24,19 @@ artifacts without signing credentials or GitHub Release write access.
    **Prevent self-review**, and clear **Allow administrators to bypass
    configured protection rules**. Arrange a separate eligible dispatcher and
    reviewer before attempting production signing. Verify the saved rules
-   before adding any credentials.
+   before adding any credentials. The workflow checks the branch policy and
+   reviewer requirement. Verify the administrator bypass toggle in Settings.
 
 ## Apple credentials
 
 1. The Apple Developer Program Account Holder creates or selects a valid
    [Developer ID Application certificate](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)
-   for the team's macOS distribution. On a trusted Mac, use Keychain Access to
-   create the certificate signing request, import the issued certificate on
-   the same Mac and export that identity (certificate and matching private
-   key) as a password-protected `.p12`. ZIP distribution needs the Application
-   identity.
+   for the team's macOS distribution. On a trusted Mac, in **Keychain Access
+   → Certificate Assistant → Request a Certificate From a Certificate
+   Authority**, save the request to disk. Use that request in Apple Developer,
+   import the issued certificate on the same Mac, and export the identity
+   from **My Certificates** (certificate and matching private key) as a
+   password-protected `.p12`. ZIP distribution needs the Application identity.
 2. In **App Store Connect → Users and Access → Integrations → App Store
    Connect API → Team Keys**, have the Account Holder enable API access if
    needed. An authorized maintainer creates a dedicated
